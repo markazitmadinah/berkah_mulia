@@ -1,0 +1,6 @@
+{
+  "name": "Berkah Mulia - Koperasi Simpan Pinjam Syariah",
+  "description": "Aplikasi Koperasi Simpan Pinjam Syariah untuk Tabungan Emas Harian, Tabungan Pribadi, dan Tabungan Qurban dengan verifikasi admin, perhitungan harga emas real-time, dan manajemen rekening syariah.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

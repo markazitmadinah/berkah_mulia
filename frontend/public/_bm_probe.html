@@ -1,0 +1,66 @@
+﻿<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>probe</title></head>
+<body style="margin:0">
+<p id="L">pending</p>
+<script>
+const WAIT = 25000;
+const poll = (fn) => new Promise(res => {
+  const i = setInterval(() => { try { if (fn()) { clearInterval(i); res(); } } catch (e) {} }, 200);
+  setTimeout(() => { clearInterval(i); res(); }, WAIT);
+});
+window.__bmErrs = [];
+(async () => {
+  const token = '40|8bDvyPQR7slfUFg31pqEzSmayhr8beT9raQplaKBbb1e051f';
+  const user = {"id":1,"name":"Admin Berkah Mulia","email":"admin@berkahmulia.com","phone":"081200000001","nomor_anggota":"2026-0001","role":"admin","role_label":"Administrator","status":"active","status_label":"Aktif","address":null,"avatar_path":null,"email_verified_at":"2026-08-28T16:53:17.000000Z","approved_at":"2026-08-28T16:53:17.000000Z","last_login_at":"2026-08-30T10:14:48.000000Z","created_at":"2026-08-28T16:53:17.000000Z","updated_at":"2026-08-30T10:14:48.000000Z"};
+  localStorage.setItem('bm_token', token);
+  localStorage.setItem('bm_user', JSON.stringify(user));
+  const f = document.createElement('iframe');
+  f.style.position = 'fixed';
+  f.style.inset = '0';
+  f.style.width = '1280px';
+  f.style.height = '4000px';
+  f.style.border = 'none';
+  document.body.appendChild(f);
+  try { f.contentWindow.addEventListener('error', e => window.__bmErrs.push(e.message || String(e))); } catch (e) {}
+  f.src = '/admin';
+  await poll(() => f.contentDocument && f.contentDocument.querySelector('.cursor-crosshair'));
+  await new Promise(r => setTimeout(r, 4000));
+  const d = f.contentDocument;
+  const out = [];
+  d.querySelectorAll('svg.cursor-crosshair').forEach((svg, idx) => {
+    const sr = svg.getBoundingClientRect();
+    let line = null;
+    svg.querySelectorAll('path').forEach(p => { if (p.getAttribute('fill') === 'none') line = p; });
+    const dots = [];
+    let walk = svg.parentElement && svg.parentElement.parentElement;
+    if (walk) walk.querySelectorAll('div').forEach(div => {
+      if (/rounded-full/.test(div.className.baseVal !== undefined ? div.className.baseVal : div.className || '')) dots.push(div.getBoundingClientRect());
+    });
+    const lastDot = dots.length ? dots[dots.length - 1] : null;
+    const cs = line ? getComputedStyle(line) : null;
+    const lineD = line ? line.getAttribute('d') : '';
+    const parts = lineD.split(/[A-Z]/).filter(Boolean);
+    const lastCmd = parts[parts.length - 1];
+    const nums = lastCmd ? lastCmd.trim().split(/[\s,]+/).map(parseFloat) : [];
+    const lastX = nums.length >= 2 ? nums[nums.length - 2] : null;
+    const renderedLineEndX = lastX != null && sr.width ? sr.left + (lastX / 500) * sr.width : null;
+    out.push({
+      n: d.querySelectorAll('svg.cursor-crosshair').length,
+      svg: { l: Math.round(sr.left), r: Math.round(sr.right), w: Math.round(sr.width) },
+      linePathLastX: lastX,
+      renderedLineEndX: renderedLineEndX != null ? Math.round(renderedLineEndX) : null,
+      lastDot: lastDot ? { l: Math.round(lastDot.left), r: Math.round(lastDot.right), c: Math.round(lastDot.left + lastDot.width / 2) } : null,
+      dasharray: cs ? cs.strokeDasharray : null,
+      dashoffset: cs ? cs.strokeDashoffset : null,
+      nDots: dots.length
+    });
+  });
+  document.getElementById('L').textContent =
+    'PROBEOUT:' + JSON.stringify(out) + ' | errs:' + (window.__bmErrs.join(' ;; ') || 'none');
+})().catch(e => {
+  document.getElementById('L').textContent = 'PROBE-ERR:' + (e && e.message) + ' | errs:' + window.__bmErrs.join(' ;; ');
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,208 @@
+import React, { useState } from 'react';
+import { useApp } from '../../context/AppContext';
+import { X, FileSpreadsheet, FileText, CheckCircle2 } from 'lucide-react';
+import { exportTablePdf } from '../../utils/exportPdf';
+import { formatRupiah } from '../../utils/format';
+
+type ExportType = 'nasabah' | 'transaksi';
+type ExportFormat = 'pdf' | 'xlsx';
+
+interface ExportModalProps {
+  type: ExportType;
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+const ROLE_LABEL: Record<string, string> = {
+  admin: 'Administrator',
+  user: 'Nasabah',
+};
+const STATUS_LABEL: Record<string, string> = {
+  pending: 'Menunggu Persetujuan',
+  active: 'Aktif',
+  rejected: 'Ditolak',
+  suspended: 'Dibekukan',
+};
+const JENIS_LABEL: Record<string, string> = {
+  setor: 'Setoran',
+  tarik: 'Penarikan',
+};
+const METODE_LABEL: Record<string, string> = {
+  cash: 'Tunai',
+  transfer: 'Transfer Bank',
+};
+const VERIF_LABEL: Record<string, string> = {
+  menunggu_verifikasi: 'Menunggu Verifikasi',
+  terverifikasi: 'Terverifikasi',
+  ditolak: 'Ditolak',
+};
+
+export const ExportModal: React.FC<ExportModalProps> = ({ type, isOpen, onClose }) => {
+  const { users, transaksi, exportUsers, exportTransaksi } = useApp();
+  const [format, setFormat] = useState<ExportFormat>('pdf');
+  const [submitting, setSubmitting] = useState(false);
+
+  if (!isOpen) return null;
+
+  const isNasabah = type === 'nasabah';
+  const today = new Date().toISOString().slice(0, 10);
+  const filename = `${isNasabah ? 'data_nasabah' : 'transaksi'}_berkah_mulia_${today}`;
+
+  const buildNasabahRows = () =>
+    users.map((u) => ({
+      no: '',
+      name: u.name,
+      anggota: u.nomor_anggota || '-',
+      email: u.email,
+      phone: u.phone,
+      alamat: u.address || '-',
+      role: ROLE_LABEL[u.role] || u.role,
+      status: STATUS_LABEL[u.status] || u.status,
+      created: u.created_at?.slice(0, 10) || '-',
+    }));
+
+  const buildTransaksiRows = () =>
+    transaksi.map((t) => ({
+      no: '',
+      ref: t.nomor_referensi,
+      nasabah: t.user_name || '-',
+      produk: t.jenis_tabungan_nama || '-',
+      jenis: JENIS_LABEL[t.jenis_transaksi] || t.jenis_transaksi,
+      nominal: `Rp ${formatRupiah(t.nominal)}`,
+      gram: t.unit_didapat ?? 0,
+      metode: METODE_LABEL[t.metode_pembayaran] || t.metode_pembayaran,
+      tanggal: t.tanggal_transaksi || '-',
+      status: VERIF_LABEL[t.status_verifikasi] || t.status_verifikasi,
+    }));
+
+  const handleExport = async () => {
+    setSubmitting(true);
+    try {
+      if (format === 'xlsx') {
+        if (isNasabah) await exportUsers();
+        else await exportTransaksi();
+      } else {
+        if (isNasabah) {
+          exportTablePdf(
+            'Laporan Data Nasabah',
+            `Rekapitulasi nasabah & anggota — ${users.length} nasabah terdaftar`,
+            `${filename}.pdf`,
+            [
+              { header: 'No', dataKey: 'no' },
+              { header: 'Nama Lengkap', dataKey: 'name' },
+              { header: 'No Anggota', dataKey: 'anggota' },
+              { header: 'Email', dataKey: 'email' },
+              { header: 'No. Handphone', dataKey: 'phone' },
+              { header: 'Alamat', dataKey: 'alamat' },
+              { header: 'Peran', dataKey: 'role' },
+              { header: 'Status', dataKey: 'status' },
+              { header: 'Terdaftar', dataKey: 'created' },
+            ],
+            buildNasabahRows()
+          );
+        } else {
+          exportTablePdf(
+            'Laporan Rekapitulasi Transaksi',
+            `Rekapitulasi mutasi transaksi — ${transaksi.length} transaksi tercatat`,
+            `${filename}.pdf`,
+            [
+              { header: 'No', dataKey: 'no' },
+              { header: 'No Referensi', dataKey: 'ref' },
+              { header: 'Nasabah', dataKey: 'nasabah' },
+              { header: 'Produk', dataKey: 'produk' },
+              { header: 'Jenis', dataKey: 'jenis' },
+              { header: 'Nominal', dataKey: 'nominal' },
+              { header: 'Gram Emas', dataKey: 'gram' },
+              { header: 'Metode', dataKey: 'metode' },
+              { header: 'Tanggal', dataKey: 'tanggal' },
+              { header: 'Status', dataKey: 'status' },
+            ],
+            buildTransaksiRows()
+          );
+        }
+      }
+      onClose();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="min-h-full flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div className="bg-white dark:bg-slate-800 rounded-t-3xl sm:rounded-3xl border border-slate-200 dark:border-slate-700 shadow-2xl w-full max-w-md sm:my-8 max-h-[92vh] overflow-y-auto animate-in zoom-in-95 duration-200">
+          <div className="flex items-center justify-between p-6 border-b border-slate-100 dark:border-slate-700">
+            <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
+              Export {isNasabah ? 'Data Nasabah' : 'Transaksi'}
+            </h3>
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="p-6 space-y-4 text-xs">
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setFormat('pdf')}
+                className={`p-4 rounded-2xl border-2 flex flex-col items-center gap-2 transition-all cursor-pointer ${
+                  format === 'pdf'
+                    ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/40'
+                    : 'border-slate-200 dark:border-slate-700 hover:border-emerald-400'
+                }`}
+              >
+                <FileText className={`w-7 h-7 ${format === 'pdf' ? 'text-emerald-600' : 'text-slate-400'}`} />
+                <span className={`font-bold ${format === 'pdf' ? 'text-emerald-700' : 'text-slate-600 dark:text-slate-300'}`}>Export PDF</span>
+                <span className="text-[10px] text-slate-400">Laporan siap cetak</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setFormat('xlsx')}
+                className={`p-4 rounded-2xl border-2 flex flex-col items-center gap-2 transition-all cursor-pointer ${
+                  format === 'xlsx'
+                    ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/40'
+                    : 'border-slate-200 dark:border-slate-700 hover:border-emerald-400'
+                }`}
+              >
+                <FileSpreadsheet className={`w-7 h-7 ${format === 'xlsx' ? 'text-emerald-600' : 'text-slate-400'}`} />
+                <span className={`font-bold ${format === 'xlsx' ? 'text-emerald-700' : 'text-slate-600 dark:text-slate-300'}`}>Export XLSX</span>
+                <span className="text-[10px] text-slate-400">Buka di Excel</span>
+              </button>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 flex items-center gap-2 text-slate-600 dark:text-slate-300">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+              <span>
+                {isNasabah ? `${users.length} nasabah` : `${transaksi.length} transaksi`} akan diexport
+              </span>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-700 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={submitting}
+                className="py-2 px-4 rounded-xl border border-slate-200 dark:border-slate-700 font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleExport}
+                disabled={submitting}
+                className="py-2.5 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow-md shadow-emerald-600/25 cursor-pointer flex items-center gap-1.5 disabled:opacity-60"
+              >
+                {format === 'pdf' ? <FileText className="w-3.5 h-3.5" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
+                {submitting ? 'Memproses...' : `Download ${format.toUpperCase()}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
