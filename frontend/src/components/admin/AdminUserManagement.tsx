@@ -16,7 +16,8 @@ import {
   Eye,
   Shield,
   UserCheck,
-  Plus
+  Plus,
+  UserRoundSearch
 } from 'lucide-react';
 import { User } from '../../types';
 interface AdminUserManagementProps {
@@ -26,6 +27,7 @@ interface AdminUserManagementProps {
   onOpenRejectUserModal: (user: User) => void;
   onOpenImportModal: () => void;
   onOpenExportModal: () => void;
+  onOpenProfilNasabah: (user: User) => void;
 }
 
 export const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
@@ -34,7 +36,8 @@ export const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
   onOpenDetailUser,
   onOpenRejectUserModal,
   onOpenImportModal,
-  onOpenExportModal
+  onOpenExportModal,
+  onOpenProfilNasabah
 }) => {
   const {
     users,
@@ -228,6 +231,15 @@ export const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                           title="Detail Profil"
                         >
                           <Eye className="w-3.5 h-3.5" />
+                        </button>
+
+                        {/* Profil Nasabah */}
+                        <button
+                          onClick={() => onOpenProfilNasabah(u)}
+                          className="p-1.5 rounded-lg bg-amber-100 dark:bg-amber-950 hover:bg-amber-200 text-amber-700 dark:text-amber-300 transition-colors cursor-pointer"
+                          title="Buka Profil Nasabah"
+                        >
+                          <UserRoundSearch className="w-3.5 h-3.5" />
                         </button>
 
                         {/* Edit */}

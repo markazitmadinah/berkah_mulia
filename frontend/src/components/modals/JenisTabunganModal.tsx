@@ -128,8 +128,7 @@ export const JenisTabunganModal: React.FC<JenisTabunganModalProps> = ({
   // 1. Informasi Dasar
   const [nama, setNama] = useState('');
   const [kode, setKode] = useState('');
-  const [tipe, setTipe] = useState('custom');
-  const [ikon, setIkon] = useState('Wallet');
+  const [tipe, setTipe] = useState('pribadi');
   const [deskripsi, setDeskripsi] = useState('');
   const [statusAktif, setStatusAktif] = useState(true);
 
@@ -138,9 +137,6 @@ export const JenisTabunganModal: React.FC<JenisTabunganModalProps> = ({
   const [minNominal, setMinNominal] = useState('');
   const [maxNominal, setMaxNominal] = useState('');
   const [kelipatan, setKelipatan] = useState('');
-  const [berkala, setBerkala] = useState(false);
-  const [berkalaNominal, setBerkalaNominal] = useState('');
-  const [berkalaPeriode, setBerkalaPeriode] = useState('bulanan');
 
   // 3. Goal
   const [goalAktif, setGoalAktif] = useState(false);
@@ -186,13 +182,9 @@ export const JenisTabunganModal: React.FC<JenisTabunganModalProps> = ({
       setGoalNilai(String(itemToEdit.target_nominal || itemToEdit.target_unit || ''));
       setGoalDeadline(itemToEdit.tanggal_selesai || '');
       setCairSebelumGoal(itemToEdit.allow_withdrawal);
-      setIkon(cfg.ikon || 'Wallet');
       setMinNominal(String(cfg.min_nominal ?? ''));
       setMaxNominal(String(cfg.max_nominal ?? ''));
       setKelipatan(String(cfg.kelipatan ?? ''));
-      setBerkala(!!cfg.setoran_berkala);
-      setBerkalaNominal(String(cfg.setoran_berkala_nominal ?? ''));
-      setBerkalaPeriode(cfg.setoran_berkala_periode || 'bulanan');
       setGoalWajib(!!cfg.goal_wajib);
       setGoalBolehUbah(!!cfg.goal_boleh_ubah);
       setCairSetelahGoal(cfg.cair_setelah_goal || 'lengkap');
@@ -207,9 +199,8 @@ export const JenisTabunganModal: React.FC<JenisTabunganModalProps> = ({
       setNotif(cfg.notifikasi !== undefined ? !!cfg.notifikasi : true);
       setSk(cfg.sk || '');
     } else {
-      setNama(''); setKode(''); setTipe('custom'); setIkon('Wallet'); setDeskripsi(''); setStatusAktif(true);
-      setMode('nominal_bebas'); setMinNominal(''); setMaxNominal(''); setKelipatan(''); setBerkala(false);
-      setBerkalaNominal(''); setBerkalaPeriode('bulanan');
+      setNama(''); setKode(''); setTipe('pribadi'); setDeskripsi(''); setStatusAktif(true);
+      setMode('nominal_bebas'); setMinNominal(''); setMaxNominal(''); setKelipatan('');
       setGoalAktif(false); setGoalJenis('nominal'); setGoalNilai(''); setGoalDeadline(''); setGoalWajib(false);
       setGoalBolehUbah(false);
       setCairSebelumGoal(true); setCairSetelahGoal('lengkap'); setPotongan(false); setPotonganTipe('persen');
@@ -224,13 +215,9 @@ export const JenisTabunganModal: React.FC<JenisTabunganModalProps> = ({
   const potonganAktif = potongan && Number(potonganNilai) > 0;
 
   const buildPayload = () => ({
-    ikon,
     min_nominal: minNominal ? Number(minNominal) : null,
     max_nominal: maxNominal ? Number(maxNominal) : null,
     kelipatan: kelipatan ? Number(kelipatan) : null,
-    setoran_berkala: berkala,
-    setoran_berkala_nominal: berkala ? Number(berkalaNominal || 0) : null,
-    setoran_berkala_periode: berkala ? berkalaPeriode : null,
     goal_wajib: goalWajib,
     goal_boleh_ubah: goalBolehUbah,
     cair_setelah_goal: cairSetelahGoal,
@@ -375,17 +362,6 @@ export const JenisTabunganModal: React.FC<JenisTabunganModalProps> = ({
                     <option value="emas">Emas Syariah</option>
                     <option value="pribadi">Pribadi (Wadi'ah)</option>
                     <option value="qurban">Qurban</option>
-                    <option value="custom">Custom Syariah</option>
-                  </select>
-                </div>
-                <div>
-                  <label className={labelCls}>Ikon</label>
-                  <select value={ikon} onChange={(e) => setIkon(e.target.value)} className={inputCls}>
-                    <option value="Wallet">Wallet (Dompet)</option>
-                    <option value="Coins">Coins (Koin)</option>
-                    <option value="PiggyBank">PiggyBank (Celengan)</option>
-                    <option value="Landmark">Landmark (Bank)</option>
-                    <option value="Target">Target (Sasaran)</option>
                   </select>
                 </div>
               </div>
@@ -416,22 +392,6 @@ export const JenisTabunganModal: React.FC<JenisTabunganModalProps> = ({
                 <NumField label="Maksimum" value={maxNominal} onChange={setMaxNominal} prefix="Rp" />
                 <NumField label="Kelipatan" value={kelipatan} onChange={setKelipatan} prefix="Rp" />
               </div>
-              <div className="border-t border-slate-100 dark:border-slate-700 pt-3 space-y-3">
-                <Toggle checked={berkala} onChange={setBerkala} label="Setoran berkala (otomatis)" />
-                {berkala && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <NumField label="Nominal setoran berkala" value={berkalaNominal} onChange={setBerkalaNominal} prefix="Rp" />
-                    <div>
-                      <label className={labelCls}>Periode</label>
-                      <select value={berkalaPeriode} onChange={(e) => setBerkalaPeriode(e.target.value)} className={inputCls}>
-                        <option value="harian">Harian</option>
-                        <option value="mingguan">Mingguan</option>
-                        <option value="bulanan">Bulanan</option>
-                      </select>
-                    </div>
-                  </div>
-                )}
-              </div>
             </div>
           )}
 
@@ -445,19 +405,10 @@ export const JenisTabunganModal: React.FC<JenisTabunganModalProps> = ({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className={labelCls}>Jenis Target</label>
-                      {tipe === 'custom' ? (
-                        <input
-                          type="text"
-                          readOnly
-                          value="Nominal (Rupiah)"
-                          className={`${inputCls} opacity-70 cursor-not-allowed`}
-                        />
-                      ) : (
-                        <select value={goalJenis} onChange={(e) => setGoalJenis(e.target.value)} className={inputCls}>
-                          <option value="nominal">Nominal (Rupiah)</option>
-                          <option value="unit">Unit (Gram)</option>
-                        </select>
-                      )}
+                      <select value={goalJenis} onChange={(e) => setGoalJenis(e.target.value)} className={inputCls}>
+                        <option value="nominal">Nominal (Rupiah)</option>
+                        <option value="unit">Unit (Gram)</option>
+                      </select>
                     </div>
                     <NumField
                       label={goalJenis === 'unit' ? 'Nilai Target (Gram)' : 'Nilai Target'}
@@ -557,12 +508,6 @@ export const JenisTabunganModal: React.FC<JenisTabunganModalProps> = ({
           {step === 6 && (
             <div className="space-y-4">
               <h4 className={stepTitle}>⑥ Pengaturan Lanjutan</h4>
-              {berkala && (
-                <p className="rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/40 p-3 text-[11px] text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
-                  <Check className="w-3.5 h-3.5 text-emerald-600" />
-                  Setoran berkala aktif (diatur pada langkah 2). Nasabah bisa otomatis menabung periodik.
-                </p>
-              )}
               <Toggle checked={notif} onChange={setNotif} label="Kirim notifikasi transaksi" />
               <div>
                 <label className={labelCls}>Syarat &amp; Ketentuan</label>

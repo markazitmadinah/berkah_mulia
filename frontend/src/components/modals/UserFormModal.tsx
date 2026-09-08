@@ -65,11 +65,22 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !email.trim()) {
-      showToast('Nama dan email wajib diisi', 'error');
+    if (!name.trim()) {
+      showToast('Nama lengkap wajib diisi', 'error');
       return;
     }
-
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      showToast('Alamat email tidak valid', 'error');
+      return;
+    }
+    if (!phone.trim()) {
+      showToast('Nomor telepon / WhatsApp wajib diisi', 'error');
+      return;
+    }
+    if (!/^\d{9,15}$/.test(phone)) {
+      showToast('Nomor telepon harus angka 9–15 digit', 'error');
+      return;
+    }
     if (!/^\d{16}$/.test(nomorAnggota)) {
       showToast('Nomor anggota wajib 16 digit angka (contoh: 0000000020260001)', 'error');
       return;
@@ -144,7 +155,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
+        <form onSubmit={handleSubmit} noValidate className="p-6 space-y-4 text-xs">
           <div>
             <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
               Nama Lengkap
@@ -180,8 +191,10 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
               <input
                 type="tel"
                 required
+                inputMode="numeric"
+                maxLength={15}
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 15))}
                 placeholder="08123456789"
                 className="w-full py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none"
               />

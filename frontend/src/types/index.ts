@@ -2,7 +2,9 @@
 
 export type UserRole = 'admin' | 'user';
 export type UserStatus = 'pending' | 'active' | 'rejected' | 'suspended';
-export type TipeTabungan = 'emas' | 'pribadi' | 'qurban' | 'custom';
+export type TipeTabungan = 'emas' | 'pribadi' | 'qurban';
+export type SubJenisTabungan = 'mandiri' | 'hari_raya' | 'qurban' | 'berjangka';
+export type FrekuensiSetoran = 'harian' | 'mingguan' | 'bulanan';
 export type ModePerhitungan = 'nominal_bebas' | 'nominal_tetap' | 'konversi_unit';
 export type AturanPencairan = 'otomatis' | 'manual_admin' | 'tanggal_tertentu';
 export type JenisTransaksi = 'setor' | 'tarik';
@@ -13,6 +15,7 @@ export type StatusPendaftaranQurban = 'menabung' | 'target_tercapai' |
 'menunggu_verifikasi' | 'siap_dicairkan' | 'sudah_lunas' | 'sudah_dicairkan' | 'dibatalkan';
 export type TipeNotifikasi = 'info' | 'verifikasi' | 'pengingat_setor' | 'pengingat_pencairan' | 'approval_akun';
 export type ChannelNotifikasi = 'in_app' | 'email';
+export type StatusGadai = 'diajukan' | 'disetujui' | 'aktif' | 'jatuh_tempo' | 'terlambat' | 'diperpanjang' | 'lunas' | 'batal';
 
 export interface User {
   id: number;
@@ -40,6 +43,11 @@ export interface JenisTabungan {
   nama: string;
   deskripsi?: string;
   tipe: TipeTabungan;
+  tipe_label?: string;
+  sub_jenis?: SubJenisTabungan | null;
+  sub_jenis_label?: string | null;
+  deadline?: string | null;
+  frekuensi_setoran?: FrekuensiSetoran | null;
   mode_perhitungan: ModePerhitungan;
   target_nominal?: number;
   target_unit?: number;
@@ -128,6 +136,8 @@ export interface Transaksi {
   pendaftaran_qurban_id?: number;
   jenis_transaksi: JenisTransaksi;
   nominal: number;
+  nominal_emas?: number; // nilai gram yang dibeli (setoran rencana emas)
+  nominal_dana?: number; // delta saldo dana Rupiah (signed)
   unit_didapat?: number; // gram emas
   harga_acuan_id?: number;
   harga_acuan_snapshot?: number;
@@ -173,8 +183,75 @@ export interface AuditLog {
   created_at: string;
 }
 
+export interface KonfigurasiSetoranEmas {
+  id: number;
+  user_id: number;
+  jenis_tabungan_id: number;
+  nominal_per_periode: number;
+  target_gram_per_periode: number;
+  target_gram_total?: number | null;
+  frekuensi_setor: FrekuensiSetoran;
+  frekuensi_setor_label?: string;
+  jadwal_label?: string;
+  tanggal_mulai?: string;
+  durasi_periode?: number;
+  tanggal_deadline?: string;
+  status: 'aktif' | 'selesai' | 'batal';
+  status_label?: string;
+  created_at?: string;
+}
+
+export interface SetoranBerkalaProgress {
+  konfigurasi_id: number;
+  nominal_per_periode: number;
+  durasi_periode: number | null;
+  rekap: {
+    jumlah_setoran: number;
+    nominal_total_setor: number;
+    gram_terkumpul: number;
+    saldo_dana: number;
+    saldo_dana_rencana: number;
+  };
+  konsistensi: {
+    periode_seharusnya: number;
+    periode_terlaksana: number;
+    persentase: number;
+    status: 'tepat_waktu' | 'tertinggal';
+  };
+  sisa_periode: number | null;
+  estimasi_selesai: string | null;
+  target_gram_total: number | null;
+  capaian_gram: number | null;
+}
+
+export interface SetoranBerkalaResponse {
+  dapat_membuat: boolean;
+  status: string | null;
+  items: Array<{
+    konfigurasi: KonfigurasiSetoranEmas;
+    progress: SetoranBerkalaProgress;
+  }>;
+}
+
+export interface SetoranBerkalaPayload {
+  nominal_per_periode: number;
+  target_gram_total?: number; // target RENCANA ini sendiri (per-rencana, mis. "nabung lagi 5g")
+  frekuensi_setor: FrekuensiSetoran;
+  durasi_periode: number;
+}
+
+export interface HariRayaStatus {
+  jenis_tabungan_id: number;
+  nama: string;
+  deadline: string | null;
+  hari_raya: string | null;
+  target: number;
+  terkumpul: number;
+  persentase: number | null;
+  masa_pencairan: boolean;
+}
+
 export interface UserSummaryProgress {
-  total_saldo: number;
   total_emas_gram: number;
   nilai_emas_rupiah: number;
   total_tabungan_pribadi: number;
@@ -182,4 +259,149 @@ export interface UserSummaryProgress {
   pending_transaksi_count: number;
   pending_nominal: number;
   transaksi_terverifikasi_count: number;
+}
+
+export interface ProfilTabungan {
+  progress: {
+    jenis_tabungan_id: number;
+    kode: string;
+    nama: string;
+    tipe: string;
+    total_setoran: number;
+    total_penarikan: number;
+    saldo: number;
+    pending_amount: number;
+    total_unit: number | null;
+    unit_label: string | null;
+    saldo_dana: number;
+    target: number | null;
+    target_unit: number | null;
+    persentase: number | null;
+  };
+  konfigurasi: KonfigurasiSetoranEmas[] | null;
+  setoran_berkala: SetoranBerkalaProgress[] | null;
+}
+
+export interface ProfilQurban {
+  id: number;
+  hewan: string;
+  tahun: number | null;
+  jumlah_hewan: number;
+  target_dana: number;
+  total_terkumpul: number;
+  persentase: number | null;
+  status: string;
+  status_label: string;
+  tanggal_daftar: string;
+}
+
+export interface ProfilNasabah {
+  user: User;
+  produk: {
+    tabungan: ProfilTabungan[];
+    qurban: ProfilQurban[];
+  };
+  summary: {
+    total_tabungan_aktif: number;
+    total_saldo_tabungan: number;
+    transaksi_pending: number;
+  };
+  transaksi: Transaksi[];
+}
+
+export interface PembayaranHarianItem {
+  konfigurasi_id: number;
+  user_id: number;
+  nama: string;
+  nomor_anggota?: string;
+  jenis_tabungan_id: number;
+  jenis_tabungan_nama?: string;
+  frekuensi: string;
+  frekuensi_label: string;
+  jadwal_label?: string;
+  nominal_per_periode: number;
+  target_gram_per_periode: number;
+  tanggal_mulai?: string;
+  status_verifikasi: 'terverifikasi' | 'ditolak' | 'menunggu_verifikasi' | 'belum';
+  transaksi_id?: number;
+  nomor_referensi?: string;
+  nominal?: number;
+  metode_pembayaran?: string;
+}
+
+export interface PembayaranHarianResponse {
+  tanggal: string;
+  jadwal: PembayaranHarianItem[];
+}
+
+export interface AngsuranGadai {
+  id: number;
+  gadai_id: number;
+  tanggal_bayar: string;
+  nominal: number;
+  metode_pembayaran?: MetodePembayaran;
+  catatan?: string | null;
+  pencatat?: string;
+  created_at?: string;
+}
+
+export interface Gadai {
+  id: number;
+  nomor_gadai: string;
+  user_id: number;
+  user?: { id: number; name: string; phone?: string; nomor_anggota?: string } | null;
+  jenis_emas: string;
+  berat_gram: number;
+  kadar: number;
+  berat_bersih_gram: number;
+  harga_acuan: number;
+  nilai_taksiran: number;
+  persen_gadai: number;
+  besaran_gadai: number;
+  tanggal_aju: string;
+  tanggal_aktif?: string | null;
+  tanggal_jatuh_tempo?: string | null;
+  tenor_satuan: 'harian' | 'mingguan' | 'bulanan';
+  toleransi_hari: number;
+  frekuensi_bayar: FrekuensiSetoran;
+  nominal_angkuran: number;
+  total_dibayar: number;
+  sisa_pokok: number;
+  tanggal_lunas?: string | null;
+  status: StatusGadai;
+  status_label?: string;
+  catatan?: string | null;
+  angsuran?: AngsuranGadai[];
+  created_at?: string;
+}
+
+export interface GadaiPayload {
+  user_id: number;
+  jenis_emas: string;
+  berat_gram: number;
+  kadar: number;
+  harga_acuan: number;
+  persen_gadai: number;
+  tenor_satuan: 'harian' | 'mingguan' | 'bulanan';
+  toleransi_hari: number;
+  frekuensi_bayar: FrekuensiSetoran;
+  nominal_angkuran: number;
+  catatan?: string;
+}
+
+export interface AjukanGadaiPayload {
+  jenis_emas: string;
+  berat_gram: number;
+  kadar: number;
+  tenor_satuan: 'harian' | 'mingguan' | 'bulanan';
+  frekuensi_bayar: FrekuensiSetoran;
+  nominal_angkuran: number;
+  catatan?: string;
+}
+
+export interface GadaiBayarPayload {
+  nominal: number;
+  tanggal_bayar?: string;
+  metode_pembayaran: MetodePembayaran;
+  catatan?: string;
 }

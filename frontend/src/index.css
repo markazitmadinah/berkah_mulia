@@ -3,6 +3,13 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
+  /* Skala tipografi responsif: seluruh ukuran teks (rem) menyusut di layar kecil
+     dan menyesuaikan (fluid) di semua ukuran device.
+     375px → ±13px | tablet → ±15px | desktop (≥ ~1000px) → 16px */
+  html {
+    font-size: clamp(12.5px, calc(0.7rem + 0.5vw), 16px);
+  }
+
   body {
     font-family: 'Inter', system-ui, sans-serif;
     @apply transition-colors duration-200;

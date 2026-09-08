@@ -37,7 +37,8 @@ async function request<T = { data: unknown; message?: string; meta?: unknown }>(
   method: string,
   url: string,
   body?: unknown,
-  isForm = false
+  isForm = false,
+  timeoutMs?: number
 ): Promise<T> {
   const headers: Record<string, string> = {};
   const token = getToken();
@@ -54,7 +55,7 @@ async function request<T = { data: unknown; message?: string; meta?: unknown }>(
   }
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), isForm ? 120_000 : 15_000);
+  const timer = setTimeout(() => controller.abort(), timeoutMs ?? (isForm ? 120_000 : 15_000));
   try {
     const res = await fetch(`${API_URL}${url}`, { method, headers, body: payload, signal: controller.signal });
 
@@ -103,6 +104,7 @@ export interface ApiEnvelope<T> {
 export const api = {
   get: <T>(url: string) => request<ApiEnvelope<T>>('GET', url),
   post: <T>(url: string, body?: unknown) => request<ApiEnvelope<T>>('POST', url, body),
+  postLong: <T>(url: string, body?: unknown) => request<ApiEnvelope<T>>('POST', url, body, false, 120_000),
   postForm: <T>(url: string, form: FormData) => request<ApiEnvelope<T>>('POST', url, form, true),
   put: <T>(url: string, body?: unknown) => request<ApiEnvelope<T>>('PUT', url, body),
   putForm: <T>(url: string, form: FormData) => request<ApiEnvelope<T>>('PUT', url, form, true),

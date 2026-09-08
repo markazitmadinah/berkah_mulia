@@ -7,9 +7,24 @@ use App\Enums\TipeTabungan;
 use App\Models\JenisTabungan;
 use App\Models\Transaksi;
 use App\Models\User;
+use App\Models\UserTabunganTarget;
 
 class ProgressCalculatorService
 {
+    public function __construct(private SaldoEmasService $saldoEmasService) {}
+
+    /**
+     * Target nominal yang tampil = target milik user (user_tabungan_target,
+     * mis. dari import nasabah) bila ada; jatuh kembali ke target jenis.
+     */
+    private function targetUser(User $user, JenisTabungan $jenisTabungan): float
+    {
+        $target = UserTabunganTarget::where('user_id', $user->id)
+            ->where('jenis_tabungan_id', $jenisTabungan->id)
+            ->value('target_nominal');
+
+        return $target !== null ? (float) $target : (float) ($jenisTabungan->target_nominal ?? 0);
+    }
     /**
      * Current verified balance for a user's jenis tabungan (verified setor − verified tarik).
      */
@@ -58,6 +73,8 @@ class ProgressCalculatorService
 
             $saldo = $totalTerverifikasi - $totalPenarikan;
 
+            $target = $this->targetUser($user, $jenis);
+
             $summary[] = [
                 'jenis_tabungan_id' => $jenis->id,
                 'kode' => $jenis->kode,
@@ -67,9 +84,9 @@ class ProgressCalculatorService
                 'total_penarikan' => $totalPenarikan,
                 'saldo' => $saldo,
                 'pending_amount' => $pendingAmount,
-                'target' => $jenis->target_nominal,
-                'persentase' => $jenis->target_nominal > 0
-                    ? round(($saldo / $jenis->target_nominal) * 100, 2)
+                'target' => $target,
+                'persentase' => $target > 0
+                    ? round(($saldo / $target) * 100, 2)
                     : null,
             ];
         }
@@ -117,6 +134,8 @@ class ProgressCalculatorService
 
         $saldo = $totalSetor - $totalTarik;
 
+        $target = $this->targetUser($user, $jenisTabungan);
+
         return [
             'jenis_tabungan_id' => $jenisTabungan->id,
             'kode' => $jenisTabungan->kode,
@@ -128,10 +147,13 @@ class ProgressCalculatorService
             'pending_amount' => $pendingAmount,
             'total_unit' => $totalUnit,
             'unit_label' => $jenisTabungan->unit_label,
-            'target' => $jenisTabungan->target_nominal,
+            'saldo_dana' => $jenisTabungan->tipe === TipeTabungan::Emas
+                ? $this->saldoEmasService->getSaldoDana($user, $jenisTabungan)
+                : 0.0,
+            'target' => $target,
             'target_unit' => $jenisTabungan->target_unit,
-            'persentase' => $jenisTabungan->target_nominal > 0
-                ? round(($saldo / $jenisTabungan->target_nominal) * 100, 2)
+            'persentase' => $target > 0
+                ? round(($saldo / $target) * 100, 2)
                 : null,
         ];
     }

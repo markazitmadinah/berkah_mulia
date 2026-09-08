@@ -337,13 +337,14 @@ class EmasTest extends ApiTestCase
         $response->assertStatus(201)
             ->assertJsonPath('data.jenis_transaksi', 'tarik')
             ->assertJsonPath('data.status_verifikasi', 'menunggu_verifikasi')
+            ->assertJsonPath('data.nominal_emas', '1500000.00')
             ->assertJsonPath('data.unit_didapat', '-1.5000')
             ->assertJsonPath('data.biaya_penalti', '150000.00');
 
         $this->assertDatabaseHas('transaksi', [
             'user_id' => $user->id,
             'jenis_transaksi' => 'tarik',
-            'nominal' => '1500000.00',
+            'nominal' => '1350000.00',
             'unit_didapat' => '-1.5000',
             'biaya_penalti' => '150000.00',
         ]);

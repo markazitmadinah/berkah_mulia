@@ -121,7 +121,6 @@ export const AdminTransaksi: React.FC<AdminTransaksiProps> = ({
           <option value="emas">Tabungan Emas</option>
           <option value="pribadi">Tabungan Pribadi</option>
           <option value="qurban">Tabungan Qurban</option>
-          <option value="custom">Tabungan Custom</option>
         </select>
       </div>
 

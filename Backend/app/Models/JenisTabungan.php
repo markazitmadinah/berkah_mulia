@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\AturanPencairan;
 use App\Enums\ModePerhitungan;
+use App\Enums\SubJenisTabungan;
 use App\Enums\TipeTabungan;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -21,6 +22,9 @@ class JenisTabungan extends Model
         'nama',
         'deskripsi',
         'tipe',
+        'sub_jenis',
+        'deadline',
+        'frekuensi_setoran',
         'mode_perhitungan',
         'target_nominal',
         'target_unit',
@@ -42,6 +46,8 @@ class JenisTabungan extends Model
     {
         return [
             'tipe' => TipeTabungan::class,
+            'sub_jenis' => SubJenisTabungan::class,
+            'deadline' => 'date',
             'mode_perhitungan' => ModePerhitungan::class,
             'aturan_pencairan' => AturanPencairan::class,
             'target_nominal' => 'integer',
@@ -77,11 +83,6 @@ class JenisTabungan extends Model
     public function userTargets(): HasMany
     {
         return $this->hasMany(UserTabunganTarget::class);
-    }
-
-    public function userAutoSetor(): HasMany
-    {
-        return $this->hasMany(UserAutoSetor::class);
     }
 
     // ─── Scopes ────────────────────────────────────────────────

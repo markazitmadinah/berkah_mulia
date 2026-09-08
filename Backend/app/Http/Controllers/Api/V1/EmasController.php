@@ -12,10 +12,12 @@ use App\Http\Resources\HargaEmasHarianResource;
 use App\Http\Resources\TransaksiResource;
 use App\Models\HargaEmasHarian;
 use App\Models\JenisTabungan;
+use App\Models\KonfigurasiSetoranEmas;
 use App\Models\Notifikasi;
 use App\Models\Transaksi;
 use App\Services\EmasConversionService;
 use App\Services\ProgressCalculatorService;
+use App\Services\SaldoEmasService;
 use App\Services\TransaksiService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -30,6 +32,7 @@ class EmasController extends Controller
         private EmasConversionService $emasService,
         private TransaksiService $transaksiService,
         private ProgressCalculatorService $progressService,
+        private SaldoEmasService $saldoEmasService,
     ) {}
 
     /**
@@ -86,6 +89,7 @@ class EmasController extends Controller
             'metode_pembayaran' => 'required|string|in:transfer',
             'rekening_bank_id' => 'required|exists:rekening_bank,id',
             'bukti_transfer' => 'required|file|mimes:jpg,jpeg,png,pdf|max:2048',
+            'konfigurasi_id' => 'nullable|exists:konfigurasi_setoran_emas,id',
             'catatan_user' => 'nullable|string|max:500',
         ]);
 
@@ -96,31 +100,62 @@ class EmasController extends Controller
             return $this->errorResponse('Tabungan emas belum tersedia.', 404, 'NOT_FOUND');
         }
 
-        // Harus set goal dulu sebelum bisa setor emas
-        if ($request->user()->target_emas_gram === null) {
-            return $this->errorResponse('Anda harus menetapkan target tabungan emas terlebih dahulu sebelum melakukan setoran.', 422, 'GOAL_NOT_SET');
-        }
-
         // Check for duplicate
         if ($this->transaksiService->isDuplicate($request->user()->id, $jenisTabungan->id, JenisTransaksi::Setor->value, $request->nominal)) {
             return $this->errorResponse('Transaksi duplikat terdeteksi. Mohon tunggu sebentar sebelum mengirim ulang.', 409, 'DUPLICATE');
         }
 
-        try {
-            $konversi = $this->emasService->konversiNominalKeGram($request->nominal);
-        } catch (\RuntimeException $e) {
-            return $this->errorResponse($e->getMessage(), 400);
+        // Rencana tujuan setoran: eksplisit via konfigurasi_id, atau fallback rencana aktif terbaru.
+        $konfigurasi = null;
+        if ($request->filled('konfigurasi_id')) {
+            $konfigurasi = KonfigurasiSetoranEmas::aktif()
+                ->where('id', $request->konfigurasi_id)
+                ->where('user_id', $request->user()->id)
+                ->where('jenis_tabungan_id', $jenisTabungan->id)
+                ->first();
+
+            if (! $konfigurasi) {
+                return $this->errorResponse('Rencana setoran berkala tidak aktif atau bukan milik Anda.', 422, 'TIDAK_AKTIF');
+            }
+        } else {
+            $konfigurasi = $this->saldoEmasService->getAktif($request->user(), $jenisTabungan);
         }
 
-        $transaksi = DB::transaction(function () use ($request, $jenisTabungan, $konversi) {
+        // Goal global boleh null untuk user lama/manual — adopsi target rencana aktif terbaru.
+        if ($request->user()->target_emas_gram === null) {
+            if ($konfigurasi?->target_gram_total !== null) {
+                $request->user()->update(['target_emas_gram' => round((float) $konfigurasi->target_gram_total, 6)]);
+            } else {
+                return $this->errorResponse('Anda harus menetapkan target tabungan emas terlebih dahulu sebelum melakukan setoran.', 422, 'GOAL_NOT_SET');
+            }
+        }
+
+        $harga = $this->emasService->getHargaTerkini();
+
+        if (! $harga) {
+            return $this->errorResponse('Harga emas belum diinput oleh admin. Silakan hubungi admin.', 400);
+        }
+
+        $saldoDana = $this->saldoEmasService->getSaldoDana($request->user(), $jenisTabungan);
+        $porsi = $this->saldoEmasService->hitungSetoran(
+            (float) $request->nominal,
+            $konfigurasi,
+            $saldoDana,
+            (float) $harga->harga_per_gram
+        );
+
+        $transaksi = DB::transaction(function () use ($request, $jenisTabungan, $porsi, $harga, $konfigurasi) {
             $transaksi = $this->transaksiService->buatTransaksi([
                 'user_id' => $request->user()->id,
                 'jenis_tabungan_id' => $jenisTabungan->id,
+                'konfigurasi_id' => $konfigurasi?->id,
                 'jenis_transaksi' => JenisTransaksi::Setor,
                 'nominal' => $request->nominal,
-                'unit_didapat' => $konversi['unit_didapat'],
-                'harga_acuan_id' => $konversi['harga_acuan_id'],
-                'harga_acuan_snapshot' => $konversi['harga_acuan_snapshot'],
+                'nominal_emas' => $porsi['nominal_emas'],
+                'nominal_selisih' => $porsi['nominal_selisih'],
+                'unit_didapat' => $porsi['unit_didapat'],
+                'harga_acuan_id' => $harga->id,
+                'harga_acuan_snapshot' => $harga->harga_per_gram,
                 'metode_pembayaran' => $request->metode_pembayaran,
                 'rekening_bank_id' => $request->rekening_bank_id,
                 'catatan_user' => $request->catatan_user,
@@ -151,7 +186,7 @@ class EmasController extends Controller
     {
         $request->validate([
             'bank_tujuan' => 'required|string|max:100',
-            'no_rekening' => 'required|string|max:50',
+            'no_rekening' => 'required|numeric|digits_between:10,16',
             'atas_nama' => 'required|string|max:100',
             'catatan_user' => 'nullable|string|max:500',
         ]);
@@ -308,7 +343,7 @@ class EmasController extends Controller
     {
         $request->validate([
             'bank_tujuan' => 'required|string|max:100',
-            'no_rekening' => 'required|string|max:50',
+            'no_rekening' => 'required|numeric|digits_between:10,16',
             'atas_nama' => 'required|string|max:100',
             'catatan_user' => 'nullable|string|max:500',
         ]);
@@ -326,8 +361,9 @@ class EmasController extends Controller
 
         $progress = $this->progressService->getProgress($request->user(), $jenisTabungan);
         $saldoGram = (float) $progress['total_unit'] ?? 0;
+        $saldoDana = $this->saldoEmasService->getSaldoDana($request->user(), $jenisTabungan);
 
-        if ($saldoGram <= 0) {
+        if ($saldoGram <= 0 && $saldoDana <= 0) {
             return $this->errorResponse('Tidak ada saldo emas untuk dibatalkan.', 422, 'INSUFFICIENT_BALANCE');
         }
 
@@ -340,22 +376,25 @@ class EmasController extends Controller
         $hargaPerGram = (float) $harga->harga_per_gram;
         $nilaiSaldo = round($saldoGram * $hargaPerGram, 2);
         $penalti = round($nilaiSaldo * 0.10, 2);
-        $refund = round($nilaiSaldo - $penalti, 2);
+        $refundEmas = round($nilaiSaldo - $penalti, 2);
+        $refundTotal = round($refundEmas + $saldoDana, 2);
 
-        $transaksi = DB::transaction(function () use ($request, $jenisTabungan, $saldoGram, $nilaiSaldo, $penalti, $refund, $harga) {
+        $transaksi = DB::transaction(function () use ($request, $jenisTabungan, $saldoGram, $nilaiSaldo, $penalti, $refundEmas, $refundTotal, $saldoDana, $harga) {
             return $this->transaksiService->buatTransaksi([
                 'user_id' => $request->user()->id,
                 'jenis_tabungan_id' => $jenisTabungan->id,
                 'jenis_transaksi' => JenisTransaksi::Tarik,
-                'nominal' => $nilaiSaldo,
+                'nominal' => $refundTotal,
+                'nominal_emas' => $nilaiSaldo,
+                'nominal_selisih' => -1 * $saldoDana,
                 'unit_didapat' => -1 * $saldoGram,
                 'harga_acuan_id' => $harga->id,
                 'harga_acuan_snapshot' => $harga->harga_per_gram,
                 'biaya_penalti' => $penalti,
                 'metode_pembayaran' => MetodePembayaran::Transfer,
                 'catatan_user' => $request->catatan_user
-                    ? "Pembatalan tabungan emas. Refund 90%: Rp " . number_format($refund, 0, ',', '.') . " (potong 10%: Rp " . number_format($penalti, 0, ',', '.') . ") ke {$request->bank_tujuan} ({$request->no_rekening} a.n {$request->atas_nama}). {$request->catatan_user}"
-                    : "Pembatalan tabungan emas. Refund 90%: Rp " . number_format($refund, 0, ',', '.') . " (potong 10%: Rp " . number_format($penalti, 0, ',', '.') . ") ke {$request->bank_tujuan} ({$request->no_rekening} a.n {$request->atas_nama}).",
+                    ? "Pembatalan tabungan emas. Refund: emas 90% (Rp " . number_format($refundEmas, 0, ',', '.') . " setelah potong 10% Rp " . number_format($penalti, 0, ',', '.') . ") + saldo dana 100% (Rp " . number_format($saldoDana, 0, ',', '.') . ") = Rp " . number_format($refundTotal, 0, ',', '.') . " ke {$request->bank_tujuan} ({$request->no_rekening} a.n {$request->atas_nama}). {$request->catatan_user}"
+                    : "Pembatalan tabungan emas. Refund: emas 90% (Rp " . number_format($refundEmas, 0, ',', '.') . " setelah potong 10% Rp " . number_format($penalti, 0, ',', '.') . ") + saldo dana 100% (Rp " . number_format($saldoDana, 0, ',', '.') . ") = Rp " . number_format($refundTotal, 0, ',', '.') . " ke {$request->bank_tujuan} ({$request->no_rekening} a.n {$request->atas_nama}).",
             ]);
         });
 

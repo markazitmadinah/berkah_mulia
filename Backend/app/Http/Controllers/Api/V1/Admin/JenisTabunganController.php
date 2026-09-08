@@ -20,7 +20,10 @@ class JenisTabunganController extends Controller
             'kode' => 'required|string|max:50|unique:jenis_tabungan,kode',
             'nama' => 'required|string|max:255',
             'deskripsi' => 'nullable|string',
-            'tipe' => 'required|string|in:emas,pribadi,qurban,custom',
+            'tipe' => 'required|string|in:emas,pribadi,qurban',
+            'sub_jenis' => 'nullable|string|in:mandiri,hari_raya,qurban,berjangka',
+            'deadline' => 'nullable|date',
+            'frekuensi_setoran' => 'nullable|string|in:harian,mingguan,bulanan',
             'mode_perhitungan' => 'required|string|in:nominal_bebas,nominal_tetap,konversi_unit',
             'target_nominal' => 'nullable|numeric|min:0',
             'target_unit' => 'nullable|numeric|min:0',
@@ -38,7 +41,8 @@ class JenisTabunganController extends Controller
         ]);
 
         $allowed = [
-            'kode', 'nama', 'deskripsi', 'tipe', 'mode_perhitungan', 'target_nominal', 'target_unit',
+            'kode', 'nama', 'deskripsi', 'tipe', 'sub_jenis', 'deadline', 'frekuensi_setoran',
+            'mode_perhitungan', 'target_nominal', 'target_unit',
             'unit_label', 'tanggal_mulai', 'tanggal_selesai', 'tanpa_batas_waktu', 'aturan_pencairan',
             'tanggal_pencairan', 'metode_pembayaran_diizinkan', 'allow_withdrawal', 'config',
             'status_aktif',
@@ -48,13 +52,21 @@ class JenisTabunganController extends Controller
             return $this->errorResponse('Jumlah jenis tabungan maksimal 6. Hapus salah satu tabungan tambahan terlebih dahulu.', 422, 'MAX_SAVING_ACCOUNT');
         }
 
-        // Built-in types (emas/pribadi/qurban) are 1:1 with their product.
-        // The whole system resolves them by tipe via ->first(); allowing a
-        // second one silently merges into the existing product.
+        // Built-in products are 1:1: emas & qurban once per tipe; pribadi
+        // branches into unique sub-jenis (mandiri/hari_raya/berjangka).
         $tipe = $request->input('tipe');
-        if (in_array($tipe, ['emas', 'pribadi', 'qurban'], true)
-            && JenisTabungan::where('tipe', $tipe)->exists()) {
-            return $this->errorResponse("Jenis tabungan bertipe '{$tipe}' sudah ada. Buat produk baru dengan tipe 'custom'.", 422, 'SINGLE_INSTANCE_TYPE');
+        $sub = $request->input('sub_jenis');
+
+        if ($tipe === 'pribadi' && ! $sub) {
+            return $this->errorResponse('Sub-jenis wajib diisi untuk tabungan pribadi (mandiri, hari_raya, berjangka).', 422, 'SUB_JENIS_REQUIRED');
+        }
+
+        $existing = $tipe === 'pribadi'
+            ? JenisTabungan::where('tipe', $tipe)->where('sub_jenis', $sub)->exists()
+            : JenisTabungan::where('tipe', $tipe)->exists();
+
+        if ($existing) {
+            return $this->errorResponse('Jenis tabungan tersebut sudah ada.', 422, 'SINGLE_INSTANCE_TYPE');
         }
 
         $jenis = JenisTabungan::create(array_merge(
@@ -76,7 +88,10 @@ class JenisTabunganController extends Controller
             'kode' => 'sometimes|string|max:50|unique:jenis_tabungan,kode,' . $jenisTabungan->id,
             'nama' => 'sometimes|string|max:255',
             'deskripsi' => 'nullable|string',
-            'tipe' => 'sometimes|string|in:emas,pribadi,qurban,custom',
+            'tipe' => 'sometimes|string|in:emas,pribadi,qurban',
+            'sub_jenis' => 'sometimes|nullable|string|in:mandiri,hari_raya,qurban,berjangka',
+            'deadline' => 'nullable|date',
+            'frekuensi_setoran' => 'nullable|string|in:harian,mingguan,bulanan',
             'mode_perhitungan' => 'sometimes|string|in:nominal_bebas,nominal_tetap,konversi_unit',
             'target_nominal' => 'nullable|numeric|min:0',
             'target_unit' => 'nullable|numeric|min:0',
@@ -94,7 +109,8 @@ class JenisTabunganController extends Controller
         ]);
 
         $allowed = [
-            'kode', 'nama', 'deskripsi', 'tipe', 'mode_perhitungan', 'target_nominal', 'target_unit',
+            'kode', 'nama', 'deskripsi', 'tipe', 'sub_jenis', 'deadline', 'frekuensi_setoran',
+            'mode_perhitungan', 'target_nominal', 'target_unit',
             'unit_label', 'tanggal_mulai', 'tanggal_selesai', 'tanpa_batas_waktu', 'aturan_pencairan',
             'tanggal_pencairan', 'metode_pembayaran_diizinkan', 'allow_withdrawal', 'config',
             'status_aktif',
@@ -102,10 +118,19 @@ class JenisTabunganController extends Controller
 
         $oldValues = $jenisTabungan->toArray();
 
-        $tipe = $request->input('tipe');
-        if (in_array($tipe, ['emas', 'pribadi', 'qurban'], true)
-            && JenisTabungan::where('tipe', $tipe)->whereKeyNot($jenisTabungan->id)->exists()) {
-            return $this->errorResponse("Jenis tabungan bertipe '{$tipe}' sudah ada.", 422, 'SINGLE_INSTANCE_TYPE');
+        $tipe = $request->input('tipe', $jenisTabungan->tipe?->value);
+        $sub = $request->input('sub_jenis', $jenisTabungan->sub_jenis?->value);
+
+        if ($tipe === 'pribadi' && ! $sub) {
+            return $this->errorResponse('Sub-jenis wajib diisi untuk tabungan pribadi (mandiri, hari_raya, berjangka).', 422, 'SUB_JENIS_REQUIRED');
+        }
+
+        $existing = $tipe === 'pribadi'
+            ? JenisTabungan::where('tipe', $tipe)->where('sub_jenis', $sub)->whereKeyNot($jenisTabungan->id)->exists()
+            : JenisTabungan::where('tipe', $tipe)->whereKeyNot($jenisTabungan->id)->exists();
+
+        if ($existing) {
+            return $this->errorResponse('Jenis tabungan tersebut sudah ada.', 422, 'SINGLE_INSTANCE_TYPE');
         }
 
         $jenisTabungan->update(array_merge($request->only($allowed), ['updated_by' => auth()->id()]));
@@ -116,7 +141,7 @@ class JenisTabunganController extends Controller
 
     public function destroy(JenisTabungan $jenisTabungan): JsonResponse
     {
-        $defaultKodes = ['emas-harian', 'EMAS', 'tabungan-pribadi', 'tabungan-qurban'];
+        $defaultKodes = ['emas-harian', 'EMAS', 'tabungan-pribadi', 'tabungan-qurban', 'tabungan-hari-raya', 'tabungan-berjangka'];
 
         if (in_array($jenisTabungan->kode, $defaultKodes, true)) {
             return $this->errorResponse('Tabungan bawaan tidak bisa dihapus.', 422, 'DEFAULT_LOCKED');

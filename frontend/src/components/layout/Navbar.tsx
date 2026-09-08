@@ -10,6 +10,7 @@ import {
   KeyRound,
   CheckCheck,
   ShieldCheck,
+  ShieldAlert,
   LogOut,
   Menu
 } from 'lucide-react';
@@ -29,6 +30,8 @@ export const Navbar: React.FC<NavbarProps> = ({
     theme,
     toggleTheme,
     currentUser,
+    activeTab,
+    setActiveTab,
     logout,
     notifikasi,
     markNotifikasiRead,
@@ -47,7 +50,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       <div className="flex items-center gap-3 flex-1 max-w-md min-w-0">
         <button
           onClick={onToggleMobileMenu}
-          className="md:hidden p-2 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-750 shadow-xs cursor-pointer"
+          className="lg:hidden p-2 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-750 shadow-xs cursor-pointer"
           aria-label="Buka Menu"
         >
           <Menu className="w-5 h-5" />
@@ -62,6 +65,21 @@ export const Navbar: React.FC<NavbarProps> = ({
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
             <span>Syariah Terverifikasi</span>
           </div>
+        )}
+
+        {/* Audit Log — akses cepat pojok kanan atas (admin) */}
+        {currentUser.role === 'admin' && (
+          <button
+            onClick={() => setActiveTab(activeTab === 'audit-log' ? 'dashboard' : 'audit-log')}
+            title="Audit Log & Rekam Jejak"
+            className={`p-2 sm:p-2.5 rounded-full border transition-all shadow-xs cursor-pointer ${
+              activeTab === 'audit-log'
+                ? 'bg-emerald-600 border-emerald-600 text-white shadow-emerald-600/30'
+                : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+            }`}
+          >
+            <ShieldAlert className="w-4 h-4" />
+          </button>
         )}
 
         {/* Theme Toggle Button */}
@@ -159,7 +177,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               avatarPath={currentUser.avatar_path}
               className="w-7 h-7 rounded-full object-cover border border-emerald-500/30"
             />
-            <span className="text-xs font-bold text-slate-800 dark:text-slate-100 hidden md:block max-w-[120px] truncate">
+            <span className="text-xs font-bold text-slate-800 dark:text-slate-100 hidden lg:block max-w-[120px] truncate">
               {currentUser.name}
             </span>
             <ChevronDown className="w-3.5 h-3.5 text-slate-400 hidden sm:block" />

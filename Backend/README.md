@@ -1,6 +1,6 @@
 # Berkah Mulia — Backend API
 
-Platform tabungan digital multi-produk (Tabungan Emas Harian, Tabungan Pribadi, Tabungan Qurban, dan Tabungan Custom) berbasis Laravel 11 + REST API.
+Platform tabungan digital multi-produk (Tabungan Emas Harian, Tabungan Pribadi, dan Tabungan Qurban) berbasis Laravel 11 + REST API.
 
 ## Tech Stack
 
@@ -64,7 +64,12 @@ API tersedia di: `http://localhost:8000/api/v1/...`
 php artisan queue:work --queue=default
 ```
 
-### 7. Task Scheduler (Wajib untuk Auto-close Qurban)
+### 7. Task Scheduler (Wajib untuk Auto-close Qurban & Pengingat Setoran)
+
+Jadwal aktif di `routes/console.php`:
+- `hargaemas:sync` — sinkronisasi harga emas (12:00).
+- `pengingat:setoran` — notifikasi pengingat bayar setoran menabung emas (10:00 tiap hari; harian tiap hari, mingguan & bulanan mengikuti `tanggal_mulai`).
+- Auto-close periode qurban & bersihkan notifikasi lama (daily).
 
 ```bash
 # Development (run once):
@@ -125,7 +130,7 @@ app/
   Traits/         # ApiResponse trait
 routes/
   api.php         # Semua API routes (prefix /api/v1)
-  console.php     # Scheduler (daily qurban period check)
+  console.php     # Scheduler (qurban, sinkronisasi harga emas, pengingat setoran)
 database/
   migrations/     # 13 migration files
   seeders/        # Admin, JenisTabungan, RekeningBank seeders

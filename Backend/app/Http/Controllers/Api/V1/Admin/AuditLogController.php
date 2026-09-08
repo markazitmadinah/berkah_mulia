@@ -56,4 +56,23 @@ class AuditLogController extends Controller
             ],
         ]);
     }
+
+    /**
+     * DELETE /admin/audit-logs
+     * Hapus seluruh riwayat audit agar data tidak menumpuk & membebani sistem.
+     * Satu jejak "purge" tetap ditulis setelah penghapusan sebagai bukti tindakan.
+     */
+    public function destroy(Request $request): JsonResponse
+    {
+        $deleted = AuditLog::query()->delete();
+
+        AuditLog::record('purge', $request->user(), null, ['riwayat_dihapus' => $deleted]);
+
+        return $this->successResponse(
+            ['deleted' => $deleted],
+            $deleted > 0
+                ? "{$deleted} catatan audit berhasil dihapus."
+                : 'Tidak ada catatan audit yang perlu dihapus.'
+        );
+    }
 }

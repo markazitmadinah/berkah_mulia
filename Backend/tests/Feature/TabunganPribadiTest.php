@@ -90,4 +90,72 @@ class TabunganPribadiTest extends ApiTestCase
             ->assertJsonPath('data.saldo', 50000)
             ->assertJsonPath('data.pending_amount', 200000);
     }
+
+    public function test_setor_ke_sub_jenis_berjangka(): void
+    {
+        $this->seedBase();
+        $this->actingAsUser();
+
+        $berjangka = JenisTabungan::where('kode', 'tabungan-berjangka')->first();
+
+        $this->postSetor('/api/v1/tabungan-pribadi/setor', [
+            'jenis_tabungan_id' => $berjangka->id,
+            'nominal' => 100000,
+        ])->assertStatus(201)->assertJsonPath('data.jenis_tabungan.id', $berjangka->id);
+    }
+
+    public function test_setor_berjangka_ditolak_setelah_deadline(): void
+    {
+        $this->seedBase();
+        $this->actingAsUser();
+
+        $berjangka = JenisTabungan::where('kode', 'tabungan-berjangka')->first();
+        $berjangka->update(['deadline' => now()->subDay()->toDateString()]);
+
+        $this->postSetor('/api/v1/tabungan-pribadi/setor', [
+            'jenis_tabungan_id' => $berjangka->id,
+            'nominal' => 100000,
+        ])->assertStatus(423)->assertJsonPath('error_code', 'DEADLINE_PASSED');
+    }
+
+    public function test_setor_hari_raya_mengikutkan_jenis_id(): void
+    {
+        $this->seedBase();
+        $this->actingAsUser();
+
+        $hariRaya = JenisTabungan::where('kode', 'tabungan-hari-raya')->first();
+
+        $this->putJson('/api/v1/tabungan-hari-raya/target', ['target_nominal' => 1000000])->assertOk();
+
+        $this->postSetor('/api/v1/tabungan-pribadi/setor', [
+            'jenis_tabungan_id' => $hariRaya->id,
+            'nominal' => 100000,
+        ])->assertStatus(201)->assertJsonPath('data.jenis_tabungan.id', $hariRaya->id);
+    }
+
+    public function test_tarik_berjangka_ditolak(): void
+    {
+        $this->seedBase();
+        $this->actingAsUser();
+
+        $berjangka = JenisTabungan::where('kode', 'tabungan-berjangka')->first();
+
+        $this->postJson('/api/v1/tabungan-pribadi/tarik', [
+            'jenis_tabungan_id' => $berjangka->id,
+            'nominal' => 50000,
+        ])->assertStatus(403)->assertJsonPath('error_code', 'WITHDRAWAL_NOT_ALLOWED');
+    }
+
+    public function test_jenis_tabungan_resource_memuat_sub_jenis(): void
+    {
+        $this->seedBase();
+        $this->actingAsUser();
+
+        $berjangka = JenisTabungan::where('kode', 'tabungan-berjangka')->first();
+
+        $this->getJson('/api/v1/jenis-tabungan')
+            ->assertOk()
+            ->assertJsonPath('data.0.sub_jenis', null)
+            ->assertJsonFragment(['id' => $berjangka->id, 'sub_jenis' => 'berjangka', 'frekuensi_setoran' => 'bulanan']);
+    }
 }

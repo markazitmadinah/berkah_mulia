@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { LoginPage } from './components/auth/LoginPage';
 import { Sidebar } from './components/layout/Sidebar';
@@ -10,7 +10,6 @@ import { UserDashboard } from './components/user/UserDashboard';
 import { UserTabunganEmas } from './components/user/UserTabunganEmas';
 import { UserTabunganPribadi } from './components/user/UserTabunganPribadi';
 import { UserTabunganQurban } from './components/user/UserTabunganQurban';
-import { UserTabunganCustom } from './components/user/UserTabunganCustom';
 import { UserRiwayatTransaksi } from './components/user/UserRiwayatTransaksi';
 import { UserRekeningBank } from './components/user/UserRekeningBank';
 import { UserNotifikasi } from './components/user/UserNotifikasi';
@@ -24,10 +23,13 @@ import { AdminJenisTabungan } from './components/admin/AdminJenisTabungan';
 import { AdminHargaEmas } from './components/admin/AdminHargaEmas';
 import { AdminQurban } from './components/admin/AdminQurban';
 import { AdminTransaksi } from './components/admin/AdminTransaksi';
+import { AdminPembayaranHarian } from './components/admin/AdminPembayaranHarian';
 import { AdminRekeningBank } from './components/admin/AdminRekeningBank';
 import { AdminNotifikasi } from './components/admin/AdminNotifikasi';
 import { AdminAuditLog } from './components/admin/AdminAuditLog';
-import { AdminGoalTracker } from './components/admin/AdminGoalTracker';
+import { AdminProfilNasabah } from './components/admin/AdminProfilNasabah';
+import { AdminGadai } from './components/admin/AdminGadai';
+import { UserGadai } from './components/user/UserGadai';
 
 // Modals
 import { SetorPage } from './components/user/SetorPage';
@@ -70,11 +72,29 @@ const MainLayout: React.FC = () => {
   // Setor page state
   const [setorDefaultTipe, setSetorDefaultTipe] = useState<'emas' | 'pribadi' | 'qurban'>('emas');
   const [setorDefaultJenisId, setSetorDefaultJenisId] = useState<number | undefined>();
+  const [setorDefaultNominal, setSetorDefaultNominal] = useState<number | undefined>();
+  const [setorDefaultKonfigurasiId, setSetorDefaultKonfigurasiId] = useState<number | undefined>();
   const [setorQurbanPendaftaranId, setSetorQurbanPendaftaranId] = useState<number | undefined>();
+  const [pribadiInitialSub, setPribadiInitialSub] = useState<string>('mandiri');
 
   const [isTarikOpen, setIsTarikOpen] = useState(false);
   const [isDaftarQurbanOpen, setIsDaftarQurbanOpen] = useState(false);
   const [isCashOpen, setIsCashOpen] = useState(false);
+  const [cashInitialUserId, setCashInitialUserId] = useState<number | undefined>();
+  const [cashInitialJenisId, setCashInitialJenisId] = useState<number | undefined>();
+  const [cashRefreshKey, setCashRefreshKey] = useState(0);
+
+  const openCashFor = (userId: number, jenisTabunganId: number) => {
+    setCashInitialUserId(userId);
+    setCashInitialJenisId(jenisTabunganId);
+    setIsCashOpen(true);
+  };
+
+  const openCashModal = () => {
+    setCashInitialUserId(undefined);
+    setCashInitialJenisId(undefined);
+    setIsCashOpen(true);
+  };
 
 
   // Detail & Action modals
@@ -90,6 +110,7 @@ const MainLayout: React.FC = () => {
   const [userToReject, setUserToReject] = useState<User | null>(null);
   const [isRejectUserOpen, setIsRejectUserOpen] = useState(false);
   const [isImportUserOpen, setIsImportUserOpen] = useState(false);
+  const [profilUserId, setProfilUserId] = useState<number | null>(null);
 
   // Product & Gold modals
   const [isJenisModalOpen, setIsJenisModalOpen] = useState(false);
@@ -116,16 +137,12 @@ const MainLayout: React.FC = () => {
   };
 
   // Setor Handlers (dedicated page instead of popup)
-  const handleOpenSetor = (tipe: 'emas' | 'pribadi' | 'qurban', qurbanId?: number) => {
+  const handleOpenSetor = (tipe: 'emas' | 'pribadi' | 'qurban', qurbanId?: number, jenisId?: number, nominal?: number, konfigurasiId?: number) => {
     setSetorDefaultTipe(tipe);
-    setSetorDefaultJenisId(undefined);
-    setSetorQurbanPendaftaranId(qurbanId);
-    setActiveTab('setor');
-  };
-
-  const handleOpenSetorCustom = (jenisId: number) => {
     setSetorDefaultJenisId(jenisId);
-    setSetorQurbanPendaftaranId(undefined);
+    setSetorDefaultNominal(nominal);
+    setSetorDefaultKonfigurasiId(konfigurasiId);
+    setSetorQurbanPendaftaranId(qurbanId);
     setActiveTab('setor');
   };
 
@@ -160,12 +177,16 @@ const MainLayout: React.FC = () => {
     setIsRejectUserOpen(true);
   };
 
-  // Product & Gold Handlers
-  const handleOpenCreateJenis = () => {
-    setJenisToEdit(null);
-    setIsJenisModalOpen(true);
+  const handleOpenProfilNasabah = (user: User) => {
+    setProfilUserId(user.id);
+    setActiveTab('profil-nasabah');
   };
 
+  useEffect(() => {
+    if (activeTab !== 'profil-nasabah') setProfilUserId(null);
+  }, [activeTab]);
+
+  // Product & Gold Handlers
   const handleOpenEditJenis = (item: JenisTabungan) => {
     setJenisToEdit(item);
     setIsJenisModalOpen(true);
@@ -218,6 +239,11 @@ return (
       <Sidebar
         isOpenMobile={isMobileSidebarOpen}
         onCloseMobile={() => setIsMobileSidebarOpen(false)}
+        activePribadiSub={pribadiInitialSub}
+        onOpenPribadiSub={(sub) => {
+          setPribadiInitialSub(sub);
+          setActiveTab('pribadi');
+        }}
       />
 
       {/* Main Content Area */}
@@ -229,10 +255,10 @@ return (
         />
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-          {loading && transaksi.length === 0 ? (
+          {loading && transaksi.length === 0 && activeTab === 'dashboard' ? (
             <DashboardSkeleton />
           ) : (
-          <div className="max-w-7xl mx-auto pb-12">
+          <div className="max-w-5xl xl:max-w-7xl mx-auto pb-12">
             {/* USER VIEWS */}
             {currentUser.role === 'user' && (
               <>
@@ -243,15 +269,23 @@ return (
                     onOpenTarikPribadi={() => setIsTarikOpen(true)}
                     onOpenDaftarQurban={() => setIsDaftarQurbanOpen(true)}
                     onOpenSetorQurban={(pendaftaranId) => handleOpenSetor('qurban', pendaftaranId)}
+                    onOpenPribadiSub={(sub) => {
+                      setPribadiInitialSub(sub);
+                      setActiveTab('pribadi');
+                    }}
                   />
                 )}
                 {(activeTab === 'emas' || activeTab === 'tabungan-emas') && (
-                  <UserTabunganEmas onOpenSetorEmas={() => handleOpenSetor('emas')} />
+                  <UserTabunganEmas onOpenSetorEmas={(nominal?: number, konfigurasiId?: number) => handleOpenSetor('emas', undefined, undefined, nominal, konfigurasiId)} />
                 )}
                 {(activeTab === 'pribadi' || activeTab === 'tabungan-pribadi') && (
                   <UserTabunganPribadi
-                    onOpenSetorPribadi={() => handleOpenSetor('pribadi')}
+                    key={pribadiInitialSub}
+                    initialSub={pribadiInitialSub}
+                    onOpenSetorPribadi={(subJenisId?: number) => handleOpenSetor('pribadi', undefined, subJenisId)}
                     onOpenTarikPribadi={() => setIsTarikOpen(true)}
+                    onOpenDaftarQurban={() => setIsDaftarQurbanOpen(true)}
+                    onOpenSetorQurban={(pendaftaranId) => handleOpenSetor('qurban', pendaftaranId)}
                   />
                 )}
                 {(activeTab === 'qurban' || activeTab === 'tabungan-qurban') && (
@@ -260,32 +294,23 @@ return (
                     onOpenSetorQurban={(pendaftaranId) => handleOpenSetor('qurban', pendaftaranId)}
                   />
                 )}
-                {activeTab.startsWith('tabungan-custom-') &&
-                  (() => {
-                    const customId = Number(activeTab.replace('tabungan-custom-', ''));
-                    const customJenis = jenisTabungan.find((j) => j.id === customId && j.tipe === 'custom');
-                    return customJenis ? (
-                      <UserTabunganCustom
-                        key={customJenis.id}
-                        jenis={customJenis}
-                        onOpenSetor={() => handleOpenSetorCustom(customJenis.id)}
-                      />
-                    ) : null;
-                  })()}
-                {(activeTab === 'transaksi-saya' || activeTab === 'riwayat-transaksi') && (
+                {activeTab === 'transaksi-saya' || activeTab === 'riwayat-transaksi' ? (
                   <UserRiwayatTransaksi
                     onOpenDetailTransaksi={handleOpenDetailTrx}
                     onOpenUploadBukti={handleUploadBukti}
                   />
-                )}
+                ) : null}
                 {(activeTab === 'rekening-bank-koperasi' || activeTab === 'rekening-bank') && (
                   <UserRekeningBank />
                 )}
                 {activeTab === 'notifikasi' && <UserNotifikasi />}
+                {activeTab === 'gadai' && <UserGadai />}
                 {activeTab === 'setor' && (
                   <SetorPage
                     defaultTipe={setorDefaultTipe}
                     defaultJenisId={setorDefaultJenisId}
+                    defaultNominal={setorDefaultNominal}
+                    defaultKonfigurasiId={setorDefaultKonfigurasiId}
                     qurbanPendaftaranId={setorQurbanPendaftaranId}
                     onBack={() => setActiveTab('dashboard')}
                   />
@@ -304,7 +329,7 @@ return (
               <>
                 {activeTab === 'dashboard' && (
                   <AdminDashboard
-                    onOpenCashModal={() => setIsCashOpen(true)}
+                    onOpenCashModal={openCashModal}
                     onOpenDetailTransaksi={handleOpenDetailTrx}
                     onOpenRejectModal={handleOpenRejectTrx}
                   />
@@ -317,11 +342,17 @@ return (
                     onOpenRejectUserModal={handleOpenRejectUser}
                     onOpenImportModal={() => setIsImportUserOpen(true)}
                     onOpenExportModal={() => openExport('nasabah')}
+                    onOpenProfilNasabah={handleOpenProfilNasabah}
+                  />
+                )}
+                {activeTab === 'profil-nasabah' && (
+                  <AdminProfilNasabah
+                    initialUserId={profilUserId ?? undefined}
+                    onBack={() => setActiveTab('users')}
                   />
                 )}
                 {activeTab === 'jenis-tabungan' && (
                   <AdminJenisTabungan
-                    onOpenCreateModal={handleOpenCreateJenis}
                     onOpenEditModal={handleOpenEditJenis}
                   />
                 )}
@@ -341,10 +372,16 @@ return (
                 )}
                 {activeTab === 'transaksi' && (
                   <AdminTransaksi
-                    onOpenCashModal={() => setIsCashOpen(true)}
+                    onOpenCashModal={openCashModal}
                     onOpenDetailTransaksi={handleOpenDetailTrx}
                     onOpenRejectModal={handleOpenRejectTrx}
                     onOpenExportModal={() => openExport('transaksi')}
+                  />
+                )}
+                {activeTab === 'pembayaran-harian' && (
+                  <AdminPembayaranHarian
+                    onOpenCash={openCashFor}
+                    refreshKey={cashRefreshKey}
                   />
                 )}
                 {activeTab === 'rekening-bank' && (
@@ -355,7 +392,7 @@ return (
                 )}
                {activeTab === 'notifikasi' && <AdminNotifikasi />}
                {activeTab === 'audit-log' && <AdminAuditLog />}
-               {activeTab === 'goal-tracker' && <AdminGoalTracker />}
+               {activeTab === 'gadai' && <AdminGadai />}
                 {activeTab === 'profil' && (
                   <ProfilePage onBack={() => setActiveTab('dashboard')} />
                 )}
@@ -394,7 +431,12 @@ return (
 
       <CashTransaksiModal
         isOpen={isCashOpen}
-        onClose={() => setIsCashOpen(false)}
+        onClose={() => {
+          setIsCashOpen(false);
+          setCashRefreshKey((k) => k + 1);
+        }}
+        initialUserId={cashInitialUserId}
+        initialJenisId={cashInitialJenisId}
       />
 
       <UserFormModal

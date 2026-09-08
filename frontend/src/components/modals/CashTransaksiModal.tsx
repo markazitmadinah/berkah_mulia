@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { QurbanIcon } from '../QurbanIcon';
 import { formatRupiah } from '../../utils/format';
@@ -14,11 +14,15 @@ import {
 interface CashTransaksiModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialUserId?: number;
+  initialJenisId?: number;
 }
 
 export const CashTransaksiModal: React.FC<CashTransaksiModalProps> = ({
   isOpen,
-  onClose
+  onClose,
+  initialUserId,
+  initialJenisId
 }) => {
   const {
     users,
@@ -36,6 +40,12 @@ export const CashTransaksiModal: React.FC<CashTransaksiModalProps> = ({
   const [nominal, setNominal] = useState<string>('');
   const [catatan, setCatatan] = useState<string>('Setoran tunai via teller kantor');
   const [selectedQurbanId, setSelectedQurbanId] = useState<number>(pendaftaranQurban[0]?.id || 1);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (initialUserId) setSelectedUserId(initialUserId);
+    if (initialJenisId) setSelectedJenisId(initialJenisId);
+  }, [isOpen, initialUserId, initialJenisId]);
 
   if (!isOpen) return null;
 

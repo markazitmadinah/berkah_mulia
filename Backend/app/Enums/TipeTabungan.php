@@ -7,7 +7,6 @@ enum TipeTabungan: string
     case Emas = 'emas';
     case Pribadi = 'pribadi';
     case Qurban = 'qurban';
-    case Custom = 'custom';
 
     public function label(): string
     {
@@ -15,7 +14,6 @@ enum TipeTabungan: string
             self::Emas => 'Tabungan Emas',
             self::Pribadi => 'Tabungan Pribadi',
             self::Qurban => 'Tabungan Qurban',
-            self::Custom => 'Tabungan Custom',
         };
     }
 }

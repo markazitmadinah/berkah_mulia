@@ -13,9 +13,9 @@ class JenisTabunganTest extends ApiTestCase
     private function payload(array $overrides = []): array
     {
         return array_merge([
-            'kode' => 'tabungan-custom',
-            'nama' => 'Tabungan Custom',
-            'tipe' => TipeTabungan::Custom->value,
+            'kode' => 'tabungan-tambahan',
+            'nama' => 'Tabungan Tambahan',
+            'tipe' => TipeTabungan::Pribadi->value,
             'mode_perhitungan' => ModePerhitungan::NominalBebas->value,
             'aturan_pencairan' => AturanPencairan::ManualAdmin->value,
             'metode_pembayaran_diizinkan' => ['cash', 'transfer'],
@@ -24,21 +24,38 @@ class JenisTabunganTest extends ApiTestCase
         ], $overrides);
     }
 
-    public function test_admin_bisa_membuat_jenis_tabungan(): void
+    private function makeExtra(string $kode, string $nama): JenisTabungan
+    {
+        return JenisTabungan::create(array_merge($this->payload(['kode' => $kode, 'nama' => $nama]), [
+            'created_by' => auth()->id(),
+            'updated_by' => auth()->id(),
+        ]));
+    }
+
+    public function test_tipe_built_in_duplikat_ditolak(): void
     {
         $this->seedBase();
         $this->actingAsAdmin();
 
-        $this->postJson('/api/v1/admin/jenis-tabungan', $this->payload())
-            ->assertStatus(201)
-            ->assertJsonPath('data.kode', 'tabungan-custom')
-            ->assertJsonPath('data.status_aktif', true);
+        // emas & qurban = satu produk per tipe.
+        foreach (['emas', 'qurban'] as $tipe) {
+            $this->postJson('/api/v1/admin/jenis-tabungan', $this->payload(['kode' => "{$tipe}-2", 'tipe' => $tipe, 'nama' => ucfirst($tipe) . ' Kedua']))
+                ->assertStatus(422)->assertJsonPath('error_code', 'SINGLE_INSTANCE_TYPE');
+        }
 
-        $this->assertDatabaseHas('jenis_tabungan', ['kode' => 'tabungan-custom']);
+        // pribadi tanpa sub-jenis ditolak; semua sub-jenis pribadi sudah ada.
+        $this->postJson('/api/v1/admin/jenis-tabungan', $this->payload(['kode' => 'pribadi-2']))
+            ->assertStatus(422)->assertJsonPath('error_code', 'SUB_JENIS_REQUIRED');
+
+        $this->postJson('/api/v1/admin/jenis-tabungan', $this->payload(['kode' => 'mandiri-2', 'sub_jenis' => 'mandiri']))
+            ->assertStatus(422)->assertJsonPath('error_code', 'SINGLE_INSTANCE_TYPE');
+
+        $this->assertEquals(5, JenisTabungan::count());
     }
 
     public function test_kode_duplikat_ditolak(): void
-    {        $this->seedBase();
+    {
+        $this->seedBase();
         $this->actingAsAdmin();
         $this->assertNotNull(JenisTabungan::where('kode', 'emas-harian')->first());
 
@@ -70,10 +87,7 @@ class JenisTabunganTest extends ApiTestCase
     {
         $this->seedBase();
         $this->actingAsAdmin();
-        $jenis = JenisTabungan::create(array_merge($this->payload(['kode' => 'jenis-trx', 'nama' => 'Tabungan Trx']), [
-            'created_by' => auth()->id(),
-            'updated_by' => auth()->id(),
-        ]));
+        $jenis = $this->makeExtra('jenis-trx', 'Tabungan Trx');
 
         \App\Models\Transaksi::create([
             'nomor_referensi' => 'TRX-TEST-0001',
@@ -93,7 +107,7 @@ class JenisTabunganTest extends ApiTestCase
     {
         $this->seedBase();
         $this->actingAsAdmin();
-        $jenis = JenisTabungan::create(array_merge($this->payload(), ['created_by' => auth()->id(), 'updated_by' => auth()->id()]));
+        $jenis = $this->makeExtra('jenis-nontrx', 'Tabungan Tanpa Transaksi');
 
         $this->deleteJson("/api/v1/admin/jenis-tabungan/{$jenis->id}")->assertOk();
         $this->assertDatabaseMissing('jenis_tabungan', ['id' => $jenis->id]);
@@ -104,7 +118,7 @@ class JenisTabunganTest extends ApiTestCase
         $this->seedBase();
         $this->actingAsAdmin();
 
-        foreach (['emas-harian', 'tabungan-pribadi', 'tabungan-qurban'] as $kode) {
+        foreach (['emas-harian', 'tabungan-pribadi', 'tabungan-qurban', 'tabungan-hari-raya', 'tabungan-berjangka'] as $kode) {
             $jenis = JenisTabungan::where('kode', $kode)->first();
             $this->deleteJson("/api/v1/admin/jenis-tabungan/{$jenis->id}")
                 ->assertStatus(422)->assertJsonPath('error_code', 'DEFAULT_LOCKED');
@@ -116,10 +130,10 @@ class JenisTabunganTest extends ApiTestCase
         $this->seedBase();
         $this->actingAsAdmin();
 
-        for ($i = 1; $i <= 3; $i++) {
-            $this->postJson('/api/v1/admin/jenis-tabungan', $this->payload(['kode' => "tambahan-{$i}", 'nama' => "Tambahan {$i}"]))
-                ->assertStatus(201);
-        }
+        // Seeder sudah membuat 5 produk (emas, mandiri, hari_raya, berjangka, qurban).
+        $this->assertEquals(5, JenisTabungan::count());
+
+        $this->makeExtra('tambahan-1', 'Tambahan 1');
 
         $this->assertEquals(6, JenisTabungan::count());
 
@@ -129,34 +143,13 @@ class JenisTabunganTest extends ApiTestCase
         $this->assertEquals(6, JenisTabungan::count());
     }
 
-    public function test_duplikat_tipe_bawaan_ditolak(): void
+    public function test_update_sub_jenis_ke_sub_yang_sudah_ada_ditolak(): void
     {
         $this->seedBase();
         $this->actingAsAdmin();
+        $hariRaya = JenisTabungan::where('kode', 'tabungan-hari-raya')->first();
 
-        $this->postJson('/api/v1/admin/jenis-tabungan', $this->payload(['kode' => 'pribadi-2', 'tipe' => TipeTabungan::Pribadi->value, 'nama' => 'Pribadi Kedua']))
-            ->assertStatus(422)->assertJsonPath('error_code', 'SINGLE_INSTANCE_TYPE');
-
-        $this->postJson('/api/v1/admin/jenis-tabungan', $this->payload(['kode' => 'emas-2', 'tipe' => TipeTabungan::Emas->value, 'nama' => 'Emas Kedua']))
-            ->assertStatus(422)->assertJsonPath('error_code', 'SINGLE_INSTANCE_TYPE');
-
-        $this->assertEquals(3, JenisTabungan::count());
-    }
-
-    public function test_tipe_bawaan_boleh_custom_dan_update_tercegah(): void
-    {
-        $this->seedBase();
-        $this->actingAsAdmin();
-
-        $this->postJson('/api/v1/admin/jenis-tabungan', $this->payload())
-            ->assertStatus(201);
-
-        $pribadi = JenisTabungan::where('kode', 'tabungan-pribadi')->firstOrFail();
-        $this->putJson("/api/v1/admin/jenis-tabungan/{$pribadi->id}", ['tipe' => TipeTabungan::Pribadi->value])
-            ->assertOk();
-
-        $custom = JenisTabungan::where('kode', 'tabungan-custom')->firstOrFail();
-        $this->putJson("/api/v1/admin/jenis-tabungan/{$custom->id}", ['tipe' => TipeTabungan::Pribadi->value])
+        $this->putJson("/api/v1/admin/jenis-tabungan/{$hariRaya->id}", ['sub_jenis' => 'mandiri'])
             ->assertStatus(422)->assertJsonPath('error_code', 'SINGLE_INSTANCE_TYPE');
     }
 

@@ -87,11 +87,6 @@ class User extends Authenticatable
         return $this->hasMany(UserTabunganTarget::class);
     }
 
-    public function autoSetor(): HasMany
-    {
-        return $this->hasMany(UserAutoSetor::class);
-    }
-
     // ─── Helpers ───────────────────────────────────────────────
 
     public function isAdmin(): bool

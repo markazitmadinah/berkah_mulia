@@ -11,7 +11,8 @@ import {
   TrendingUp,
   ShieldCheck,
   Info,
-  Plus
+  Plus,
+  RefreshCw
 } from 'lucide-react';
 import { HargaEmasHarian } from '../../types';
 import { PriceChart, buildGoldChart } from '../ui/PriceChart';
@@ -29,11 +30,19 @@ export const AdminHargaEmas: React.FC<AdminHargaEmasProps> = ({
     hargaEmas,
     activeHargaEmas,
     deleteHargaEmas,
+    syncHargaEmas,
     transaksi,
     showToast
   } = useApp();
 
   const [timeframe, setTimeframe] = useState<'1W' | '1M' | '1Y'>('1W');
+  const [syncing, setSyncing] = useState(false);
+
+  const handleSync = () => {
+    if (syncing) return;
+    setSyncing(true);
+    syncHargaEmas().catch(() => undefined).finally(() => setSyncing(false));
+  };
 
   const fmtDate = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
   const fmtMonth = (k: string) => new Date(k + '-01T00:00:00').toLocaleDateString('id-ID', { month: 'short', year: 'numeric' });
@@ -55,7 +64,7 @@ export const AdminHargaEmas: React.FC<AdminHargaEmasProps> = ({
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
             <Coins className="w-6 h-6 text-amber-500" />
@@ -66,7 +75,17 @@ export const AdminHargaEmas: React.FC<AdminHargaEmasProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5 sm:justify-end">
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="py-2.5 px-4 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-amber-600/20 transition-all cursor-pointer flex-shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
+            title="Ambil harga hari ini dari web resmi Logam Mulia (Antam) secara manual"
+          >
+            <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+            <span>{syncing ? 'Menyinkronkan…' : 'Sync Harga dari Antam'}</span>
+          </button>
+
           <button
             onClick={onOpenInputHargaModal}
             className="py-2.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all cursor-pointer flex-shrink-0"
@@ -97,7 +116,7 @@ export const AdminHargaEmas: React.FC<AdminHargaEmasProps> = ({
         <div className="p-4 rounded-2xl bg-white/90 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 max-w-xs text-xs text-slate-600 dark:text-slate-300 shadow-sm flex items-start gap-2.5">
           <Info className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
 <p>
-              Harga diperbarui otomatis setiap hari dari web resmi Logam Mulia (Antam). Admin masih bisa input manual sebagai koreksi, dan perubahan akan otomatis menonaktifkan harga lama.
+              Harga diperbarui otomatis setiap hari dari web resmi Logam Mulia (Antam). Gunakan tombol <strong>Sync Harga dari Antam</strong> untuk menarik harga hari ini secara manual. Admin masih bisa input manual sebagai koreksi, dan perubahan akan otomatis menonaktifkan harga lama.
             </p>
         </div>
       </div>

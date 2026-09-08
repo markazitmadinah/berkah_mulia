@@ -68,7 +68,6 @@ export const UserRiwayatTransaksi: React.FC<UserRiwayatTransaksiProps> = ({
             <option value="emas">Tabungan Emas</option>
             <option value="pribadi">Tabungan Pribadi</option>
             <option value="qurban">Tabungan Qurban</option>
-            <option value="custom">Tabungan Custom</option>
           </select>
 
           {/* Status Filter */}
@@ -153,7 +152,7 @@ export const UserRiwayatTransaksi: React.FC<UserRiwayatTransaksiProps> = ({
 
                     {/* Status */}
                     <td className="py-3 px-3">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold inline-flex items-center gap-1 ${
+                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold inline-flex items-center gap-1 whitespace-nowrap ${
                         trx.status_verifikasi === 'terverifikasi'
                           ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
                           : trx.status_verifikasi === 'menunggu_verifikasi'

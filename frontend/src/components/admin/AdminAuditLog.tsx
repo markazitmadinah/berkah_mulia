@@ -8,14 +8,16 @@ import {
   Lock,
   Calendar,
   Terminal,
-  Activity
+  Activity,
+  Trash2
 } from 'lucide-react';
 
 export const AdminAuditLog: React.FC = () => {
-  const { auditLogs, searchQuery } = useApp();
+  const { auditLogs, searchQuery, hapusAuditLogs } = useApp();
 
   const [filterAction, setFilterAction] = useState<string>('all');
   const [filterModel, setFilterModel] = useState<string>('all');
+  const [confirmPurge, setConfirmPurge] = useState(false);
 
   const filteredLogs = auditLogs.filter((log) => {
     const matchesSearch =
@@ -48,6 +50,28 @@ export const AdminAuditLog: React.FC = () => {
             Catatan kepatuhan dan audit aktivitas pengurus/admin yang bersifat read-only tanpa hak ubah/hapus
           </p>
         </div>
+
+        {/* Hapus riwayat — cegah penumpukan data */}
+        <button
+          type="button"
+          onClick={() => {
+            if (!confirmPurge) {
+              setConfirmPurge(true);
+              setTimeout(() => setConfirmPurge(false), 4000);
+              return;
+            }
+            setConfirmPurge(false);
+            hapusAuditLogs();
+          }}
+          className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl border text-xs font-bold transition-all cursor-pointer ${
+            confirmPurge
+              ? 'bg-rose-600 border-rose-600 text-white shadow-md shadow-rose-600/25'
+              : 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900'
+          }`}
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+          {confirmPurge ? 'Klik lagi untuk konfirmasi hapus semua' : 'Hapus Riwayat Log'}
+        </button>
       </div>
 
       {/* Filter Row */}

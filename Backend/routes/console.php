@@ -43,62 +43,15 @@ Schedule::call(function () {
 })->daily()->name('bersihkan-notifikasi-lama')
     ->description('Hapus otomatis notifikasi yang berusia lebih dari 1 bulan');
 
-// Scheduled: Auto-catat setoran berkala (periodic auto deposit) — creates pending setor
-Schedule::call(function () {    $today = now()->startOfDay();
-    $dayOfWeek = $today->dayOfWeek;              // 0=Sun ... 6=Sat
-    $dayOfMonth = $today->day;                    // 1..31
+// Scheduled: Pengingat setoran tabungan emas — harian di 10:00, mingguan & bulanan sesuai tanggal_mulai
+Schedule::command('pengingat:setoran')->dailyAt('10:00')
+    ->withoutOverlapping()
+    ->name('kirim-pengingat-setoran')
+    ->description('Kirim notifikasi pengingat bayar setoran emas (harian/mingguan/bulanan) setiap jam 10 pagi');
 
-    $dibuat = 0;
-
-    \App\Models\UserAutoSetor::with('jenisTabungan')
-        ->where('aktif', true)
-        ->whereHas('jenisTabungan', fn ($q) => $q->where('status_aktif', true)->where('tipe', 'custom'))
-        ->get()
-        ->each(function ($auto) use ($today, $dayOfWeek, $dayOfMonth, &$dibuat) {
-            $cfg = $auto->jenisTabungan->config ?? [];
-            $periode = $cfg['setoran_berkala_periode'] ?? null;
-            $nominal = (float) ($cfg['setoran_berkala_nominal'] ?? 0);
-
-            if (! $periode || $nominal <= 0) {
-                return;
-            }
-
-            // Tentukan apakah hari ini adalah jadwal setoran
-            $due = match ($periode) {
-                'harian' => true,
-                'mingguan' => $dayOfWeek === 1, // Senin
-                'bulanan' => $dayOfMonth === 1, // tanggal 1
-                default => false,
-            };
-
-            if (! $due) {
-                return;
-            }
-
-            // Dedup: sudah ada setor (pending/verified) untuk user+jenis pada periode ini
-            $sudahAda = \App\Models\Transaksi::where('user_id', $auto->user_id)
-                ->where('jenis_tabungan_id', $auto->jenis_tabungan_id)
-                ->where('jenis_transaksi', 'setor')
-                ->where('tanggal_transaksi', $today->toDateString())
-                ->whereIn('status_verifikasi', ['menunggu_verifikasi', 'terverifikasi'])
-                ->exists();
-
-            if ($sudahAda) {
-                return;
-            }
-
-            app(\App\Services\TransaksiService::class)->buatTransaksi([
-                'user_id' => $auto->user_id,
-                'jenis_tabungan_id' => $auto->jenis_tabungan_id,
-                'jenis_transaksi' => \App\Enums\JenisTransaksi::Setor,
-                'nominal' => $nominal,
-                'status_verifikasi' => \App\Enums\StatusVerifikasi::MenungguVerifikasi,
-                'tanggal_transaksi' => $today->toDateString(),
-                'metode_pembayaran' => \App\Enums\MetodePembayaran::Transfer,
-                'catatan_user' => 'Setoran berkala otomatis',
-            ]);
-
-            $dibuat++;
-        });
-})->daily()->name('auto-catat-setoran-berkala')
-    ->description('Auto-catat setoran berkala per periode utk user dengan auto-setor aktif');
+// Scheduled: Cek jatuh tempo gadai — AKTIF/DIPERPANJANG lewat jatuh tempo menjadi JATUH_TEMPO,
+// JATUH_TEMPO melewati tenggat + toleransi menjadi TERLAMBAT (setiap pagi pukul 08:00)
+Schedule::command('gadai:cek-jatuh-tempo')->dailyAt('08:00')
+    ->withoutOverlapping()
+    ->name('cek-jatuh-tempo-gadai')
+    ->description('Auto update status gadai saat jatuh tempo terlewati');

@@ -5,7 +5,7 @@ export const Skeleton: React.FC<{ className?: string }> = ({ className = '' }) =
 );
 
 export const DashboardSkeleton: React.FC = () => (
-  <div className="max-w-7xl mx-auto pb-12 space-y-5">
+  <div className="max-w-5xl xl:max-w-7xl mx-auto pb-12 space-y-5">
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
       {[0, 1, 2].map(i => (
         <div

@@ -58,4 +58,21 @@ class AuditLogTest extends ApiTestCase
 
         $this->assertDatabaseHas('audit_logs', ['action' => 'register', 'user_id' => null]);
     }
+
+    public function test_purge_audit_log_menghapus_riwayat_dan_menyisakan_jejak_purge(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+        $user = $this->createUser();
+        AuditLog::record('create', $user);
+        AuditLog::record('update', $user);
+
+        $this->deleteJson('/api/v1/admin/audit-logs')
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.deleted', 2);
+
+        $this->assertSame(1, AuditLog::count());
+        $this->assertDatabaseHas('audit_logs', ['action' => 'purge']);
+    }
 }

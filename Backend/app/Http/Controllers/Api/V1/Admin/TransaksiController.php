@@ -10,9 +10,12 @@ use App\Exports\TransaksiExport;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\TransaksiResource;
 use App\Models\AuditLog;
+use App\Models\JenisTabungan;
 use App\Models\Transaksi;
+use App\Models\User;
 use App\Services\ProgressCalculatorService;
 use App\Services\QurbanTargetService;
+use App\Services\SaldoEmasService;
 use App\Services\TransaksiService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -29,6 +32,7 @@ class TransaksiController extends Controller
         private TransaksiService $transaksiService,
         private QurbanTargetService $qurbanService,
         private ProgressCalculatorService $progressService,
+        private SaldoEmasService $saldoEmasService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -104,7 +108,7 @@ class TransaksiController extends Controller
             $user = $transaksi->user;
             if ($jenis && $user) {
                 if ($jenis->tipe === TipeTabungan::Emas) {
-                    // Emas balance is tracked in grams (unit_didapat), not rupiah.
+                    // Emas balance is tracked two ways: grams (unit_didapat) & saldo dana (nominal_selisih).
                     // The withdrawal nominal is the rupiah market value (grams × price),
                     // so it must not be compared against rupiah actually deposited.
                     $saldoGram = Transaksi::milikUser($user->id)
@@ -122,6 +126,22 @@ class TransaksiController extends Controller
                     $tarikGram = abs((float) $transaksi->unit_didapat);
                     if ($tarikGram > ($saldoGram - (float) $pendingLainGram)) {
                         return $this->errorResponse('Saldo emas tidak mencukupi untuk memverifikasi penarikan ini.', 422, 'INSUFFICIENT_BALANCE');
+                    }
+
+                    // Guard saldo dana: semua transaksi emas punya delta dana (nominal_selisih);
+                    // hasil verifikasi tidak boleh membuat saldo dana negatif.
+                    if ($transaksi->nominal_selisih !== null) {
+                        $saldoDana = $this->saldoEmasService->getSaldoDana($user, $jenis);
+                        $pendingDanaLain = Transaksi::milikUser($user->id)
+                            ->where('jenis_tabungan_id', $jenis->id)
+                            ->where('id', '!=', $transaksi->id)
+                            ->menungguVerifikasi()
+                            ->sum('nominal_selisih');
+
+                        $danaSetelah = round($saldoDana + (float) $pendingDanaLain + (float) $transaksi->nominal_selisih, 2);
+                        if ($danaSetelah < 0) {
+                            return $this->errorResponse('Saldo dana tidak mencukupi untuk memverifikasi transaksi ini.', 422, 'INSUFFICIENT_BALANCE');
+                        }
                     }
                 } else {
                     $saldo = $this->progressService->getSaldo($user, $jenis);
@@ -147,9 +167,11 @@ class TransaksiController extends Controller
                 'diverifikasi_pada' => now(),
             ]);
 
-            // Clear emas goal after full withdrawal or cancel so progress bar resets.
+            // Clear emas goal after FULL withdrawal/cancel so progress bar resets.
+            // Refund pembatalan PER RENCANA (ber-konfigurasi_id) tidak menghapus goal global.
             if ($transaksi->jenis_transaksi === JenisTransaksi::Tarik
-                && $transaksi->jenisTabungan?->tipe === TipeTabungan::Emas) {
+                && $transaksi->jenisTabungan?->tipe === TipeTabungan::Emas
+                && is_null($transaksi->konfigurasi_id)) {
                 $transaksi->user->update(['target_emas_gram' => null]);
             }
 
@@ -206,8 +228,10 @@ class TransaksiController extends Controller
             'catatan_admin' => 'nullable|string|max:500',
         ]);
 
-        $transaksi = DB::transaction(function () use ($request) {
-            $transaksi = $this->transaksiService->buatTransaksi([
+        $jenis = JenisTabungan::findOrFail($request->jenis_tabungan_id);
+
+        $transaksi = DB::transaction(function () use ($request, $jenis) {
+            $data = [
                 'user_id' => $request->user_id,
                 'jenis_tabungan_id' => $request->jenis_tabungan_id,
                 'pendaftaran_qurban_id' => $request->pendaftaran_qurban_id,
@@ -216,7 +240,35 @@ class TransaksiController extends Controller
                 'metode_pembayaran' => MetodePembayaran::Cash,
                 'catatan_admin' => $request->catatan_admin,
                 'auto_verify' => true,
-            ]);
+            ];
+
+            // Setoran emas (termasuk door-to-door/cash) memakai konversi yang sama:
+            // beli target gram penuh per periode bila mengikuti setoran rencana.
+            if ($jenis->tipe === TipeTabungan::Emas) {
+                $user = User::findOrFail($request->user_id);
+                $harga = \App\Models\HargaEmasHarian::hargaTerkini();
+
+                if (! $harga) {
+                    abort(400, 'Harga emas belum diinput oleh admin. Silakan hubungi admin.');
+                }
+
+                $porsi = $this->saldoEmasService->hitungSetoran(
+                    (float) $request->nominal,
+                    $this->saldoEmasService->getAktif($user, $jenis),
+                    $this->saldoEmasService->getSaldoDana($user, $jenis),
+                    (float) $harga->harga_per_gram
+                );
+
+                $data += [
+                    'nominal_emas' => $porsi['nominal_emas'],
+                    'nominal_selisih' => $porsi['nominal_selisih'],
+                    'unit_didapat' => $porsi['unit_didapat'],
+                    'harga_acuan_id' => $harga->id,
+                    'harga_acuan_snapshot' => $harga->harga_per_gram,
+                ];
+            }
+
+            $transaksi = $this->transaksiService->buatTransaksi($data);
 
             // Update qurban progress if applicable
             if ($transaksi->pendaftaran_qurban_id) {

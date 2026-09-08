@@ -18,8 +18,8 @@ export const ChangePasswordPage: React.FC<ChangePasswordPageProps> = ({ onBack }
     e.preventDefault();
     setError('');
 
-    if (newPassword.length < 6) {
-      setError('Password baru minimal 6 karakter');
+    if (newPassword.length < 8 || !/[a-zA-Z]/.test(newPassword) || !/\d/.test(newPassword)) {
+      setError('Password baru minimal 8 karakter dan harus kombinasi huruf dan angka');
       return;
     }
 
@@ -84,7 +84,7 @@ export const ChangePasswordPage: React.FC<ChangePasswordPageProps> = ({ onBack }
 
             <div>
               <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                Password Baru (Min. 6 Karakter)
+                Password Baru (Min. 8 Karakter, Huruf & Angka)
               </label>
               <div className="relative">
                 <KeyRound className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />

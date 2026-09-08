@@ -28,6 +28,8 @@ class TransaksiResource extends JsonResource
             'jenis_transaksi' => $this->jenis_transaksi->value,
             'jenis_transaksi_label' => $this->jenis_transaksi->label(),
             'nominal' => $this->nominal,
+            'nominal_emas' => $this->nominal_emas,
+            'nominal_dana' => $this->nominal_selisih,
             'unit_didapat' => $this->unit_didapat,
             'harga_acuan_id' => $this->harga_acuan_id,
             'harga_acuan_snapshot' => $this->harga_acuan_snapshot,

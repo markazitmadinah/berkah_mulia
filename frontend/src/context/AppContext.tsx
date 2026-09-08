@@ -20,7 +20,16 @@ import {
   RekeningBank,
   Transaksi,
   Notifikasi,
-  AuditLog
+  AuditLog,
+  SetoranBerkalaResponse,
+  SetoranBerkalaPayload,
+  HariRayaStatus,
+  ProfilNasabah,
+  PembayaranHarianResponse,
+  Gadai,
+  AjukanGadaiPayload,
+  GadaiPayload,
+  GadaiBayarPayload
 } from '../types';
 import { formatRupiah } from '../utils/format';
 
@@ -39,6 +48,7 @@ interface SetoranPayload {
   bukti_transfer_file?: File | null;
   catatan_user?: string;
   pendaftaran_qurban_id?: number;
+  konfigurasi_id?: number;
 }
 
 interface PenarikanPayload {
@@ -48,9 +58,10 @@ interface PenarikanPayload {
 }
 
 interface PenarikanEmasPayload {
-  bank_tujuan: string;
-  no_rekening: string;
-  atas_nama: string;
+  nominal?: number;
+  bank_tujuan?: string;
+  no_rekening?: string;
+  atas_nama?: string;
   catatan_user?: string;
 }
 
@@ -120,6 +131,29 @@ interface AppContextType {
   transaksi: Transaksi[];
   notifikasi: Notifikasi[];
   auditLogs: AuditLog[];
+  hapusAuditLogs: () => void;
+  gadai: Gadai[];
+  gadaiDetail: Gadai | null;
+  fetchGadaiDetail: (id: number) => void;
+  clearGadaiDetail: () => void;
+  createGadai: (data: GadaiPayload) => void;
+  ajukanGadai: (data: AjukanGadaiPayload) => void;
+  approveGadai: (id: number) => void;
+  aktifkanGadai: (id: number) => void;
+  bayarGadai: (id: number, data: GadaiBayarPayload) => void;
+  lunasiGadai: (id: number) => void;
+  batalGadai: (id: number) => void;
+  tandaiTerlambatGadai: (id: number) => void;
+  perpanjangGadai: (id: number) => void;
+  deleteGadai: (id: number) => void;
+  setoranBerkala: SetoranBerkalaResponse | null;
+  profilNasabah: ProfilNasabah | null;
+  profilNasabahError: string | null;
+  fetchProfilNasabah: (userId: number) => void;
+  clearProfilNasabah: () => void;
+  pembayaranHarian: PembayaranHarianResponse | null;
+  fetchPembayaranHarian: (tanggal?: string) => void;
+  clearPembayaranHarian: () => void;
 
   activeHargaEmas: HargaEmasHarian;
   userTransaksi: Transaksi[];
@@ -154,7 +188,7 @@ interface AppContextType {
   toggleStatusJenisTabungan: (id: number) => void;
 
   inputHargaEmas: (data: HargaEmasInput) => void;
-  syncHargaEmas: () => void;
+  syncHargaEmas: () => Promise<void>;
   deleteHargaEmas: (id: number) => ActionResult;
 
   createPeriodeQurban: (data: Record<string, unknown>) => void;
@@ -169,14 +203,18 @@ interface AppContextType {
   deletePendaftaranQurban: (id: number) => void;
 
   createSetoranUser: (data: SetoranPayload) => void;
+  buatSetoranBerkala: (data: SetoranBerkalaPayload) => void;
+  batalkanSetoranBerkala: (id: number, data: PenarikanEmasPayload) => void;
+  cairkanDana: (data: PenarikanEmasPayload) => void;
   updateEmasGoal: (target: number | null) => void;
   createPenarikanUser: (data: PenarikanPayload) => void;
   createPenarikanEmas: (data: PenarikanEmasPayload) => void;
   ajukanBatalEmas: (data: PenarikanEmasPayload) => void;
   tukarEmas: () => void;
-  createSetorCustom: (jenisTabunganId: number, data: SetoranPayload) => void;
-  createTarikCustom: (jenisTabunganId: number, data: PenarikanPayload) => void;
-  updateCustomGoal: (jenisTabunganId: number, targetNominal: number | null) => Promise<void>;
+  hariRayaStatus: HariRayaStatus | null;
+  refreshHariRaya: () => void;
+  setTargetHariRaya: (target: number) => void;
+  cairkanHariRaya: () => void;
   inputTransaksiCash: (data: CashTransaksiPayload) => void;
   verifikasiTransaksi: (id: number) => void;
   tolakTransaksi: (id: number, catatan: string) => void;
@@ -262,6 +300,8 @@ const normTransaksi = (t: unknown): Transaksi => {
     pendaftaran_qurban_id: x.pendaftaran_qurban_id ?? undefined,
     jenis_transaksi: x.jenis_transaksi,
     nominal: Number(x.nominal),
+    nominal_emas: x.nominal_emas != null ? Number(x.nominal_emas) : undefined,
+    nominal_dana: x.nominal_dana != null ? Number(x.nominal_dana) : undefined,
     unit_didapat: x.unit_didapat != null ? Number(x.unit_didapat) : undefined,
     harga_acuan_snapshot: x.harga_acuan_snapshot != null ? Number(x.harga_acuan_snapshot) : undefined,
     metode_pembayaran: x.metode_pembayaran,
@@ -407,6 +447,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [jenisTabungan, setJenisTabungan] = useState<JenisTabungan[]>([]);
   const [hargaEmas, setHargaEmas] = useState<HargaEmasHarian[]>([]);
   const [hargaTerkini, setHargaTerkini] = useState<HargaEmasHarian | null>(null);
+  const [setoranBerkala, setSetoranBerkala] = useState<SetoranBerkalaResponse | null>(null);
+  const [hariRayaStatus, setHariRayaStatus] = useState<HariRayaStatus | null>(null);
+  const [profilNasabah, setProfilNasabah] = useState<ProfilNasabah | null>(null);
+  const [profilNasabahError, setProfilNasabahError] = useState<string | null>(null);
+  const [pembayaranHarian, setPembayaranHarian] = useState<PembayaranHarianResponse | null>(null);
   const [periodeQurban, setPeriodeQurban] = useState<PeriodeQurban[]>([]);
   const [hewanQurban, setHewanQurban] = useState<HewanQurban[]>([]);
   const [pendaftaranQurban, setPendaftaranQurban] = useState<PendaftaranQurban[]>([]);
@@ -415,6 +460,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [notifikasi, setNotifikasi] = useState<Notifikasi[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [gadai, setGadai] = useState<Gadai[]>([]);
+  const [gadaiDetail, setGadaiDetail] = useState<Gadai | null>(null);
 
   const [toastMessage, setToastMessage] = useState<Toast | null>(null);
 
@@ -471,15 +518,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const penda$ = api
         .get<PendaftaranQurban[]>(isAdmin ? '/admin/qurban/pendaftaran?per_page=200' : '/qurban/pendaftaran-saya?per_page=200')
         .catch(() => null);
+      const setoranBerkala$ = isAdmin
+        ? null
+        : api.get<SetoranBerkalaResponse>('/emas/setoran-berkala').catch(() => null);
+      const hariRaya$ = isAdmin
+        ? null
+        : api.get<HariRayaStatus>('/tabungan-hari-raya/status').catch(() => null);
       const trx$ = api
         .get<Transaksi[]>(isAdmin ? '/admin/transaksi?per_page=200' : '/transaksi-saya?per_page=200')
         .catch(() => null);
       const users$ = isAdmin ? api.get<User[]>('/admin/users?per_page=200').catch(() => null) : null;
       const audit$ = !light && isAdmin ? api.get<AuditLog[]>('/admin/audit-logs?per_page=100').catch(() => null) : null;
+      const gadai$ = api
+        .get<{ items: Gadai[] }>(isAdmin ? '/admin/gadai?per_page=200' : '/gadai-saya?per_page=200')
+        .catch(() => null);
       const me$ = api.get<User>('/auth/me').catch(() => null);
 
-      const [staticRes, notaRes, terkiniRes, riwayatRes, masterRes, pendaRes, trxRes, usersRes, auditRes, meRes] =
-        await Promise.all([static$, nota$, terkini$, riwayat$, qurbanMaster$, penda$, trx$, users$, audit$, me$]);
+      const [staticRes, notaRes, terkiniRes, riwayatRes, masterRes, pendaRes, trxRes, usersRes, auditRes, gadaiRes, setoranRes, hariRayaRes, meRes] =
+        await Promise.all([static$, nota$, terkini$, riwayat$, qurbanMaster$, penda$, trx$, users$, audit$, gadai$, setoranBerkala$, hariRaya$, me$]);
 
       if (!light) {
         if (staticRes) {
@@ -514,6 +570,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       if (riwayatRes) setHargaEmas(riwayatRes.data);
       if (pendaRes) setPendaftaranQurban(pendaRes.data.map(normPendaftaran));
+      if (setoranRes) setSetoranBerkala(setoranRes.data);
+      if (hariRayaRes) setHariRayaStatus(hariRayaRes.data);
       if (trxRes) {
         setTransaksi(trxRes.data.map(normTransaksi));
       } else if (!light) {
@@ -521,6 +579,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       if (usersRes) setUsers(usersRes.data.map(normUser));
       if (auditRes) setAuditLogs(auditRes.data.map(normAudit));
+      if (gadaiRes) setGadai(gadaiRes.data.items);
       if (meRes) {
         const fresh = normUser(meRes.data);
         setCurrentUser(fresh);
@@ -563,7 +622,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const runAndRefresh = (fn: () => Promise<unknown>, okMsg?: string) => {
+  const runAndRefresh = (fn: () => Promise<unknown>, okMsg?: string) =>
     fn()
       .then(async (res) => {
         const resp = res as { message?: string } | undefined;
@@ -574,7 +633,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .catch((e: { message?: string }) => {
         showToast(e?.message || 'Terjadi kesalahan. Coba lagi.', 'error');
       });
-  };
 
   // ─── Auth ─────────────────────────────────────────────────
   const login = async (email: string, password: string) => {
@@ -597,6 +655,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setJenisTabungan([]);
     setHargaEmas([]);
     setHargaTerkini(null);
+    setSetoranBerkala(null);
+    setProfilNasabah(null);
     setPeriodeQurban([]);
     setHewanQurban([]);
     setPendaftaranQurban([]);
@@ -701,14 +761,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (res.data?.token) setToken(res.data.token);
         showToast('Password berhasil diubah. Sesi lain telah dikeluarkan.');
       })
-      .catch((e: { message?: string }) => showToast(e?.message || 'Gagal mengubah password.', 'error'));
+      .catch((e: { message?: string; errors?: Record<string, string[]> }) => {
+        const firstErr = e.errors ? Object.values(e.errors)[0]?.[0] : undefined;
+        showToast(firstErr || e?.message || 'Gagal mengubah password.', 'error');
+      });
     return true;
   };
 
   // ─── Admin: User Management ───────────────────────────────
-  const withRefresh = (fn: () => Promise<unknown>, okMsg: string) => {
+  const withRefresh = (fn: () => Promise<unknown>, okMsg: string) =>
     runAndRefresh(fn, okMsg);
+
+  // ─── Admin: Profil Nasabah ────────────────────────────────
+  const fetchProfilNasabah = (userId: number) => {
+    setProfilNasabah(null);
+    setProfilNasabahError(null);
+    api
+      .get<ProfilNasabah>(`/admin/users/${userId}/produk`)
+      .then((res) => {
+        const d = res.data;
+        setProfilNasabah({
+          ...d,
+          user: normUser(d.user),
+          transaksi: (d.transaksi || []).map(normTransaksi)
+        });
+      })
+      .catch((e: { message?: string }) => {
+        setProfilNasabahError(e?.message || 'Gagal memuat profil nasabah.');
+        showToast(e?.message || 'Gagal memuat profil nasabah.', 'error');
+      });
   };
+
+  const clearProfilNasabah = () => {
+    setProfilNasabah(null);
+    setProfilNasabahError(null);
+  };
+
+  // ─── Admin: Pembayaran Harian ──────────────────────────────
+  const fetchPembayaranHarian = (tanggal?: string) => {
+    setLoading(true);
+    api
+      .get<PembayaranHarianResponse>(`/admin/pembayaran-harian${tanggal ? `?tanggal=${tanggal}` : ''}`)
+      .then((res) => setPembayaranHarian(res.data))
+      .catch((e: { message?: string }) => showToast(e?.message || 'Gagal memuat pembayaran harian.', 'error'))
+      .finally(() => setLoading(false));
+  };
+
+  const clearPembayaranHarian = () => setPembayaranHarian(null);
 
   const approveUser = (userId: number) =>
     withRefresh(() => api.post(`/admin/users/${userId}/approve`), 'Akun berhasil disetujui.');
@@ -731,7 +830,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .postForm<any>('/admin/users/import', form)
       .then((res) => {
         const detail: string[] = (res?.data?.detail_dilewati || []) as string[];
+        const t = res?.data?.tabungan as Record<string, number> | undefined;
         let msg = res?.message || 'File import sedang diproses.';
+        if (t) {
+          const parts: string[] = [];
+          if (t.target_diatur) parts.push(`${t.target_diatur} target set`);
+          if (t.saldo_awal_dicatat) parts.push(`${t.saldo_awal_dicatat} saldo awal dicatat`);
+          if (t.saldo_awal_diubah) parts.push(`${t.saldo_awal_diubah} saldo diperbarui`);
+          if (t.saldo_awal_dihapus) parts.push(`${t.saldo_awal_dihapus} saldo dihapus`);
+          if (parts.length) msg += ' · Tabungan: ' + parts.join(', ');
+        }
         if (detail.length) {
           msg += ' ' + detail.slice(0, 5).join(' · ');
         }
@@ -807,7 +915,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const syncHargaEmas = () => {
     hargaTerkiniAtRef.current = 0;
-    withRefresh(() => api.post('/admin/emas/harga/sync'), 'Harga emas berhasil disinkronkan dari Logam Mulia.');
+    return withRefresh(() => api.postLong('/admin/emas/harga/sync'), 'Harga emas berhasil disinkronkan dari Logam Mulia.');
   };
 
   const deleteHargaEmas = (id: number): ActionResult => {
@@ -873,11 +981,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     form.append('rekening_bank_id', String(data.rekening_bank_id));
     if (data.bukti_transfer_file) form.append('bukti_transfer', data.bukti_transfer_file);
     if (data.catatan_user) form.append('catatan_user', data.catatan_user);
+    if (data.konfigurasi_id) form.append('konfigurasi_id', String(data.konfigurasi_id));
 
     let url = '';
     if (tipe === 'emas') {
       url = '/emas/setor';
     } else if (tipe === 'pribadi') {
+      if (!data.jenis_tabungan_id) {
+        showToast('Pilih jenis tabungan pribadi terlebih dahulu.', 'error');
+        return;
+      }
+      form.append('jenis_tabungan_id', String(data.jenis_tabungan_id));
       url = '/tabungan-pribadi/setor';
     } else {
       if (!data.pendaftaran_qurban_id) {
@@ -893,6 +1007,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
+  const buatSetoranBerkala = (data: SetoranBerkalaPayload) => {
+    runAndRefresh(
+      () => api.post('/emas/setoran-berkala', data),
+      'Setoran berkala emas aktif! Setor tepat nominal flat di tiap periode sesuai frekuensi.'
+    );
+  };
+
+  const batalkanSetoranBerkala = (id: number, data: PenarikanEmasPayload) => {
+    runAndRefresh(
+      () => api.post(`/emas/setoran-berkala/${id}/batalkan`, {
+        bank_tujuan: data.bank_tujuan,
+        no_rekening: data.no_rekening,
+        atas_nama: data.atas_nama,
+        catatan_user: data.catatan_user || ''
+      }),
+      'Rencana dibatalkan. Pengajuan refund (setelah potongan 10%) diajukan — menunggu verifikasi admin.'
+    );
+  };
+
+  const cairkanDana = (data: PenarikanEmasPayload) => {
+    runAndRefresh(
+      () => api.post('/emas/dana/cair', {
+        nominal: data.nominal ?? undefined,
+        bank_tujuan: data.bank_tujuan,
+        no_rekening: data.no_rekening,
+        atas_nama: data.atas_nama,
+        catatan_user: data.catatan_user || ''
+      }),
+      'Permohonan pencairan saldo dana diajukan. Menunggu verifikasi admin.'
+    );
+  };
+
   const updateEmasGoal = (target: number | null) => {
     api.put('/emas/goal', { target_emas_gram: target })
       .then(async () => {
@@ -903,6 +1049,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .catch((e: { message?: string }) => {
         showToast(e?.message || 'Terjadi kesalahan. Coba lagi.', 'error');
       });
+  };
+
+  const refreshHariRaya = () => {
+    api.get<HariRayaStatus>('/tabungan-hari-raya/status')
+      .then((res) => setHariRayaStatus(res.data))
+      .catch(() => undefined);
+  };
+
+  const setTargetHariRaya = (target: number) => {
+    runAndRefresh(
+      () => api.put('/tabungan-hari-raya/target', { target_nominal: target }),
+      'Target tabungan hari raya berhasil disimpan.'
+    );
+  };
+
+  const cairkanHariRaya = () => {
+    runAndRefresh(
+      () => api.post('/tabungan-hari-raya/cairkan'),
+      'Pencairan tabungan hari raya diajukan. Menunggu verifikasi admin.'
+    );
   };
 
   const createPenarikanUser = (data: PenarikanPayload) => {
@@ -919,46 +1085,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       'Permohonan penarikan diajukan. Menunggu verifikasi admin.'
     );
   };
-
-  const createSetorCustom = (jenisTabunganId: number, data: SetoranPayload) => {
-    if (data.nominal <= 0) {
-      showToast('Nominal setoran harus lebih dari 0.', 'error');
-      return;
-    }
-    const form = new FormData();
-    form.append('nominal', String(data.nominal));
-    form.append('metode_pembayaran', 'transfer');
-    if (!data.rekening_bank_id) {
-      showToast('Pilih rekening bank tujuan transfer.', 'error');
-      return;
-    }
-    form.append('rekening_bank_id', String(data.rekening_bank_id));
-    if (data.bukti_transfer_file) form.append('bukti_transfer', data.bukti_transfer_file);
-    if (data.catatan_user) form.append('catatan_user', data.catatan_user);
-
-    runAndRefresh(
-      () => api.postForm(`/tabungan-custom/${jenisTabunganId}/setor`, form),
-      'Setoran berhasil diajukan. Menunggu verifikasi admin.'
-    );
-  };
-
-  const createTarikCustom = (jenisTabunganId: number, data: PenarikanPayload) => {
-    if (data.nominal <= 0) {
-      showToast('Nominal penarikan harus lebih dari 0.', 'error');
-      return;
-    }
-    runAndRefresh(
-      () => api.post(`/tabungan-custom/${jenisTabunganId}/tarik`, { nominal: data.nominal, catatan_user: data.catatan_user }),
-      'Permohonan penarikan diajukan. Menunggu verifikasi admin.'
-    );
-  };
-
-  const updateCustomGoal = (jenisTabunganId: number, targetNominal: number | null) =>
-    api.patch(`/tabungan-custom/${jenisTabunganId}/target`, { target_nominal: targetNominal })
-      .then(() => showToast(targetNominal != null ? 'Target berhasil disimpan.' : 'Target berhasil dihapus.'))
-      .catch((e: { message?: string }) => {
-        showToast(e?.message || 'Gagal menyimpan target.', 'error');
-      });
 
   const createPenarikanEmas = (data: PenarikanEmasPayload) => {
     if (userEmasGramTotal <= 0) {
@@ -1059,6 +1185,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true, message: 'Rekening bank berhasil dihapus.' };
   };
 
+  // ─── Audit Log ─────────────────────────────────────────────
+  const hapusAuditLogs = () => {
+    withRefresh(
+      () => api.del('/admin/audit-logs').then(() => setAuditLogs([])),
+      'Riwayat audit log berhasil dihapus.'
+    );
+  };
+
+  // ─── Gadai (Admin) ────────────────────────────────────────
+  const fetchGadaiDetail = (id: number) => {
+    setLoading(true);
+    api
+      .get<Gadai>(currentUser.role === 'admin' ? `/admin/gadai/${id}` : `/gadai-saya/${id}`)
+      .then((res) => setGadaiDetail(res.data))
+      .catch((e: { message?: string }) => showToast(e?.message || 'Gagal memuat detail gadai.', 'error'))
+      .finally(() => setLoading(false));
+  };
+
+  const clearGadaiDetail = () => setGadaiDetail(null);
+
+  const createGadai = (data: GadaiPayload) =>
+    withRefresh(() => api.post('/admin/gadai', data), 'Pengajuan gadai berhasil dibuat (status DIAJUKAN).');
+
+  const ajukanGadai = (data: AjukanGadaiPayload) =>
+    withRefresh(() => api.post('/gadai-saya', data), 'Pengajuan gadai berhasil dikirim. Tunggu persetujuan admin.');
+
+  const approveGadai = (id: number) =>
+    withRefresh(() => api.post(`/admin/gadai/${id}/approve`), 'Pengajuan gadai disetujui.');
+
+  const aktifkanGadai = (id: number) =>
+    withRefresh(() => api.post(`/admin/gadai/${id}/aktifkan`), 'Pembiayaan disalurkan. Jatuh tempo dihitung.');
+
+  const bayarGadai = (id: number, data: GadaiBayarPayload) =>
+    withRefresh(() => api.post(`/admin/gadai/${id}/bayar`, data), 'Pembayaran angsuran gadai tercatat.');
+
+  const lunasiGadai = (id: number) =>
+    withRefresh(() => api.post(`/admin/gadai/${id}/lunasi`), 'Gadai LUNAS. Emas dikembalikan ke peserta.');
+
+  const batalGadai = (id: number) =>
+    withRefresh(() => api.post(`/admin/gadai/${id}/batal`), 'Gadai dibatalkan (potongan 10%). Emas dikembalikan.');
+
+  const tandaiTerlambatGadai = (id: number) =>
+    withRefresh(() => api.post(`/admin/gadai/${id}/terlambat`), 'Gadai ditandai TERLAMBAT.');
+
+  const perpanjangGadai = (id: number) =>
+    withRefresh(() => api.post(`/admin/gadai/${id}/perpanjang`), 'Tenor gadai diperpanjang satu periode.');
+
+  const deleteGadai = (id: number) =>
+    withRefresh(() => api.del(`/admin/gadai/${id}`), 'Pengajuan gadai dihapus.');
+
   // ─── Notifikasi ───────────────────────────────────────────
   const markNotifikasiRead = (id: number) => {
     setNotifikasi(prev => prev.map(n => (n.id === id ? { ...n, dibaca_pada: new Date().toISOString() } : n)));
@@ -1102,6 +1278,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     transaksi,
     notifikasi,
     auditLogs,
+    hapusAuditLogs,
+    gadai,
+    gadaiDetail,
+    fetchGadaiDetail,
+    clearGadaiDetail,
+    createGadai,
+    ajukanGadai,
+    approveGadai,
+    aktifkanGadai,
+    bayarGadai,
+    lunasiGadai,
+    batalGadai,
+    tandaiTerlambatGadai,
+    perpanjangGadai,
+    deleteGadai,
+    setoranBerkala,
+    profilNasabah,
+    profilNasabahError,
+    fetchProfilNasabah,
+    clearProfilNasabah,
+    pembayaranHarian,
+    fetchPembayaranHarian,
+    clearPembayaranHarian,
     activeHargaEmas,
     userTransaksi,
     userPendaftaranQurban,
@@ -1144,13 +1343,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     deletePendaftaranQurban,
     createSetoranUser,
     updateEmasGoal,
+    hariRayaStatus,
+    refreshHariRaya,
+    setTargetHariRaya,
+    cairkanHariRaya,
     createPenarikanUser,
     createPenarikanEmas,
     ajukanBatalEmas,
     tukarEmas,
-    createSetorCustom,
-    createTarikCustom,
-    updateCustomGoal,
+    buatSetoranBerkala,
+    batalkanSetoranBerkala,
+    cairkanDana,
     inputTransaksiCash,
     verifikasiTransaksi,
     tolakTransaksi,

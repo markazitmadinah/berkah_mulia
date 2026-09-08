@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { UserAvatar } from '../ui/UserAvatar';
 import { QurbanIcon } from '../QurbanIcon';
 import logo from '../../logo.png';
+import { JenisTabungan } from '../../types';
 import {
   LayoutDashboard,
   Users,
@@ -19,19 +20,21 @@ import {
   Moon,
   LogOut,
   ChevronDown,
-  PiggyBank,
-  Banknote,
-  Target
+  CalendarCheck
 } from 'lucide-react';
 
 interface SidebarProps {
   isOpenMobile?: boolean;
   onCloseMobile?: () => void;
+  activePribadiSub?: string;
+  onOpenPribadiSub?: (sub: string) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   isOpenMobile = false,
-  onCloseMobile
+  onCloseMobile,
+  activePribadiSub,
+  onOpenPribadiSub
 }) => {
   const {
     currentUser,
@@ -42,8 +45,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     theme,
     toggleTheme,
     transaksi,
-    jenisTabungan,
-    showToast
+    jenisTabungan
   } = useApp();
 
   const pendingTrxCount = transaksi.filter(t => t.status_verifikasi === 'menunggu_verifikasi').length;
@@ -57,30 +59,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
     submenu?: boolean;
   }
 
-  const isTabunganTab = (tab: string): boolean =>
-    tab === 'emas' || tab === 'tabungan-emas' ||
-    tab === 'pribadi' || tab === 'tabungan-pribadi' ||
-    tab === 'qurban' || tab === 'tabungan-qurban' ||
-    tab.startsWith('tabungan-custom-');
+  const isPribadiTab = (tab: string): boolean =>
+    tab === 'pribadi' || tab === 'tabungan-pribadi';
 
-  const [tabunganOpen, setTabunganOpen] = useState<boolean>(() => isTabunganTab(activeTab));
+  const [pribadiOpen, setPribadiOpen] = useState<boolean>(() => isPribadiTab(activeTab));
 
-  const subTabForJenis = (j: { tipe: string; id: number }): string | null => {
-    if (j.tipe === 'emas') return 'emas';
-    if (j.tipe === 'pribadi') return 'pribadi';
-    if (j.tipe === 'qurban') return 'qurban';
-    if (j.tipe === 'custom') return `tabungan-custom-${j.id}`;
-    return null;
-  };
-
-  const savingsSubmenu = jenisTabungan.filter((j) => j.status_aktif && ['emas', 'pribadi', 'qurban'].includes(j.tipe));
-  const savingsOthers = jenisTabungan.filter((j) => j.status_aktif && j.tipe === 'custom');
+  const SUB_ORDER = ['mandiri', 'hari_raya', 'qurban', 'berjangka'];
+  const pribadiSubs = SUB_ORDER
+    .map((k) => jenisTabungan.find((j) => j.status_aktif && j.sub_jenis === k))
+    .filter((j): j is JenisTabungan => Boolean(j));
 
   const adminMenuItems: MenuItem[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'users', label: 'Manajemen User', icon: Users },
     { id: 'jenis-tabungan', label: 'Jenis Tabungan', icon: Layers },
-    { id: 'goal-tracker', label: 'Goal Tracker', icon: Target },
     { id: 'harga-emas', label: 'Harga Emas Harian', icon: Coins },
     { id: 'qurban', label: 'Tabungan Qurban', icon: QurbanIcon },
     { 
@@ -89,6 +81,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: ReceiptText,
       badge: pendingTrxCount > 0 ? `${pendingTrxCount}` : undefined
     },
+    { id: 'pembayaran-harian', label: 'Pembayaran Harian', icon: CalendarCheck },
+    { id: 'gadai', label: 'Gadai Emas', icon: Landmark },
     { id: 'rekening-bank', label: 'Rekening Bank', icon: Building2 },
     { 
       id: 'notifikasi', 
@@ -101,7 +95,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const userMenuItems: MenuItem[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'tabungan', label: 'Tabungan Saya', icon: Layers, submenu: true },
+    { id: 'gadai', label: 'Gadai', icon: Landmark },
+    { id: 'emas', label: 'Tabungan Emas', icon: Coins },
+    { id: 'pribadi', label: 'Tabungan Pribadi', icon: Wallet, submenu: true },
     { id: 'transaksi-saya', label: 'Riwayat Transaksi', icon: ReceiptText },
     { id: 'rekening-bank-koperasi', label: 'Rekening Koperasi', icon: Landmark },
     { 
@@ -127,13 +123,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {isOpenMobile && (
         <div
           onClick={onCloseMobile}
-          className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-xs md:hidden animate-in fade-in duration-200"
+          className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-xs lg:hidden animate-in fade-in duration-200"
         />
       )}
 
       <aside
-        className={`fixed md:static inset-y-0 left-0 z-50 w-72 flex-shrink-0 flex flex-col justify-between p-4 md:p-5 bg-white dark:bg-slate-900 border-r border-slate-200/80 dark:border-slate-800 shadow-xl md:shadow-none transition-transform duration-300 ease-in-out ${
-          isOpenMobile ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+        className={`fixed lg:static inset-y-0 left-0 z-50 w-72 flex-shrink-0 flex flex-col justify-between p-4 lg:p-5 bg-white dark:bg-slate-900 border-r border-slate-200/80 dark:border-slate-800 shadow-xl lg:shadow-none transition-transform duration-300 ease-in-out ${
+          isOpenMobile ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >
         {/* Top Section */}
@@ -159,7 +155,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {/* Mobile close button */}
             <button
               onClick={onCloseMobile}
-              className="md:hidden p-2 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer"
+              className="lg:hidden p-2 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -168,62 +164,62 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* Navigation Menu */}
           <nav className="flex flex-col gap-1 px-1">
             <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-3 mb-1">
-              {currentUser.role === 'admin' ? 'Menu Administrator (9)' : `Menu Nasabah (${userMenuItems.length})`}
+              {currentUser.role === 'admin' ? 'Menu Administrator (11)' : `Menu Nasabah (${userMenuItems.length})`}
             </div>
             {menuItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id || 
+                (item.id === 'emas' && (activeTab === 'emas' || activeTab === 'tabungan-emas')) ||
                 (item.id === 'transaksi-saya' && activeTab === 'riwayat-transaksi') ||
                 (item.id === 'rekening-bank-koperasi' && activeTab === 'rekening-bank');
 
               if (item.submenu) {
-                const isOpen = tabunganOpen;
-                const hasSubCount = savingsSubmenu.length > 0 || savingsOthers.length > 0;
+                const activeParent = isPribadiTab(activeTab);
                 return (
                   <div key={item.id}>
                     <button
-                      onClick={() => setTabunganOpen(v => !v)}
+                      onClick={() => setPribadiOpen(v => !v)}
                       className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-all duration-200 cursor-pointer text-left ${
-                        isTabunganTab(activeTab)
+                        activeParent
                           ? 'bg-emerald-600 text-white font-bold shadow-md shadow-emerald-600/25'
                           : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                       }`}
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <Icon className={`w-4 h-4 flex-shrink-0 ${isTabunganTab(activeTab) ? 'text-white' : 'text-slate-400 dark:text-slate-400'}`} />
+                        <Icon className={`w-4 h-4 flex-shrink-0 ${activeParent ? 'text-white' : 'text-slate-400 dark:text-slate-300'}`} />
                         <span className="truncate">{item.label}</span>
                       </div>
-                      {hasSubCount && (
-                        <ChevronDown className={`w-4 h-4 flex-shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''} ${isTabunganTab(activeTab) ? 'text-white' : 'text-slate-400'}`} />
+                      {pribadiSubs.length > 0 && (
+                        <ChevronDown className={`w-4 h-4 flex-shrink-0 transition-transform duration-200 ${pribadiOpen ? 'rotate-180' : ''} ${activeParent ? 'text-white' : 'text-slate-400'}`} />
                       )}
                     </button>
 
-                    {isOpen && hasSubCount && (
+                    {pribadiOpen && pribadiSubs.length > 0 && (
                       <div className="mt-1 mb-1 ml-5 pl-3 border-l border-slate-200 dark:border-slate-700 flex flex-col gap-1">
-                        {[...savingsSubmenu, ...savingsOthers].map((j) => {
-                          const tabId = subTabForJenis(j);
-                          const subActive = tabId !== null && (activeTab === tabId || activeTab === `tabungan-${tabId === 'emas' || tabId === 'pribadi' || tabId === 'qurban' ? tabId : ''}`);
-                          const SubIcon = j.tipe === 'emas' ? Coins : j.tipe === 'pribadi' ? Wallet : j.tipe === 'qurban' ? QurbanIcon : (({Wallet, Coins, PiggyBank, Landmark, Target} as Record<string, MenuItemIcon>)[String((j.config as Record<string, any>)?.ikon || 'Wallet')] ?? Wallet);
-                          const label = j.nama.replace(/^Tabungan\s+/i, '');
+                        {pribadiSubs.map((j) => {
+                          const sub = j.sub_jenis ?? '';
+                          const subActive = activeParent && activePribadiSub === sub;
                           return (
                             <button
                               key={j.id}
                               onClick={() => {
-                                if (tabId) {
-                                  handleItemClick(tabId);
-                                } else {
-                                  showToast('Tabungan ini sedang dipersiapkan. Silakan hubungi admin.', 'info');
-                                }
+                                setActiveTab('pribadi');
+                                onOpenPribadiSub?.(sub);
+                                if (onCloseMobile) onCloseMobile();
                               }}
                               className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium transition-all duration-200 text-left ${
                                 subActive
                                   ? 'bg-emerald-600 text-white font-bold shadow-md shadow-emerald-600/25'
                                   : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                               }`}
-                              title={j.deskripsi}
                             >
-                              <SubIcon className={`w-3.5 h-3.5 flex-shrink-0 ${subActive ? 'text-white' : 'text-slate-400 dark:text-slate-400'}`} />
-                              <span className="truncate">{label}</span>
+                              {/* flaticon.com attributable — free icon set */}
+                              <img
+                                src={`/icons/${sub}.png`}
+                                alt={j.nama}
+                                className={`w-4 h-4 flex-shrink-0 rounded-sm object-contain grayscale ${subActive ? 'brightness-0 invert' : 'opacity-75 dark:invert dark:opacity-100'}`}
+                              />
+                              <span className="truncate">{j.nama.replace(/^Tabungan\s+/i, '')}</span>
                             </button>
                           );
                         })}
@@ -244,7 +240,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   }`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? 'text-white' : 'text-slate-400 dark:text-slate-400'}`} />
+                    <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? 'text-white' : 'text-slate-400 dark:text-slate-300'}`} />
                     <span className="truncate">{item.label}</span>
                   </div>
                   {item.badge && (

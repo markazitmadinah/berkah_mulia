@@ -33,6 +33,7 @@ interface UserDashboardProps {
   onOpenTarikPribadi: () => void;
   onOpenDaftarQurban?: () => void;
   onOpenSetorQurban?: (pendaftaranId?: number) => void;
+  onOpenPribadiSub?: (sub: string) => void;
 }
 
 export const UserDashboard: React.FC<UserDashboardProps> = ({
@@ -40,7 +41,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   onOpenSetorPribadi,
   onOpenTarikPribadi,
   onOpenDaftarQurban,
-  onOpenSetorQurban
+  onOpenSetorQurban,
+  onOpenPribadiSub
 }) => {
   const {
     currentUser,
@@ -160,7 +162,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       </motion.div>
 
       {/* Top 3 Cards Row (Gold Balance, Virtual Syariah Card, Quick Actions) */}
-      <motion.div variants={fadeUp} className="grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-5">
+      <motion.div variants={fadeUp} className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
         {/* 1. Gold Balance Card */}
         <BorderGlow
           className="md:col-span-4 h-full"
@@ -472,7 +474,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         <div className="lg:col-span-5 flex flex-col gap-5">
           {/* Tabungan Pribadi Box */}
           <div
-            onClick={() => setActiveTab('pribadi')}
+            onClick={() => onOpenPribadiSub?.('mandiri') ?? setActiveTab('pribadi')}
             className="rounded-3xl p-5 bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 shadow-xs hover:border-emerald-500/40 transition-all hover:-translate-y-0.5 cursor-pointer flex flex-col justify-between"
           >
             <div className="flex items-center justify-between">
@@ -503,7 +505,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
           {/* Tabungan Qurban Box */}
           <div
-            onClick={() => setActiveTab('qurban')}
+            onClick={() => onOpenPribadiSub?.('qurban') ?? setActiveTab('qurban')}
             className="rounded-3xl p-5 bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 shadow-xs hover:border-emerald-500/40 transition-all hover:-translate-y-0.5 cursor-pointer flex flex-col justify-between"
           >
             <div className="flex items-center justify-between">

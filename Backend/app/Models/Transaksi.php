@@ -21,8 +21,11 @@ class Transaksi extends Model
         'user_id',
         'jenis_tabungan_id',
         'pendaftaran_qurban_id',
+        'konfigurasi_id',
         'jenis_transaksi',
         'nominal',
+        'nominal_emas',
+        'nominal_selisih',
         'unit_didapat',
         'harga_acuan_id',
         'harga_acuan_snapshot',
@@ -45,6 +48,8 @@ class Transaksi extends Model
             'metode_pembayaran' => MetodePembayaran::class,
             'status_verifikasi' => StatusVerifikasi::class,
             'nominal' => 'decimal:2',
+            'nominal_emas' => 'decimal:2',
+            'nominal_selisih' => 'decimal:2',
             'unit_didapat' => 'decimal:4',
             'harga_acuan_snapshot' => 'decimal:2',
             'biaya_penalti' => 'decimal:2',
@@ -68,6 +73,11 @@ class Transaksi extends Model
     public function pendaftaranQurban(): BelongsTo
     {
         return $this->belongsTo(PendaftaranQurban::class);
+    }
+
+    public function konfigurasiSetoranEmas(): BelongsTo
+    {
+        return $this->belongsTo(KonfigurasiSetoranEmas::class, 'konfigurasi_id');
     }
 
     public function hargaAcuan(): BelongsTo

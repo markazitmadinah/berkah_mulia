@@ -4,13 +4,22 @@ namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Enums\UserRole;
 use App\Enums\UserStatus;
+use App\Enums\TipeTabungan;
 use App\Exports\UsersExport;
 use App\Exports\UsersTemplate;
 use App\Http\Controllers\Controller;
+use App\Http\Resources\KonfigurasiSetoranEmasResource;
+use App\Http\Resources\TransaksiResource;
 use App\Http\Resources\UserResource;
 use App\Imports\UsersImport;
 use App\Models\AuditLog;
+use App\Models\JenisTabungan;
+use App\Models\KonfigurasiSetoranEmas;
+use App\Models\PendaftaranQurban;
+use App\Models\Transaksi;
 use App\Models\User;
+use App\Services\ProgressCalculatorService;
+use App\Services\SaldoEmasService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -69,6 +78,87 @@ class UserController extends Controller
         $user->load('approvedBy');
 
         return $this->successResponse(new UserResource($user));
+    }
+
+    /**
+     * GET /admin/users/{user}/produk
+     * Semua produk yang digunakan nasabah: tabungan (emas/pribadi) dengan progress,
+     * pendaftaran qurban, dan riwayat transaksi.
+     */
+    public function produk(
+        User $user,
+        ProgressCalculatorService $progressService,
+        SaldoEmasService $saldoEmasService
+    ): JsonResponse {
+        $user->load('approvedBy');
+
+        $tabungan = [];
+        $totalSaldo = 0;
+
+        foreach (JenisTabungan::aktif()->orderBy('nama')->get() as $jenis) {
+            $progress = $progressService->getProgress($user, $jenis);
+            $konfigurasiList = $jenis->tipe === TipeTabungan::Emas
+                ? $saldoEmasService->getAktifList($user, $jenis)
+                : collect();
+
+            $include = $progress['saldo'] > 0
+                || $progress['pending_amount'] > 0
+                || $konfigurasiList->isNotEmpty();
+
+            if (! $include) {
+                continue;
+            }
+
+            $totalSaldo += $progress['saldo'];
+
+            $tabungan[] = [
+                'progress' => $progress,
+                'konfigurasi' => $konfigurasiList
+                    ->map(fn (KonfigurasiSetoranEmas $k) => (new KonfigurasiSetoranEmasResource($k))->resolve())
+                    ->values(),
+                'setoran_berkala' => $konfigurasiList
+                    ->map(fn (KonfigurasiSetoranEmas $k) => $saldoEmasService->getProgress($user, $k))
+                    ->values(),
+            ];
+        }
+
+        $qurban = PendaftaranQurban::with(['hewanQurban', 'periodeQurban'])
+            ->where('user_id', $user->id)
+            ->latest('id')
+            ->get()
+            ->map(fn (PendaftaranQurban $p) => [
+                'id' => $p->id,
+                'hewan' => $p->hewanQurban?->jenis_hewan,
+                'tahun' => $p->periodeQurban?->tahun,
+                'jumlah_hewan' => $p->jumlah_hewan,
+                'target_dana' => (float) $p->target_dana,
+                'total_terkumpul' => (float) $p->total_terkumpul,
+                'persentase' => $p->hitungPersentase(),
+                'status' => $p->status?->value,
+                'status_label' => $p->status?->label(),
+                'tanggal_daftar' => $p->tanggal_daftar?->toDateString(),
+            ])
+            ->values();
+
+        $transaksi = Transaksi::with(['jenisTabungan', 'rekeningBank'])
+            ->where('user_id', $user->id)
+            ->latest()
+            ->limit(100)
+            ->get();
+
+        return $this->successResponse([
+            'user' => new UserResource($user),
+            'produk' => [
+                'tabungan' => $tabungan,
+                'qurban' => $qurban,
+            ],
+            'summary' => [
+                'total_tabungan_aktif' => count($tabungan),
+                'total_saldo_tabungan' => round($totalSaldo, 2),
+                'transaksi_pending' => Transaksi::milikUser($user->id)->menungguVerifikasi()->count(),
+            ],
+            'transaksi' => TransaksiResource::collection($transaksi),
+        ]);
     }
 
     /**
@@ -270,16 +360,25 @@ class UserController extends Controller
         try {
             DB::transaction(function () use ($import, $request) {
                 Excel::import($import, $request->file('file'));
+                $import->prosesTabungan();
             });
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::error('Import user gagal: ' . $e->getMessage(), ['exception' => $e]);
             return $this->errorResponse('Import gagal. Tidak ada data yang diubah.', 500);
         }
 
+        $tabungan = [
+            'target_diatur'      => $import->getTargetCount(),
+            'saldo_awal_dicatat' => $import->getSaldoAwalCreatedCount(),
+            'saldo_awal_diubah'  => $import->getSaldoAwalChangedCount(),
+            'saldo_awal_dihapus' => $import->getSaldoAwalRemovedCount(),
+        ];
+
         AuditLog::record('import', $request->user(), [], [
             'jumlah_ditambahkan' => $import->getCreatedCount(),
             'jumlah_diupdate'    => $import->getUpdatedCount(),
             'jumlah_dilewati'    => $import->getSkippedCount(),
+            'tabungan'           => $tabungan,
         ]);
 
         return $this->successResponse([
@@ -287,6 +386,7 @@ class UserController extends Controller
             'jumlah_diupdate'    => $import->getUpdatedCount(),
             'jumlah_dilewati'    => $import->getSkippedCount(),
             'detail_dilewati'    => $import->getSkippedDetail(),
+            'tabungan'           => $tabungan,
         ], "Import selesai. {$import->getCreatedCount()} ditambahkan, {$import->getUpdatedCount()} diupdate, {$import->getSkippedCount()} dilewati.");
     }
 }

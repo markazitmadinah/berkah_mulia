@@ -7,16 +7,12 @@ import {
   Upload,
   Coins,
   Wallet,
-  PiggyBank,
-  Banknote,
-  Target,
   ShieldCheck,
   FileImage,
   Clock,
   Landmark,
   Trophy,
-  Info,
-  AlertTriangle
+  Info
 } from 'lucide-react';
 import { QurbanIcon } from '../QurbanIcon';
 import { JenisTabungan, RekeningBank } from '../../types';
@@ -24,17 +20,11 @@ import { JenisTabungan, RekeningBank } from '../../types';
 interface SetorPageProps {
   defaultTipe?: 'emas' | 'pribadi' | 'qurban';
   defaultJenisId?: number;
+  defaultNominal?: number;
+  defaultKonfigurasiId?: number;
   qurbanPendaftaranId?: number;
   onBack: () => void;
 }
-
-const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  Wallet,
-  Coins,
-  PiggyBank,
-  Banknote,
-  Target
-};
 
 const TIPE_STYLE: Record<string, { active: string; idle: string }> = {
   emas: {
@@ -51,38 +41,32 @@ const TIPE_STYLE: Record<string, { active: string; idle: string }> = {
     active:
       'border-rose-500 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 shadow-sm',
     idle: 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
-  },
-  custom: {
-    active:
-      'border-blue-500 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 shadow-sm',
-    idle: 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
   }
 };
 
-export const SetorPage: React.FC<SetorPageProps> = ({ defaultTipe = 'emas', defaultJenisId, qurbanPendaftaranId, onBack }) => {
+export const SetorPage: React.FC<SetorPageProps> = ({ defaultTipe = 'emas', defaultJenisId, defaultNominal, defaultKonfigurasiId, qurbanPendaftaranId, onBack }) => {
   const {
     jenisTabungan,
     rekeningBank,
     activeHargaEmas,
     createSetoranUser,
-    createSetorCustom,
     pendaftaranQurban,
     hewanQurban,
     userTransaksi,
     userEmasGramTotal,
     userEmasGoal,
+    hariRayaStatus,
     showToast
   } = useApp();
 
   const visibleJenis = jenisTabungan.filter((j) => j.status_aktif);
 
   const [selectedJenisId, setSelectedJenisId] = useState<number>(() => {
-    const byId = visibleJenis.find((j) => j.id === defaultJenisId);
-    if (byId) return byId.id;
-    const match = visibleJenis.find((j) => j.tipe === defaultTipe);
-    return (match ?? visibleJenis[0])?.id ?? 0;
+    const byId = defaultJenisId ? visibleJenis.find((j) => j.id === defaultJenisId) : undefined;
+    const byTipe = visibleJenis.find((j) => j.tipe === defaultTipe);
+    return (byId ?? byTipe ?? visibleJenis[0])?.id ?? 0;
   });
-  const [nominal, setNominal] = useState<string>('');
+  const [nominal, setNominal] = useState<string>(defaultNominal ? String(defaultNominal) : '');
   const [selectedRekeningId, setSelectedRekeningId] = useState<number>(
     rekeningBank.find((r) => r.status_aktif)?.id || 1
   );
@@ -92,29 +76,16 @@ export const SetorPage: React.FC<SetorPageProps> = ({ defaultTipe = 'emas', defa
   const [selectedQurbanId, setSelectedQurbanId] = useState<number>(
     qurbanPendaftaranId || (pendaftaranQurban[0]?.id || 1)
   );
-  const [userCustomGoal, setUserCustomGoal] = useState<number | null>(null);
 
   const selectedJenis: JenisTabungan | null =
     visibleJenis.find((j) => j.id === selectedJenisId) ?? null;
   const selTipe = selectedJenis?.tipe;
-  const cfg = (selectedJenis?.config ?? {}) as Record<string, any>;
-
-  useEffect(() => {
-    if (selTipe !== 'custom' || !cfg.goal_boleh_ubah || !selectedJenis) {
-      setUserCustomGoal(null);
-      return;
-    }
-    api.get<{ target_nominal: number | null }>(`/tabungan-custom/${selectedJenis.id}/target`)
-      .then((r) => setUserCustomGoal(r.data.target_nominal ?? null))
-      .catch(() => setUserCustomGoal(null));
-  }, [selTipe, cfg.goal_boleh_ubah, selectedJenis?.id]);
 
   const prevJenisRef = useRef<number | null>(null);
   const selectedJenisIdNum = selectedJenis?.id ?? null;
   useEffect(() => {
     if (prevJenisRef.current !== null && prevJenisRef.current !== selectedJenisIdNum) {
       setNominal('');
-      setInputUnit('');
       setCatatan('');
       setBuktiFile(null);
       setBuktiPreview('');
@@ -127,18 +98,14 @@ export const SetorPage: React.FC<SetorPageProps> = ({ defaultTipe = 'emas', defa
   const estimasiGram = selTipe === 'emas' && nominalValue > 0 ? (nominalValue / activeHarga).toFixed(4) : null;
   const activeRekening = rekeningBank.filter((r) => r.status_aktif);
 
-  const mode = selectedJenis?.mode_perhitungan;
-  const setoranTetap = selTipe === 'custom' ? Number(cfg.setoran_berkala_nominal || 0) : 0;
-  const isKonversi = selTipe === 'custom' && mode === 'konversi_unit';
-  const isTetap = selTipe === 'custom' && mode === 'nominal_tetap';
-  const [inputUnit, setInputUnit] = useState<string>('');
-  const unitVal = Number(inputUnit.replace(/,/g, '.'));
-  const nominalDariUnit = isKonversi && unitVal > 0 ? Math.floor(unitVal * activeHarga) : 0;
-
   const goalGram = userEmasGoal;
   const sisaGram = goalGram != null ? Math.max(goalGram - userEmasGramTotal, 0) : 0;
   const maxNominal = goalGram != null ? Math.floor(sisaGram * activeHarga) : Infinity;
   const goalTercapai = goalGram != null && userEmasGramTotal >= goalGram;
+
+  const isBerjangka = selectedJenis?.sub_jenis === 'berjangka';
+  const deadlineDate = selectedJenis?.deadline ? new Date(selectedJenis.deadline + 'T00:00:00') : null;
+  const deadlinePassed = isBerjangka && deadlineDate != null && deadlineDate < new Date();
 
   const selTrx = userTransaksi.filter((t) => t.jenis_tabungan_id === selectedJenis?.id);
   const saldoJenis =
@@ -154,10 +121,7 @@ export const SetorPage: React.FC<SetorPageProps> = ({ defaultTipe = 'emas', defa
   const jenisIcon = (j: JenisTabungan) => {
     if (j.tipe === 'emas') return <Coins className="w-4 h-4 text-amber-500" />;
     if (j.tipe === 'qurban') return <QurbanIcon className="w-4 h-4 text-rose-500" />;
-    if (j.tipe === 'pribadi') return <Wallet className="w-4 h-4 text-emerald-500" />;
-    const key = String((j.config as Record<string, any>)?.ikon || 'Wallet');
-    const C = ICONS[key] ?? Wallet;
-    return <C className="w-4 h-4 text-blue-500" />;
+    return <Wallet className="w-4 h-4 text-emerald-500" />;
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -175,14 +139,10 @@ export const SetorPage: React.FC<SetorPageProps> = ({ defaultTipe = 'emas', defa
       showToast('Pilih jenis tabungan terlebih dahulu.', 'error');
       return;
     }
-    const efektifNominal = isKonversi
-      ? nominalDariUnit
-      : isTetap
-        ? setoranTetap
-        : nominalValue;
+    const efektifNominal = nominalValue;
 
     if (efektifNominal <= 0) {
-      showToast(isKonversi ? 'Masukkan jumlah unit yang valid.' : 'Nominal setoran harus lebih dari 0', 'error');
+      showToast('Nominal setoran harus lebih dari 0', 'error');
       return;
     }
 
@@ -196,36 +156,18 @@ export const SetorPage: React.FC<SetorPageProps> = ({ defaultTipe = 'emas', defa
       return;
     }
 
-    if (selTipe === 'custom') {
-      if (cfg.goal_boleh_ubah && userCustomGoal == null) {
-        showToast('Anda harus menentukan target tabungan terlebih dahulu sebelum bisa setor.', 'error');
-        return;
-      }
-      const effectiveTarget = cfg.goal_boleh_ubah ? (userCustomGoal ?? 0) : targetJenis;
-      const overshootKeSaldo = cfg.overpayment === 'saldo';
-      if (!overshootKeSaldo && effectiveTarget > 0 && saldoJenis >= effectiveTarget) {
-        showToast('Target tabungan sudah tercapai. Silakan hubungi admin untuk pencairan dana.', 'error');
-        return;
-      }
-      const minCfg = cfg.min_nominal ? Number(cfg.min_nominal) : 1;
-      const maxCfg = cfg.max_nominal ? Number(cfg.max_nominal) : 0;
-      const kelipatanCfg = cfg.kelipatan ? Number(cfg.kelipatan) : 0;
-      if (efektifNominal < minCfg) {
-        showToast(`Minimal setoran Rp ${formatRupiah(minCfg)} untuk produk ini.`, 'error');
-        return;
-      }
-      if (maxCfg > 0 && efektifNominal > maxCfg) {
-        showToast(`Maksimal setoran Rp ${formatRupiah(maxCfg)} untuk produk ini.`, 'error');
-        return;
-      }
-      if (kelipatanCfg > 0 && efektifNominal % kelipatanCfg !== 0) {
-        showToast(`Setoran harus kelipatan Rp ${formatRupiah(kelipatanCfg)}.`, 'error');
-        return;
-      }
-    }
-
     if (selTipe === 'qurban' && !selectedQurbanId) {
       showToast('Pilih target pendaftaran qurban', 'error');
+      return;
+    }
+
+    if (deadlinePassed) {
+      showToast('Periode setoran tabungan berjangka sudah berakhir.', 'error');
+      return;
+    }
+
+    if (selectedJenis?.sub_jenis === 'hari_raya' && (hariRayaStatus?.target ?? 0) <= 0) {
+      showToast('Atur target tabungan hari raya terlebih dahulu sebelum menyetor.', 'error');
       return;
     }
 
@@ -234,25 +176,16 @@ export const SetorPage: React.FC<SetorPageProps> = ({ defaultTipe = 'emas', defa
       return;
     }
 
-    if (selTipe === 'custom') {
-      createSetorCustom(selectedJenis.id, {
-        jenis_tabungan_id: selectedJenis.id,
-        nominal: efektifNominal,
-        rekening_bank_id: selectedRekeningId,
-        bukti_transfer_file: buktiFile,
-        catatan_user: catatan
-      });
-    } else {
-      createSetoranUser({
-        jenis_tabungan_id: selectedJenis.id,
-        tipe_tabungan: selTipe,
-        nominal: efektifNominal,
-        rekening_bank_id: selectedRekeningId,
-        bukti_transfer_file: buktiFile,
-        catatan_user: catatan,
-        pendaftaran_qurban_id: selTipe === 'qurban' ? selectedQurbanId : undefined
-      });
-    }
+    createSetoranUser({
+      jenis_tabungan_id: selectedJenis.id,
+      tipe_tabungan: selTipe,
+      nominal: efektifNominal,
+      rekening_bank_id: selectedRekeningId,
+      bukti_transfer_file: buktiFile,
+      catatan_user: catatan,
+      pendaftaran_qurban_id: selTipe === 'qurban' ? selectedQurbanId : undefined,
+      konfigurasi_id: selTipe === 'emas' ? defaultKonfigurasiId : undefined
+    });
 
     onBack();
   };
@@ -315,7 +248,7 @@ export const SetorPage: React.FC<SetorPageProps> = ({ defaultTipe = 'emas', defa
               </label>
               <div className="flex flex-wrap gap-2">
                 {visibleJenis.map((j) => {
-                  const st = TIPE_STYLE[j.tipe] ?? TIPE_STYLE.custom;
+                  const st = TIPE_STYLE[j.tipe];
                   const active = j.id === selectedJenisId;
                   return (
                     <button
@@ -358,83 +291,51 @@ export const SetorPage: React.FC<SetorPageProps> = ({ defaultTipe = 'emas', defa
             )}
 
             {/* Nominal Input */}
-            {isKonversi ? (
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Jumlah Unit (Gram)
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={inputUnit}
-                    onChange={(e) => {
-                      const clean = e.target.value.replace(/[^\d,]/g, '');
-                      setInputUnit(clean);
-                    }}
-                    placeholder="Masukkan jumlah gram, contoh: 0,5"
-                    className="w-full pl-4 pr-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-extrabold text-base text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
-                  />
-                </div>
-                {unitVal > 0 && (
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 font-semibold">
-                    ≈ Rp {formatRupiah(nominalDariUnit)} (harga {formatRupiah(activeHarga)}/gram)
-                  </p>
-                )}
-                <p className="text-[10px] text-slate-400 mt-1">
-                  {cfg.min_nominal ? `Minimal setara Rp ${formatRupiah(Number(cfg.min_nominal))}` : 'Tanpa minimum'}
-                  {cfg.max_nominal ? ` • Maksimal setara Rp ${formatRupiah(Number(cfg.max_nominal))}` : ''}
-                </p>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                Nominal Setoran (Rp)
+              </label>
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-extrabold text-sm text-slate-400">
+                  Rp
+                </span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={nominal}
+                  onChange={(e) => {
+                    let digits = e.target.value.replace(/\D/g, '');
+                    if (!digits) {
+                      setNominal('');
+                      return;
+                    }
+                    let value = Number(digits);
+                    if (selectedJenis?.tipe === 'emas' && goalGram != null && value > maxNominal) {
+                      value = maxNominal;
+                    }
+                    setNominal(value ? value.toLocaleString('id-ID') : '');
+                  }}
+                  placeholder="Masukkan nominal, contoh: 1.000.000"
+                  disabled={selectedJenis?.tipe === 'emas' && goalTercapai}
+                  required
+                  className="w-full pl-11 pr-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-extrabold text-base text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40 disabled:opacity-60 disabled:cursor-not-allowed"
+                />
               </div>
-            ) : (
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                  {isTetap ? 'Nominal Setoran Tetap (Rp)' : 'Nominal Setoran (Rp)'}
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-extrabold text-sm text-slate-400">
-                    Rp
-                  </span>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={isTetap && setoranTetap > 0 ? setoranTetap.toLocaleString('id-ID') : nominal}
-                    onChange={(e) => {
-                      let digits = e.target.value.replace(/\D/g, '');
-                      if (!digits) {
-                        setNominal('');
-                        return;
-                      }
-                      let value = Number(digits);
-                      if (selectedJenis?.tipe === 'emas' && goalGram != null && value > maxNominal) {
-                        value = maxNominal;
-                      }
-                      setNominal(value ? value.toLocaleString('id-ID') : '');
-                    }}
-                    placeholder="Masukkan nominal, contoh: 1.000.000"
-                    disabled={(selectedJenis?.tipe === 'emas' && goalTercapai) || (isTetap && setoranTetap > 0)}
-                    required
-                    className="w-full pl-11 pr-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-extrabold text-base text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40 disabled:opacity-60 disabled:cursor-not-allowed"
-                  />
-                </div>
 
-                {!isTetap && (
-                  <div className="flex items-center gap-1.5 mt-2 overflow-x-auto pb-1">
-                    {[50000, 100000, 250000, 500000, 1000000].map((preset) => (
-                      <button
-                        key={preset}
-                        type="button"
-                        onClick={() => setNominal(preset.toLocaleString('id-ID'))}
-                        disabled={selectedJenis?.tipe === 'emas' && goalTercapai}
-                        className="px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-700/60 hover:bg-slate-200 dark:hover:bg-slate-700 text-[11px] font-semibold text-slate-600 dark:text-slate-300 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
-                      >
-                        +{preset >= 1000000 ? `${preset / 1000000}Jt` : `${preset / 1000}k`}
-                      </button>
-                    ))}
-                  </div>
-                )}
+              <div className="flex items-center gap-1.5 mt-2 overflow-x-auto pb-1">
+                {[50000, 100000, 250000, 500000, 1000000].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setNominal(preset.toLocaleString('id-ID'))}
+disabled={(selectedJenis?.tipe === 'emas' && goalTercapai) || deadlinePassed}
+                    className="px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-700/60 hover:bg-slate-200 dark:hover:bg-slate-700 text-[11px] font-semibold text-slate-600 dark:text-slate-300 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                  >
+                    +{preset >= 1000000 ? `${preset / 1000000}Jt` : `${preset / 1000}k`}
+                  </button>
+                ))}
               </div>
-            )}
+            </div>
 
               {/* Goal progress untuk emas */}
               {selectedJenis?.tipe === 'emas' && goalGram != null && (
@@ -487,16 +388,31 @@ export const SetorPage: React.FC<SetorPageProps> = ({ defaultTipe = 'emas', defa
                 </div>
               )}
 
-              {/* Aturan nominal produk custom */}
-              {selTipe === 'custom' && (
-                <p className="text-[10px] text-slate-400 mt-1">
-                  {isTetap && setoranTetap > 0 ? `Setoran tetap Rp ${formatRupiah(setoranTetap)}` : ''}
-                  {!isTetap && (cfg.min_nominal ? `Minimal Rp ${formatRupiah(Number(cfg.min_nominal))}` : 'Tanpa minimum')}
-                  {!isTetap && cfg.max_nominal ? ` • Maksimal Rp ${formatRupiah(Number(cfg.max_nominal))}` : ''}
-                  {!isTetap && cfg.kelipatan ? ` • Kelipatan Rp ${formatRupiah(Number(cfg.kelipatan))}` : ''}
-                  {isKonversi && !cfg.max_nominal ? '' : ''}
-                </p>
+              {/* Info deadline tabungan berjangka */}
+              {isBerjangka && (
+                <div className={`mt-2 p-3 rounded-2xl border ${deadlinePassed ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800/50' : 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800/50'}`}>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2 text-xs font-bold text-blue-800 dark:text-blue-300">
+                      <Landmark className="w-4 h-4 flex-shrink-0" />
+                      Berjangka — setoran berkala {selectedJenis?.frekuensi_setoran ?? 'berkala'} sampai tanggal jatuh tempo
+                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                      Tanggal deadline:{' '}
+                      <span className={`font-extrabold ${deadlinePassed ? 'text-rose-700 dark:text-rose-400' : 'text-blue-700 dark:text-blue-300'}`}>
+                        {deadlineDate ? deadlineDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}
+                      </span>
+                      {deadlinePassed
+                        ? ' — sudah lewat, setoran ditutup.'
+                        : ' — setoran diizinkan sebelum tanggal tersebut.'}
+                    </p>
+                  </div>
+                </div>
               )}
+
+              {/* Aturan nominal produk */}
+              <p className="text-[10px] text-slate-400 mt-1">
+                Tanpa minimum
+              </p>
 
             {/* Live Gold Gram Estimate */}
             {selTipe === 'emas' && estimasiGram && (
@@ -575,16 +491,8 @@ export const SetorPage: React.FC<SetorPageProps> = ({ defaultTipe = 'emas', defa
               />
             </div>
 
-            {/* Buttons */}
+{/* Buttons */}
             <div className="pt-3 border-t border-slate-100 dark:border-slate-700 flex flex-col gap-3 mt-auto">
-              {selTipe === 'custom' && cfg.goal_boleh_ubah && userCustomGoal == null && (
-                <div className="rounded-2xl p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-600/40 flex items-start gap-3">
-                  <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-amber-700 dark:text-amber-300">
-                    Anda harus menentukan target tabungan terlebih dahulu. Kembali ke halaman produk dan klik <strong>"Buat Target Saya"</strong>.
-                  </p>
-                </div>
-              )}
               <div className="flex items-center justify-end gap-2.5">
                 <button
                   type="button"
@@ -595,7 +503,7 @@ export const SetorPage: React.FC<SetorPageProps> = ({ defaultTipe = 'emas', defa
                 </button>
                 <button
                   type="submit"
-                  disabled={(selectedJenis?.tipe === 'emas' && goalTercapai) || (selTipe === 'custom' && cfg.goal_boleh_ubah && userCustomGoal == null) || (isKonversi && unitVal <= 0)}
+                  disabled={selectedJenis?.tipe === 'emas' && goalTercapai}
                   className="py-2.5 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-extrabold shadow-md shadow-emerald-600/25 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Kirim Konfirmasi Setoran

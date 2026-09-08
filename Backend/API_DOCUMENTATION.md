@@ -25,6 +25,7 @@
 11. [Dashboard dan Progress](#9-dashboard--progress)
 12. [Notifikasi](#10-notifikasi)
 13. [Audit Log](#11-audit-log)
+14. [Gadai Emas](#12-gadai-emas)
 
 ---
 
@@ -676,11 +677,57 @@ POST /admin/users/import
 |---|---|---|---|
 | `file` | file | Ya | xlsx/csv, max 10MB |
 
+**Aturan kalimat:** `Nama Lengkap`, `Email`, `No. Handphone`, `Nomor Anggota (16 digit)` wajib diisi (`Nomor Anggota` harus 16 digit angka). `Password` opsional (default `password123` bila kosong), `Peran`/`Status` opsional (default `Nasabah`/`Aktif`). Baris baru membuat user (tipe `user`/nasabah), email/anggota yang sudah ada akan memperbarui data yang ada.
+
+### Kolom Tabungan (dinamis sesuai jenis tabungan pribadi yang aktif)
+
+Untuk setiap jenis tabungan pribadi aktif (`Tabungan Mandiri`, `Tabungan Hari Raya`, `Tabungan Berjangka`) tersedia dua kolom opsional:
+
+| Kolom | Tipe | Perilaku |
+|---|---|---|
+| `{Nama Jenis} - Target` | angka (rupiah) | Set target tabungan nasabah pada `user_tabungan_target`. Diisi ulang = target diperbarui. |
+| `{Nama Jenis} - Saldo Awal` | angka (rupiah) | Dana yang **sudah dibayar** nasabah. Dicatat sebagai transaksi setor terverifikasi (langsung masuk saldo tabungan) dengan marker `SALDO_AWAL_IMPORT`, sehingga nasabah **tidak perlu menginput manual**. |
+
+**Perilaku re-import (set ulang dana):**
+- Saldo awal lebih besar/kecil dari sebelumnya → nilai diperbarui (tidak ditambah/dobel).
+- Saldo awal diisi `0` → catatan saldo awal dari import dihapus (soft delete) beserta saldonya.
+- Sel kosong → data tabungan tidak disentuh.
+
+### Contoh Response (200)
+
+```json
+{
+  "success": true,
+  "message": "Import selesai. 1 ditambahkan, 0 diupdate, 0 dilewati.",
+  "data": {
+    "jumlah_ditambahkan": 1,
+    "jumlah_diupdate": 0,
+    "jumlah_dilewati": 0,
+    "detail_dilewati": [],
+    "tabungan": {
+      "target_diatur": 2,
+      "saldo_awal_dicatat": 2,
+      "saldo_awal_diubah": 0,
+      "saldo_awal_dihapus": 0
+    }
+  }
+}
+```
+
+**Contoh baris CSV:**
+
+```
+Nama Lengkap,Email,No. Handphone,Nomor Anggota (16 digit),Alamat,Password,Peran,Status,Tabungan Mandiri - Target,Tabungan Mandiri - Saldo Awal,Tabungan Hari Raya - Target,Tabungan Hari Raya - Saldo Awal
+Nasabah Baru,nasabah@mail.com,081295000001,1000000000000016,Jl. Coba No.1,password123,Nasabah,Aktif,1000000,500000,2000000,1000000
+```
+
 ## 2.12 Download Import Template
 
 ```
 GET /admin/users/import/template
 ```
+
+Mengunduh file XLSX template impor nasabah. Kolom `{Nama Jenis} - Target` dan `{Nama Jenis} - Saldo Awal` otomatis muncul sesuai jenis tabungan pribadi aktif saat file dibuat. Baris 2 berisi contoh isian yang **otomatis dilewati saat import** (boleh diisi ulang data baru); petunjuk pengisian tersedia sebagai komentar di sel A1.
 
 ---
 
@@ -758,7 +805,7 @@ POST /admin/jenis-tabungan
 | `kode` | string | Ya | max 50, unique |
 | `nama` | string | Ya | max 255 |
 | `deskripsi` | string | Tidak | |
-| `tipe` | string | Ya | `emas`, `pribadi`, `qurban`, `custom` |
+| `tipe` | string | Ya | `emas`, `pribadi`, `qurban` |
 | `mode_perhitungan` | string | Ya | `nominal_bebas`, `nominal_tetap`, `konversi_unit` |
 | `target_nominal` | decimal | Tidak | min 0 |
 | `target_unit` | decimal | Tidak | min 0 |
@@ -782,7 +829,7 @@ curl -X POST http://localhost:8000/api/v1/admin/jenis-tabungan \
     "kode": "tabungan-haji",
     "nama": "Tabungan Haji",
     "deskripsi": "Tabungan khusus persiapan ibadah haji",
-    "tipe": "custom",
+    "tipe": "pribadi",
     "mode_perhitungan": "nominal_bebas",
     "target_nominal": 35000000,
     "tanpa_batas_waktu": true,
@@ -1124,6 +1171,69 @@ curl -X PUT http://localhost:8000/api/v1/emas/goal \
 
 ---
 
+## Batal & Refund Setoran Berkala (per Rencana)
+
+```
+POST /emas/setoran-berkala/{id}/batalkan
+```
+
+**Akses:** User (pemilik rencana).
+
+Membatalkan **satu** rencana pembayaran emas saja — rencana lain tidak tersentuh.
+Nilai emas rencana direfund **90%** (potongan 10%), saldo dana rencana **100%**.
+Refund menjadi transaksi `tarik` berstatus `menunggu_verifikasi` (gram & saldo dana
+benar-benar keluar setelah admin verifikasi). Goal global (`target_emas_gram`) **tidak**
+dihapus oleh refund per-rencana.
+
+### Request Body
+
+| Field | Tipe | Wajib | Validasi |
+|---|---|---|---|
+| `bank_tujuan` | string | Saat ada refund | max 100 |
+| `no_rekening` | numeric | Saat ada refund | 10–16 digit |
+| `atas_nama` | string | Saat ada refund | max 100 |
+| `catatan_user` | string | Tidak | max 500 |
+
+> Jika rencana belum punya saldo (belum ada setoran), rencana langsung dibatalkan
+> tanpa perlu data bank dan tanpa transaksi refund.
+
+### Contoh Request
+
+```bash
+curl -X POST http://localhost:8000/api/v1/emas/setoran-berkala/12/batalkan \
+  -H "Authorization: Bearer {user_token}" \
+  -H "Content-Type: application/json" \
+  -d '{"bank_tujuan":"Bank Syariah Indonesia (BSI)","no_rekening":"7123456789","atas_nama":"Ahmad Fauzi"}'
+```
+
+### Contoh Response (200 — ada refund)
+
+```json
+{
+  "success": true,
+  "message": "Rencana dibatalkan. Pengajuan refund (setelah potongan 10%) diajukan — menunggu verifikasi admin.",
+  "data": {
+    "rencana": { "id": 12, "status": "batal" },
+    "refund": {
+      "gram_dibatalkan": 0.012,
+      "nilai_gram": 12000,
+      "penalti_10_persen": 1200,
+      "saldo_dana": 3000,
+      "nominal_refund": 13800,
+      "transaksi_refund_id": 345
+    }
+  }
+}
+```
+
+### Error
+
+- `404` + `NOT_FOUND`: rencana bukan milik user.
+- `422` + `TIDAK_AKTIF`: rencana sudah batal/selesai.
+- `400`: tidak ada harga emas aktif saat rencana punya gram emas.
+
+---
+
 # 5. Tabungan Pribadi
 
 ## 5.1 Setor Tabungan Pribadi
@@ -1180,37 +1290,6 @@ GET /tabungan-pribadi/progress
 ```
 
 > `persentase = null` jika tidak ada target (mode open-ended). `pending_amount` TIDAK dihitung ke `saldo`.
-
-## 5.4 Tabungan Custom
-
-Endpoint generik untuk setiap jenis tabungan bertipe `custom`. Batas setoran (min/maks/kelipatan) dibaca dari kolom `config` JSON yang diisi admin di wizard produk.
-
-```
-POST /tabungan-custom/{jenisTabungan}/setor
-POST /tabungan-custom/{jenisTabungan}/tarik
-GET  /tabungan-custom/{jenisTabungan}/progress
-```
-
-**Akses:** User. `{jenisTabungan}` = ID Jenis Tabungan tipe `custom`.
-
-### Request Body Setor
-
-| Field | Tipe | Wajib | Keterangan |
-|---|---|---|---|
-| `nominal` | decimal | Ya | Harus memenuhi `min_nominal`/`max_nominal`/`kelipatan` dari config |
-| `metode_pembayaran` | `cash`/`transfer` | Ya | |
-| `rekening_bank_id` | int | Jika transfer | |
-| `bukti_transfer` | file | Jika transfer | jpg/jpeg/png/pdf, max 2MB |
-| `catatan_user` | string | Tidak | |
-
-### Request Body Tarik
-
-| Field | Tipe | Wajib |
-|---|---|---|
-| `nominal` | decimal | Ya |
-| `catatan_user` | string | Tidak |
-
-`tarik` hanya berhasil jika `allow_withdrawal=true` (403 `WITHDRAWAL_NOT_ALLOWED`). Response progress identik dengan Tabungan Pribadi.
 
 ---
 
@@ -1700,9 +1779,128 @@ GET /admin/audit-logs?action=verify&model_type=Transaksi&dari=2026-08-01
 }
 ```
 
+## Hapus Riwayat Audit Log
+
+```
+DELETE /admin/audit-logs
+```
+
+Menghapus seluruh catatan audit agar data tidak menumpuk & membebani sistem.
+Satu jejak `purge` tetap ditulis oleh pelaku sebagai bukti tindakan (model `User`).
+
+### Contoh Response (200)
+
+```json
+{
+  "success": true,
+  "message": "42 catatan audit berhasil dihapus.",
+  "data": { "deleted": 42 }
+}
+```
+
 ---
 
-# Ringkasan Seluruh Endpoint (72 Total)
+# 12. Gadai Emas
+
+Modul pembiayaan gadai emas: peserta menggadaikan emas sebagai jaminan, koperasi
+memberikan pembiayaan = **persen gadai × nilai taksiran** (taksiran = berat bersih × harga acuan).
+Siklus status: `diajukan` → `disetujui` → `aktif` → `jatuh_tempo`(`terlambat`) → `lunas`/`diperpanjang`; ada pula `batal` (potongan 10%).
+
+## 12.1 List Gadai (Admin)
+
+```
+GET /admin/gadai?status=aktif&q=kata&per_page=15
+```
+
+Filter: `status` (salah satu dari `diajukan|disetujui|aktif|jatuh_tempo|terlambat|diperpanjang|lunas|batal`), `q` (nomor/peserta/jenis emas).
+
+### Contoh Response (200)
+
+```json
+{
+  "success": true,
+  "message": "Berhasil mengambil data gadai.",
+  "summary": {
+    "total": 4,
+    "aktif": { "count": 1, "nominal": 6400000 },
+    "sisa_pokok": 3200000
+  },
+  "items": [
+    {
+      "id": 1,
+      "nomor_gadai": "GDL-0001",
+      "user": { "id": 2, "name": "Siti Aminah", "nomor_anggota": "BM-0001" },
+      "user_id": 2,
+      "jenis_emas": "Kalung emas 22K",
+      "berat_gram": 10.5,
+      "kadar": 916,
+      "berat_bersih_gram": 9.618,
+      "harga_acuan": 1400000,
+      "nilai_taksiran": 13465200,
+      "persen_gadai": 80,
+      "besaran_gadai": 10772160,
+      "tanggal_aju": "2026-09-08",
+      "tanggal_aktif": null,
+      "tanggal_jatuh_tempo": null,
+      "tenor_satuan": "bulanan",
+      "toleransi_hari": 7,
+      "frekuensi_bayar": "bulanan",
+      "nominal_angkuran": 1500000,
+      "total_dibayar": 0,
+      "sisa_pokok": 10772160,
+      "tanggal_lunas": null,
+      "status": "diajukan",
+      "catatan": null
+    }
+  ]
+}
+```
+
+## 12.2 Store Gadai (Admin): `POST /admin/gadai`
+
+Request body (semua field inti; `harga_acuan`, `persen_gadai`, `kadar`, `berat_gram`
+dipakai menghitung `nilai_taksiran`, `besaran_gadai` di server):
+
+```json
+{
+  "user_id": 2,
+  "jenis_emas": "Kalung emas 22K",
+  "berat_gram": 10.5,
+  "kadar": 916,
+  "harga_acuan": 1400000,
+  "persen_gadai": 80,
+  "tenor_satuan": "bulanan",
+  "toleransi_hari": 7,
+  "frekuensi_bayar": "bulanan",
+  "nominal_angkuran": 1500000,
+  "catatan": "Berat sudah dibersihkan"
+}
+```
+
+## 12.3 Show Gadai: `GET /admin/gadai/{id}` (Admin) / `GET /gadai-saya/{id}` (User)
+
+Mengembalikan data gadai + `angsuran` (riwayat pembayaran).
+
+## 12.4 Transisi Status (Admin)
+
+```
+POST /admin/gadai/{id}/approve      # diajukan → disetujui
+POST /admin/gadai/{id}/aktifkan     # disetujui → aktif (set tanggal_aktif + jatuh tempo)
+POST /admin/gadai/{id}/bayar        # catat angsuran (parameter: nominal, tanggal_bayar, metode_pembayaran, catatan)
+POST /admin/gadai/{id}/lunasi       # → lunas (pelunasan sisa pokok, emas dikembalikan)
+POST /admin/gadai/{id}/batal        # → batal (potongan 10% dari total dibayar, emas dikembalikan)
+POST /admin/gadai/{id}/terlambat    # jatuh_tempo → terlambat
+POST /admin/gadai/{id}/perpanjang   # jatuh_tempo/terlambat/diperpanjang → diperpanjang (+1 periode)
+DELETE /admin/gadai/{id}            # hapus hanya dari status diajukan/disetujui
+```
+
+## 12.5 List Gadai Milik Sendiri (User): `GET /gadai-saya?per_page=15`
+
+Sama dengan 12.1 namun hanya menampilkan data milik user yang login.
+
+---
+
+# Ringkasan Seluruh Endpoint (86 Total)
 
 | # | Method | Endpoint | Akses |
 |---|---|---|---|
@@ -1745,9 +1943,6 @@ GET /admin/audit-logs?action=verify&model_type=Transaksi&dari=2026-08-01
 | 35 | POST | `/tabungan-pribadi/setor` | User |
 | 36 | POST | `/tabungan-pribadi/tarik` | User |
 | 37 | GET | `/tabungan-pribadi/progress` | User |
-| 37a | POST | `/tabungan-custom/{id}/setor` | User |
-| 37b | POST | `/tabungan-custom/{id}/tarik` | User |
-| 37c | GET | `/tabungan-custom/{id}/progress` | User |
 | 38 | GET | `/qurban/periode-aktif` | User |
 | 39 | GET | `/qurban/hewan` | User |
 | 40 | POST | `/qurban/daftar` | User |
@@ -1782,7 +1977,21 @@ GET /admin/audit-logs?action=verify&model_type=Transaksi&dari=2026-08-01
 | 69 | PATCH | `/notifikasi/{id}/read` | Auth |
 | 70 | PATCH | `/notifikasi/read-all` | Auth |
 | 71 | GET | `/admin/audit-logs` | Admin |
+| 72 | DELETE | `/admin/audit-logs` | Admin |
 | 72 | PUT | `/emas/goal` | User |
+| 73 | GET | `/admin/gadai` | Admin |
+| 74 | POST | `/admin/gadai` | Admin |
+| 75 | GET | `/admin/gadai/{id}` | Admin |
+| 76 | POST | `/admin/gadai/{id}/approve` | Admin |
+| 77 | POST | `/admin/gadai/{id}/aktifkan` | Admin |
+| 78 | POST | `/admin/gadai/{id}/bayar` | Admin |
+| 79 | POST | `/admin/gadai/{id}/lunasi` | Admin |
+| 80 | POST | `/admin/gadai/{id}/batal` | Admin |
+| 81 | POST | `/admin/gadai/{id}/terlambat` | Admin |
+| 82 | POST | `/admin/gadai/{id}/perpanjang` | Admin |
+| 83 | DELETE | `/admin/gadai/{id}` | Admin |
+| 84 | GET | `/gadai-saya` | User |
+| 85 | GET | `/gadai-saya/{id}` | User |
 
 ---
 
