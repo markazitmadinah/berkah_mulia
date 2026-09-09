@@ -54,6 +54,11 @@ class EmasController extends Controller
      */
     public function hargaRiwayat(Request $request): JsonResponse
     {
+        $request->validate([
+            'dari' => 'nullable|date',
+            'sampai' => 'nullable|date',
+        ]);
+
         $query = HargaEmasHarian::query();
 
         if ($request->filled('dari')) {
@@ -200,7 +205,8 @@ class EmasController extends Controller
         try {
             $harga = $this->emasService->getHargaTerkini();
         } catch (\Throwable $e) {
-            return $this->errorResponse($e->getMessage(), 400);
+            \Illuminate\Support\Facades\Log::error('Gagal mengambil harga emas: ' . $e->getMessage());
+            return $this->errorResponse('Gagal mengambil harga emas. Silakan coba lagi.', 400);
         }
 
         if (! $harga) {
@@ -208,7 +214,7 @@ class EmasController extends Controller
         }
 
         $progress = $this->progressService->getProgress($request->user(), $jenisTabungan);
-        $saldoGram = (float) $progress['total_unit'] ?? 0;
+        $saldoGram = (float) ($progress['total_unit'] ?? 0);
 
         if ($saldoGram <= 0) {
             return $this->errorResponse('Tidak ada saldo emas untuk dicairkan.', 422, 'INSUFFICIENT_BALANCE');
@@ -360,7 +366,7 @@ class EmasController extends Controller
         }
 
         $progress = $this->progressService->getProgress($request->user(), $jenisTabungan);
-        $saldoGram = (float) $progress['total_unit'] ?? 0;
+        $saldoGram = (float) ($progress['total_unit'] ?? 0);
         $saldoDana = $this->saldoEmasService->getSaldoDana($request->user(), $jenisTabungan);
 
         if ($saldoGram <= 0 && $saldoDana <= 0) {

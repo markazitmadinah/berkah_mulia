@@ -29,6 +29,11 @@ class HargaEmasController extends Controller
 
     public function hargaRiwayat(Request $request): JsonResponse
     {
+        $request->validate([
+            'dari' => 'nullable|date',
+            'sampai' => 'nullable|date',
+        ]);
+
         $query = HargaEmasHarian::query();
 
         if ($request->filled('dari')) {

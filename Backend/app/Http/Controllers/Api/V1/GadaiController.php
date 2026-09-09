@@ -89,7 +89,7 @@ class GadaiController extends Controller
             ->milikUser($request->user()->id)
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
             ->latest()
-            ->paginate($request->per_page ?? 25);
+            ->paginate(min((int) ($request->per_page ?? 25), 100));
 
         $items = collect($gadai->items())->map(fn (Gadai $g) => [
             'id' => $g->id,

@@ -22,6 +22,14 @@ class TransaksiService
         $data['tanggal_transaksi'] = $data['tanggal_transaksi'] ?? now()->toDateString();
         $data['status_verifikasi'] = $data['status_verifikasi'] ?? StatusVerifikasi::MenungguVerifikasi;
 
+        // Sanitize user/admin notes to prevent stored XSS
+        if (isset($data['catatan_user'])) {
+            $data['catatan_user'] = strip_tags((string) $data['catatan_user']);
+        }
+        if (isset($data['catatan_admin'])) {
+            $data['catatan_admin'] = strip_tags((string) $data['catatan_admin']);
+        }
+
         // Auto verify cash transactions created by admin
         if (
             isset($data['auto_verify']) && $data['auto_verify'] === true

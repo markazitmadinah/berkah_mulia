@@ -25,6 +25,11 @@ class TransaksiController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
+        $request->validate([
+            'status' => 'nullable|string|in:menunggu_verifikasi,terverifikasi,ditolak',
+            'jenis_tabungan_id' => 'nullable|integer|exists:jenis_tabungan,id',
+        ]);
+
         $query = Transaksi::milikUser($request->user()->id)
             ->with(['jenisTabungan', 'rekeningBank']);
 

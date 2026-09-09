@@ -125,6 +125,17 @@ class HariRayaController extends Controller
             );
         }
 
+        // Guard: prevent concurrent withdrawal requests
+        $hasPending = Transaksi::milikUser($request->user()->id)
+            ->where('jenis_tabungan_id', $jenis->id)
+            ->where('jenis_transaksi', JenisTransaksi::Tarik->value)
+            ->menungguVerifikasi()
+            ->exists();
+
+        if ($hasPending) {
+            return $this->errorResponse('Anda sudah memiliki pencairan yang sedang menunggu verifikasi.', 409, 'PENDING_WITHDRAWAL_EXISTS');
+        }
+
         $saldo = $this->saldo($request->user(), $jenis);
 
         if ($saldo < 10000) {

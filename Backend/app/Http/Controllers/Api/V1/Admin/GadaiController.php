@@ -43,13 +43,14 @@ class GadaiController extends Controller
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
             ->when($request->filled('user_id'), fn ($q) => $q->where('user_id', (int) $request->user_id))
             ->when($request->filled('q'), function ($q) use ($request) {
-                $q->where(function ($qq) use ($request) {
-                    $q->where('nomor_gadai', 'like', "%{$request->q}%");
-                    $qq->orWhereHas('user', fn ($uq) => $uq->where('name', 'like', "%{$request->q}%"));
+                $searchQ = str_replace(['%', '_'], ['\%', '\_'], $request->q);
+                $q->where(function ($qq) use ($searchQ) {
+                    $qq->where('nomor_gadai', 'like', "%{$searchQ}%")
+                       ->orWhereHas('user', fn ($uq) => $uq->where('name', 'like', "%{$searchQ}%"));
                 });
             })
             ->latest()
-            ->paginate($request->per_page ?? 25);
+            ->paginate(min((int) ($request->per_page ?? 25), 100));
 
         $semua = Gadai::query()->count();
         $summary = [

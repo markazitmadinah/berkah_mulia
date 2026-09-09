@@ -40,7 +40,9 @@ async function request<T = { data: unknown; message?: string; meta?: unknown }>(
   isForm = false,
   timeoutMs?: number
 ): Promise<T> {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+  };
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
@@ -142,17 +144,32 @@ export async function downloadFile(url: string, filename: string): Promise<void>
   URL.revokeObjectURL(objectUrl);
 }
 
+const FILE_URL_CACHE_MAX = 50;
 const fileUrlCache = new Map<string, string>();
+
+function evictFileUrlCache() {
+  if (fileUrlCache.size > FILE_URL_CACHE_MAX) {
+    const oldest = fileUrlCache.keys().next().value;
+    if (oldest !== undefined) {
+      const url = fileUrlCache.get(oldest);
+      if (url) URL.revokeObjectURL(url);
+      fileUrlCache.delete(oldest);
+    }
+  }
+}
 
 export async function authFileUrl(pathOrUrl: string): Promise<string> {
   const cached = fileUrlCache.get(pathOrUrl);
   if (cached) return cached;
   const abs = /^https?:\/\//.test(pathOrUrl) ? pathOrUrl : `${API_URL}${pathOrUrl}`;
   const token = getToken();
-  const res = await fetch(abs, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  const res = await fetch(abs, {
+    headers: token ? { Authorization: `Bearer ${token}`, Accept: '*/*' } : { Accept: '*/*' },
+  });
   if (!res.ok) throw new ApiError('Gagal memuat berkas', res.status);
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
+  evictFileUrlCache();
   fileUrlCache.set(pathOrUrl, url);
   return url;
 }

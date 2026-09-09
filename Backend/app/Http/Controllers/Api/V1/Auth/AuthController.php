@@ -31,15 +31,16 @@ class AuthController extends Controller
      */
     public function register(RegisterRequest $request): JsonResponse
     {
-        $user = User::create([
+        $user = new User([
             'name' => $request->name,
             'email' => $request->email,
             'phone' => $request->phone,
             'password' => $request->password, // auto-hashed via cast
-            'role' => UserRole::User,
-            'status' => UserStatus::Pending,
             'address' => $request->address,
         ]);
+        $user->role = UserRole::User;
+        $user->status = UserStatus::Pending;
+        $user->save();
 
         AuditLog::record('register', $user);
 
@@ -131,6 +132,11 @@ class AuthController extends Controller
 
         // Handle avatar upload
         if ($request->hasFile('avatar')) {
+            // Delete old avatar to prevent storage bloat and info leak
+            if ($user->avatar_path && Storage::disk('public')->exists($user->avatar_path)) {
+                Storage::disk('public')->delete($user->avatar_path);
+            }
+
             $path = $request->file('avatar')->store('avatars', 'public');
             $data['avatar_path'] = $path;
         }
@@ -147,13 +153,10 @@ class AuthController extends Controller
     {
         $request->validate(['email' => 'required|email']);
 
-        $status = Password::sendResetLink($request->only('email'));
+        // Always return success to prevent email enumeration — per anti-enumeration best practice.
+        Password::sendResetLink($request->only('email'));
 
-        if ($status === Password::RESET_LINK_SENT) {
-            return $this->successResponse(null, 'Link reset password telah dikirim ke email Anda.');
-        }
-
-        return $this->errorResponse('Gagal mengirim link reset password.', 400);
+        return $this->successResponse(null, 'Jika email Anda terdaftar, link reset password telah dikirim.');
     }
 
     /**

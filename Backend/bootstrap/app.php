@@ -113,9 +113,9 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
 
-        // Catch-all for production: don't expose stack traces
+        // Catch-all for non-local environments: don't expose stack traces
         $exceptions->render(function (\Throwable $e, Request $request) {
-            if (($request->is('api/*') || $request->expectsJson()) && app()->environment('production')) {
+            if (($request->is('api/*') || $request->expectsJson()) && ! app()->environment('local')) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Terjadi kesalahan pada server.',

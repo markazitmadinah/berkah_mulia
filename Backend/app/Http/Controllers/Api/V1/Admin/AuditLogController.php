@@ -19,10 +19,19 @@ class AuditLogController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
+        $request->validate([
+            'model_type' => 'nullable|string|max:255',
+            'user_id' => 'nullable|integer',
+            'dari' => 'nullable|date',
+            'sampai' => 'nullable|date',
+            'action' => 'nullable|string|max:100',
+        ]);
+
         $query = AuditLog::with('user');
 
         if ($request->filled('model_type')) {
-            $query->where('model_type', 'like', '%' . $request->model_type . '%');
+            $modelType = str_replace(['%', '_'], ['\%', '\_'], $request->model_type);
+            $query->where('model_type', 'like', '%' . $modelType . '%');
         }
 
         if ($request->filled('user_id')) {

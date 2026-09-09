@@ -47,7 +47,7 @@ class UserController extends Controller
         }
 
         if ($request->filled('search')) {
-            $search = $request->search;
+            $search = str_replace(['%', '_'], ['\%', '\_'], $request->search);
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
                     ->orWhere('email', 'like', "%{$search}%");
@@ -178,24 +178,28 @@ class UserController extends Controller
             'created_at' => 'sometimes|date',
         ]);
 
-        $data = [
+        $roleValue = $request->input('role', 'user');
+        $statusValue = $request->input('status', 'active');
+
+        $user = new User([
             'name' => $request->name,
             'email' => $request->email,
             'phone' => $request->phone,
             'nomor_anggota' => $request->nomor_anggota,
             'password' => $request->password,
-            'role' => $request->input('role', 'user'),
-            'status' => $request->input('status', 'active'), // Admin-created = active
             'address' => $request->address,
-            'approved_by' => auth()->id(),
-            'approved_at' => $request->input('status', 'active') === 'active' ? now() : null,
-        ];
+        ]);
+
+        $user->role = $roleValue;
+        $user->status = $statusValue;
+        $user->approved_by = auth()->id();
+        $user->approved_at = $statusValue === 'active' ? now() : null;
 
         if ($request->filled('created_at')) {
-            $data['created_at'] = $request->input('created_at');
+            $user->created_at = $request->input('created_at');
         }
 
-        $user = User::create($data);
+        $user->save();
 
         AuditLog::record('create', $user);
 
@@ -217,10 +221,18 @@ class UserController extends Controller
             'created_at' => 'sometimes|date',
         ]);
 
-        $fields = ['name', 'email', 'phone', 'nomor_anggota', 'address', 'role', 'created_at'];
-        $oldValues = $user->only($fields);
-        $user->update($request->only($fields));
-        AuditLog::record('update', $user, $oldValues, $user->fresh()->only($fields));
+        $fillableFields = ['name', 'email', 'phone', 'nomor_anggota', 'address', 'created_at'];
+        $allFields = ['name', 'email', 'phone', 'nomor_anggota', 'address', 'role', 'created_at'];
+        $oldValues = $user->only($allFields);
+
+        $user->fill($request->only($fillableFields));
+
+        if ($request->filled('role')) {
+            $user->role = $request->input('role');
+        }
+
+        $user->save();
+        AuditLog::record('update', $user, $oldValues, $user->fresh()->only($allFields));
 
         return $this->successResponse(new UserResource($user->fresh()), 'Data pengguna berhasil diperbarui.');
     }
@@ -246,11 +258,10 @@ class UserController extends Controller
         }
 
         $oldValues = ['status' => $user->status->value];
-        $user->update([
-            'status' => UserStatus::Active,
-            'approved_by' => auth()->id(),
-            'approved_at' => now(),
-        ]);
+        $user->status = UserStatus::Active;
+        $user->approved_by = auth()->id();
+        $user->approved_at = now();
+        $user->save();
 
         AuditLog::record('approve', $user, $oldValues, ['status' => 'active']);
 
@@ -273,10 +284,9 @@ class UserController extends Controller
         }
 
         $oldValues = ['status' => $user->status->value];
-        $user->update([
-            'status' => UserStatus::Rejected,
-            'rejected_reason' => $request->rejected_reason,
-        ]);
+        $user->status = UserStatus::Rejected;
+        $user->rejected_reason = $request->rejected_reason;
+        $user->save();
 
         AuditLog::record('reject', $user, $oldValues, ['status' => 'rejected', 'rejected_reason' => $request->rejected_reason]);
 
@@ -295,7 +305,8 @@ class UserController extends Controller
         }
 
         $oldValues = ['status' => $user->status->value];
-        $user->update(['status' => UserStatus::Suspended]);
+        $user->status = UserStatus::Suspended;
+        $user->save();
 
         // Revoke all tokens
         $user->tokens()->delete();
@@ -315,11 +326,10 @@ class UserController extends Controller
         }
 
         $oldValues = ['status' => $user->status->value];
-        $user->update([
-            'status' => UserStatus::Active,
-            'approved_by' => auth()->id(),
-            'approved_at' => now(),
-        ]);
+        $user->status = UserStatus::Active;
+        $user->approved_by = auth()->id();
+        $user->approved_at = now();
+        $user->save();
 
         AuditLog::record('activate', $user, $oldValues, ['status' => 'active']);
 

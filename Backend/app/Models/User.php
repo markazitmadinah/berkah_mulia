@@ -26,13 +26,8 @@ class User extends Authenticatable
         'nomor_anggota',
         'target_emas_gram',
         'password',
-        'role',
-        'status',
         'address',
         'avatar_path',
-        'approved_by',
-        'approved_at',
-        'rejected_reason',
         'last_login_at',
         'created_at',
     ];

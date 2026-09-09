@@ -37,6 +37,13 @@ class TransaksiController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        $request->validate([
+            'status' => 'nullable|string|in:menunggu_verifikasi,terverifikasi,ditolak',
+            'metode' => 'nullable|string|in:cash,transfer',
+            'jenis_tabungan_id' => 'nullable|integer|exists:jenis_tabungan,id',
+            'search' => 'nullable|string|max:255',
+        ]);
+
         $query = Transaksi::with(['user', 'jenisTabungan', 'rekeningBank']);
 
         if ($request->filled('status')) {
@@ -49,7 +56,7 @@ class TransaksiController extends Controller
             $query->where('jenis_tabungan_id', $request->jenis_tabungan_id);
         }
         if ($request->filled('search')) {
-            $search = $request->search;
+            $search = str_replace(['%', '_'], ['\%', '\_'], $request->search);
             $query->where(function ($q) use ($search) {
                 $q->where('nomor_referensi', 'like', "%{$search}%")
                     ->orWhereHas('user', fn ($uq) => $uq->where('name', 'like', "%{$search}%"));
