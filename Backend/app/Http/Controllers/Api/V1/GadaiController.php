@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Enums\StatusGadai;
+use App\Enums\StatusVerifikasi;
 use App\Http\Controllers\Controller;
 use App\Models\AngsuranGadai;
 use App\Models\AuditLog;
@@ -11,6 +13,7 @@ use App\Services\GadaiService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class GadaiController extends Controller
 {
@@ -63,7 +66,7 @@ class GadaiController extends Controller
             'toleransi_hari' => 0,
             'frekuensi_bayar' => $data['frekuensi_bayar'],
             'nominal_angkuran' => round((float) $data['nominal_angkuran'], 2),
-            'status' => \App\Enums\StatusGadai::Diajukan,
+            'status' => StatusGadai::Diajukan,
             'catatan' => $data['catatan'] ?? null,
             'created_by' => $request->user()->id,
         ]);
@@ -78,6 +81,75 @@ class GadaiController extends Controller
             'persen_gadai' => 80,
             'status' => $gadai->status->value,
         ], 'Pengajuan gadai berhasil dikirim. Tunggu persetujuan admin.');
+    }
+
+    /**
+     * POST /gadai-saya/{gadai}/bayar — nasabah mengirim pembayaran angsuran.
+     * Status: menunggu_verifikasi (admin harus approve).
+     */
+    public function bayar(Request $request, Gadai $gadai): JsonResponse
+    {
+        if ($gadai->user_id !== $request->user()->id) {
+            return $this->errorResponse('Gadai tidak ditemukan.', 404, 'NOT_FOUND');
+        }
+
+        if (! in_array($gadai->status, [
+            StatusGadai::Aktif,
+            StatusGadai::JatuhTempo,
+            StatusGadai::Terlambat,
+            StatusGadai::Diperpanjang,
+        ], true)) {
+            return $this->errorResponse('Gadai tidak dalam masa pembayaran aktif.', 422, 'STATUS_TIDAK_VALID');
+        }
+
+        $request->validate([
+            'nominal' => 'required|numeric|min:1',
+            'metode_pembayaran' => 'required|in:cash,transfer',
+            'bukti_transfer' => 'nullable|image|max:5120',
+            'catatan' => 'nullable|string|max:500',
+        ]);
+
+        $nominal = round((float) $request->nominal, 2);
+        $sisa = $gadai->sisaPokok();
+
+        // Account for pending (unverified) angsuran already submitted
+        $pendingNominal = AngsuranGadai::where('gadai_id', $gadai->id)
+            ->where('status_verifikasi', StatusVerifikasi::MenungguVerifikasi->value)
+            ->sum('nominal');
+        $sisaEfektif = round($sisa - (float) $pendingNominal, 2);
+
+        if ($nominal > $sisaEfektif && abs($nominal - $sisaEfektif) > 1) {
+            return $this->errorResponse('Nominal melebihi sisa pokok yang belum dibayar (Rp ' . number_format($sisaEfektif, 0, ',', '.') . ').', 422, 'MELEBIHI_SISA');
+        }
+
+        $buktiPath = null;
+        if ($request->hasFile('bukti_transfer')) {
+            $buktiPath = $request->file('bukti_transfer')
+                ->store('bukti-angsuran-gadai/' . $gadai->id, 'local');
+        }
+
+        $angsuran = AngsuranGadai::create([
+            'gadai_id' => $gadai->id,
+            'tanggal_bayar' => now()->toDateString(),
+            'nominal' => $nominal,
+            'metode_pembayaran' => $request->metode_pembayaran,
+            'catatan' => $request->catatan,
+            'status_verifikasi' => StatusVerifikasi::MenungguVerifikasi->value,
+            'bukti_transfer_path' => $buktiPath,
+            'created_by' => $request->user()->id,
+        ]);
+
+        AuditLog::record('gadai.bayar_user', $gadai, null, [
+            'angsuran_id' => $angsuran->id,
+            'nominal' => $nominal,
+        ]);
+
+        return $this->createdResponse([
+            'id' => $angsuran->id,
+            'tanggal_bayar' => $angsuran->tanggal_bayar->toDateString(),
+            'nominal' => $nominal,
+            'status_verifikasi' => $angsuran->status_verifikasi->value,
+        ], 'Pembayaran angsuran berhasil dikirim. Tunggu verifikasi admin.');
     }
 
     /**
@@ -163,6 +235,9 @@ class GadaiController extends Controller
                 'nominal' => (float) $a->nominal,
                 'metode_pembayaran' => $a->metode_pembayaran,
                 'catatan' => $a->catatan,
+                'status_verifikasi' => $a->status_verifikasi?->value ?? 'terverifikasi',
+                'bukti_transfer_path' => $a->bukti_transfer_path,
+                'pencatat' => $a->createdBy?->name,
             ])->values(),
         ]);
     }

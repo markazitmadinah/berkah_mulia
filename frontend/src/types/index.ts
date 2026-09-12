@@ -130,10 +130,14 @@ export interface Transaksi {
   nomor_referensi: string;
   user_id: number;
   user_name?: string;
-  jenis_tabungan_id: number;
+  jenis_tabungan_id?: number | null;
   jenis_tabungan_nama?: string;
-  tipe_tabungan?: TipeTabungan;
+  tipe_tabungan?: TipeTabungan | 'gadai';
+  sub_jenis?: SubJenisTabungan;
   pendaftaran_qurban_id?: number;
+  gadai_id?: number | null;
+  nomor_gadai?: string;
+  tabungan_berjangka_id?: number | null;
   jenis_transaksi: JenisTransaksi;
   nominal: number;
   nominal_emas?: number; // nilai gram yang dibeli (setoran rencana emas)
@@ -341,6 +345,9 @@ export interface AngsuranGadai {
   nominal: number;
   metode_pembayaran?: MetodePembayaran;
   catatan?: string | null;
+  status_verifikasi?: StatusVerifikasi;
+  bukti_transfer_path?: string | null;
+  catatan_admin?: string | null;
   pencatat?: string;
   created_at?: string;
 }
@@ -403,5 +410,63 @@ export interface GadaiBayarPayload {
   nominal: number;
   tanggal_bayar?: string;
   metode_pembayaran: MetodePembayaran;
+  catatan?: string;
+}
+
+export interface UserGadaiBayarPayload {
+  nominal: number;
+  metode_pembayaran: MetodePembayaran;
+  bukti_transfer?: File | null;
+  catatan?: string;
+}
+
+export type StatusTabunganBerjangka = 'menunggu_approval' | 'aktif' | 'selesai' | 'batal';
+
+export interface TabunganBerjangka {
+  id: number;
+  user_id?: number;
+  user?: { id: number; name: string; phone?: string; nomor_anggota?: string } | null;
+  target_nominal: number;
+  durasi_bulan: number;
+  frekuensi_setor: FrekuensiSetoran;
+  frekuensi_label?: string;
+  nominal_per_periode: number;
+  tanggal_mulai?: string | null;
+  tanggal_jatuh_tempo?: string | null;
+  status: StatusTabunganBerjangka;
+  catatan?: string | null;
+  terkumpul?: number;
+  persentase?: number;
+  is_jatuh_tempo?: boolean;
+  is_goal_reached?: boolean;
+  can_withdraw?: boolean;
+  sisa_target?: number;
+  created_at?: string;
+}
+
+export interface TabunganBerjangkaResponse {
+  items: TabunganBerjangka[];
+  dapat_membuat: boolean;
+  slot_tersedia: number;
+}
+
+export interface TabunganBerjangkaPayload {
+  target_nominal: number;
+  durasi_bulan: number;
+  frekuensi_setor: FrekuensiSetoran;
+  catatan?: string;
+}
+
+export interface SetorTabunganBerjangkaPayload {
+  nominal: number;
+  rekening_bank_id: number;
+  bukti_transfer: File;
+  catatan_user?: string;
+}
+
+export interface CairkanTabunganBerjangkaPayload {
+  bank_tujuan: string;
+  no_rekening: string;
+  atas_nama: string;
   catatan?: string;
 }

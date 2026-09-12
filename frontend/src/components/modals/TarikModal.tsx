@@ -17,7 +17,7 @@ interface TarikModalProps {
 
 export const TarikModal: React.FC<TarikModalProps> = ({ isOpen, onClose }) => {
   const {
-    userTabunganPribadiTotal,
+    userTabunganMandiriTotal,
     jenisTabungan,
     createPenarikanUser,
     showToast
@@ -40,8 +40,8 @@ export const TarikModal: React.FC<TarikModalProps> = ({ isOpen, onClose }) => {
       return;
     }
 
-    if (nominalValue > userTabunganPribadiTotal) {
-      showToast('Saldo tabungan pribadi Anda tidak mencukupi untuk penarikan ini', 'error');
+    if (nominalValue > userTabunganMandiriTotal) {
+      showToast('Saldo tabungan mandiri Anda tidak mencukupi untuk penarikan ini', 'error');
       return;
     }
 
@@ -50,11 +50,13 @@ export const TarikModal: React.FC<TarikModalProps> = ({ isOpen, onClose }) => {
       return;
     }
 
-    const pribadiTab = jenisTabungan.find(j => j.tipe === 'pribadi');
-    if (!pribadiTab) return;
+    const mandiriTab = jenisTabungan.find(j => j.tipe === 'pribadi' && j.sub_jenis === 'mandiri') 
+      || jenisTabungan.find(j => j.tipe === 'pribadi' && j.allow_withdrawal)
+      || jenisTabungan.find(j => j.tipe === 'pribadi');
+    if (!mandiriTab) return;
 
     createPenarikanUser({
-      jenis_tabungan_id: pribadiTab.id,
+      jenis_tabungan_id: mandiriTab.id,
       nominal: nominalValue,
       catatan_user: `Pencairan ke ${bankTujuan} (${noRekTujuan} a.n ${atasNama}). ${catatan}`
     });
@@ -69,10 +71,10 @@ export const TarikModal: React.FC<TarikModalProps> = ({ isOpen, onClose }) => {
         <div className="flex items-center justify-between p-6 border-b border-slate-100 dark:border-slate-700">
           <div>
             <h3 className="font-extrabold text-lg text-slate-900 dark:text-white">
-              Tarik Saldo Tabungan Pribadi
+              Tarik Saldo Tabungan Mandiri
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Permohonan pencairan dana simpanan sukarela wadi'ah
+              Permohonan pencairan dana simpanan sukarela Wadi'ah (terpisah dari Tabungan Berjangka)
             </p>
           </div>
           <button
@@ -88,15 +90,15 @@ export const TarikModal: React.FC<TarikModalProps> = ({ isOpen, onClose }) => {
           <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/40 flex items-center justify-between">
             <div>
               <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
-                Saldo Tersedia
+                Saldo Mandiri Tersedia
               </span>
               <p className="text-xl font-extrabold text-emerald-700 dark:text-emerald-300 mt-0.5">
-                Rp {formatRupiah(userTabunganPribadiTotal)}
+                Rp {formatRupiah(userTabunganMandiriTotal)}
               </p>
             </div>
             <button
               type="button"
-              onClick={() => setNominal(userTabunganPribadiTotal.toLocaleString('id-ID'))}
+              onClick={() => setNominal(userTabunganMandiriTotal.toLocaleString('id-ID'))}
               className="text-xs font-bold px-3 py-1.5 rounded-xl bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 cursor-pointer"
             >
               Tarik Semua

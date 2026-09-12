@@ -29,7 +29,12 @@ import {
   Gadai,
   AjukanGadaiPayload,
   GadaiPayload,
-  GadaiBayarPayload
+  GadaiBayarPayload,
+  TabunganBerjangka,
+  TabunganBerjangkaResponse,
+  TabunganBerjangkaPayload,
+  SetorTabunganBerjangkaPayload,
+  CairkanTabunganBerjangkaPayload
 } from '../types';
 import { formatRupiah } from '../utils/format';
 
@@ -146,6 +151,17 @@ interface AppContextType {
   tandaiTerlambatGadai: (id: number) => void;
   perpanjangGadai: (id: number) => void;
   deleteGadai: (id: number) => void;
+  bayarGadaiUser: (gadaiId: number, data: FormData) => void;
+  verifikasiAngsuranGadai: (angsuranId: number) => void;
+  tolakAngsuranGadai: (angsuranId: number, catatan: string) => void;
+  tabunganBerjangka: TabunganBerjangkaResponse | null;
+  fetchTabunganBerjangka: () => void;
+  buatTabunganBerjangka: (data: TabunganBerjangkaPayload) => void;
+  setorTabunganBerjangka: (id: number, data: SetorTabunganBerjangkaPayload) => void;
+  cairkanTabunganBerjangka: (id: number, data: CairkanTabunganBerjangkaPayload) => void;
+  batalTabunganBerjangka: (id: number) => void;
+  approveTabunganBerjangka: (id: number) => void;
+  tolakTabunganBerjangka: (id: number) => void;
   setoranBerkala: SetoranBerkalaResponse | null;
   profilNasabah: ProfilNasabah | null;
   profilNasabahError: string | null;
@@ -163,6 +179,8 @@ interface AppContextType {
   userEmasRupiahTotal: number;
   userEmasGoal: number | null;
   userTabunganPribadiTotal: number;
+  userTabunganMandiriTotal: number;
+  userTabunganBerjangkaTotal: number;
   userTabunganQurbanTotal: number;
   userTotalSaldo: number;
   unreadNotifikasiCount: number;
@@ -289,15 +307,23 @@ const normTransaksi = (t: unknown): Transaksi => {
   const x = (t ?? {}) as Record<string, any>;
   const jt = (x.jenis_tabungan || {}) as Record<string, any>;
   const rb = (x.rekening_bank || null) as Record<string, any> | null;
+  const gd = (x.gadai || null) as Record<string, any> | null;
+  const isGadai = Boolean(x.gadai_id || gd || (x.catatan_admin && /gadai/i.test(x.catatan_admin)));
+  const nomorGadai = gd?.nomor_gadai || x.nomor_gadai || (x.catatan_admin?.match(/BM-GD-[A-Z0-9-]+/i)?.[0]);
+
   return {
     id: x.id,
     nomor_referensi: x.nomor_referensi || `TRX-${x.id}`,
     user_id: x.user_id,
     user_name: x.user?.name || x.user_name,
-    jenis_tabungan_id: jt.id ?? x.jenis_tabungan_id,
-    jenis_tabungan_nama: jt.nama || x.jenis_tabungan_nama,
-    tipe_tabungan: jt.tipe || x.tipe_tabungan,
+    jenis_tabungan_id: jt.id ?? x.jenis_tabungan_id ?? undefined,
+    jenis_tabungan_nama: jt.nama || (isGadai ? `Angsuran Gadai${nomorGadai ? ` (${nomorGadai})` : ''}` : (x.jenis_tabungan_nama || 'Transaksi')),
+    tipe_tabungan: jt.tipe || (isGadai ? 'gadai' : x.tipe_tabungan),
+    sub_jenis: jt.sub_jenis ?? x.sub_jenis ?? undefined,
     pendaftaran_qurban_id: x.pendaftaran_qurban_id ?? undefined,
+    gadai_id: x.gadai_id ?? gd?.id ?? undefined,
+    nomor_gadai: nomorGadai,
+    tabungan_berjangka_id: x.tabungan_berjangka_id ?? undefined,
     jenis_transaksi: x.jenis_transaksi,
     nominal: Number(x.nominal),
     nominal_emas: x.nominal_emas != null ? Number(x.nominal_emas) : undefined,
@@ -462,6 +488,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [gadai, setGadai] = useState<Gadai[]>([]);
   const [gadaiDetail, setGadaiDetail] = useState<Gadai | null>(null);
+  const [tabunganBerjangka, setTabunganBerjangka] = useState<TabunganBerjangkaResponse | null>(null);
 
   const [toastMessage, setToastMessage] = useState<Toast | null>(null);
 
@@ -532,10 +559,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const gadai$ = api
         .get<{ items: Gadai[] }>(isAdmin ? '/admin/gadai?per_page=200' : '/gadai-saya?per_page=200')
         .catch(() => null);
+      const tabBerjangka$ = api
+        .get<TabunganBerjangkaResponse>(isAdmin ? '/admin/tabungan-berjangka?per_page=100' : '/tabungan-berjangka')
+        .catch(() => null);
       const me$ = api.get<User>('/auth/me').catch(() => null);
 
-      const [staticRes, notaRes, terkiniRes, riwayatRes, masterRes, pendaRes, trxRes, usersRes, auditRes, gadaiRes, setoranRes, hariRayaRes, meRes] =
-        await Promise.all([static$, nota$, terkini$, riwayat$, qurbanMaster$, penda$, trx$, users$, audit$, gadai$, setoranBerkala$, hariRaya$, me$]);
+      const [staticRes, notaRes, terkiniRes, riwayatRes, masterRes, pendaRes, trxRes, usersRes, auditRes, gadaiRes, tabBerjangkaRes, setoranRes, hariRayaRes, meRes] =
+        await Promise.all([static$, nota$, terkini$, riwayat$, qurbanMaster$, penda$, trx$, users$, audit$, gadai$, tabBerjangka$, setoranBerkala$, hariRaya$, me$]);
 
       if (!light) {
         if (staticRes) {
@@ -580,6 +610,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (usersRes) setUsers(usersRes.data.map(normUser));
       if (auditRes) setAuditLogs(auditRes.data.map(normAudit));
       if (gadaiRes) setGadai(gadaiRes.data.items);
+      if (tabBerjangkaRes) setTabunganBerjangka(tabBerjangkaRes.data);
       if (meRes) {
         const fresh = normUser(meRes.data);
         setCurrentUser(fresh);
@@ -718,15 +749,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const userEmasGoal = currentUser.target_emas_gram != null ? Number(currentUser.target_emas_gram) : null;
 
-  const userTabunganPribadiTotal = verifiedUserTransaksi
-    .filter(t => t.tipe_tabungan === 'pribadi')
+  // ─── Saldo Tabungan Mandiri murni ─────────────────────────
+  // HANYA transaksi pribadi yang BUKAN berjangka, BUKAN hari raya, dan TANPA tabungan_berjangka_id
+  const userTabunganMandiriTotal = verifiedUserTransaksi
+    .filter(t => {
+      if (t.tipe_tabungan !== 'pribadi') return false;
+      if (t.tabungan_berjangka_id) return false;
+      if (t.sub_jenis === 'berjangka' || t.sub_jenis === 'hari_raya') return false;
+      if (t.jenis_tabungan_nama && /berjangka|hari raya/i.test(t.jenis_tabungan_nama)) return false;
+      return true;
+    })
     .reduce((acc, curr) => curr.jenis_transaksi === 'setor' ? acc + curr.nominal : acc - curr.nominal, 0);
+
+  // Total dana terkumpul pada seluruh tabungan berjangka milik user
+  const userTabunganBerjangkaTotal = (tabunganBerjangka?.items || [])
+    .reduce((acc, curr) => acc + (curr.terkumpul || 0), 0);
+
+  // userTabunganPribadiTotal mengacu ke saldo Tabungan Mandiri (yang bebas ditarik sukarela)
+  const userTabunganPribadiTotal = userTabunganMandiriTotal;
 
   const userTabunganQurbanTotal = verifiedUserTransaksi
     .filter(t => t.tipe_tabungan === 'qurban')
     .reduce((acc, curr) => curr.jenis_transaksi === 'setor' ? acc + curr.nominal : acc - curr.nominal, 0);
 
-  const userTotalSaldo = userEmasRupiahTotal + userTabunganPribadiTotal;
+  const userTotalSaldo = userEmasRupiahTotal + userTabunganMandiriTotal + userTabunganBerjangkaTotal + userTabunganQurbanTotal;
 
   const unreadNotifikasiCount =
     unreadCount || notifikasi.filter(n => n.user_id === currentUser.id && !n.dibaca_pada).length;
@@ -1235,6 +1281,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteGadai = (id: number) =>
     withRefresh(() => api.del(`/admin/gadai/${id}`), 'Pengajuan gadai dihapus.');
 
+  const bayarGadaiUser = (gadaiId: number, formData: FormData) =>
+    withRefresh(
+      () => api.post(`/gadai-saya/${gadaiId}/bayar`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+      'Pembayaran angsuran berhasil dikirim. Tunggu verifikasi admin.'
+    );
+
+  const verifikasiAngsuranGadai = (angsuranId: number) =>
+    withRefresh(() => api.post(`/admin/gadai/angsuran/${angsuranId}/verifikasi`), 'Angsuran berhasil diverifikasi.');
+
+  const tolakAngsuranGadai = (angsuranId: number, catatan: string) =>
+    withRefresh(() => api.post(`/admin/gadai/angsuran/${angsuranId}/tolak`, { catatan_admin: catatan }), 'Angsuran ditolak.');
+
+  // ─── Tabungan Berjangka ────────────────────────────────────
+  const fetchTabunganBerjangka = () => {
+    const url = currentUser.role === 'admin' ? '/admin/tabungan-berjangka?per_page=100' : '/tabungan-berjangka';
+    api.get<TabunganBerjangkaResponse>(url)
+      .then((res) => setTabunganBerjangka(res.data))
+      .catch(() => undefined);
+  };
+
+  const buatTabunganBerjangka = (data: TabunganBerjangkaPayload) =>
+    withRefresh(() => api.post('/tabungan-berjangka', data), 'Tabungan berjangka berhasil diajukan. Tunggu persetujuan admin.');
+
+  const setorTabunganBerjangka = (id: number, data: SetorTabunganBerjangkaPayload) => {
+    const form = new FormData();
+    form.append('nominal', String(data.nominal));
+    form.append('rekening_bank_id', String(data.rekening_bank_id));
+    form.append('bukti_transfer', data.bukti_transfer);
+    if (data.catatan_user) form.append('catatan_user', data.catatan_user);
+
+    runAndRefresh(
+      () => api.postForm(`/tabungan-berjangka/${id}/setor`, form),
+      'Setoran tabungan berjangka berhasil diajukan. Menunggu verifikasi admin.'
+    );
+  };
+
+  const cairkanTabunganBerjangka = (id: number, data: CairkanTabunganBerjangkaPayload) => {
+    runAndRefresh(
+      () => api.post(`/tabungan-berjangka/${id}/cairkan`, data),
+      'Pengajuan pencairan tabungan berjangka berhasil dikirim! Menunggu transfer & verifikasi admin.'
+    );
+  };
+
+  const batalTabunganBerjangka = (id: number) =>
+    withRefresh(() => api.post(`/tabungan-berjangka/${id}/batal`), 'Tabungan berjangka dibatalkan.');
+
+  const approveTabunganBerjangka = (id: number) =>
+    withRefresh(() => api.post(`/admin/tabungan-berjangka/${id}/approve`), 'Tabungan berjangka disetujui dan aktif.');
+
+  const tolakTabunganBerjangka = (id: number) =>
+    withRefresh(() => api.post(`/admin/tabungan-berjangka/${id}/tolak`), 'Tabungan berjangka ditolak.');
+
   // ─── Notifikasi ───────────────────────────────────────────
   const markNotifikasiRead = (id: number) => {
     setNotifikasi(prev => prev.map(n => (n.id === id ? { ...n, dibaca_pada: new Date().toISOString() } : n)));
@@ -1306,8 +1404,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     userPendaftaranQurban,
     userEmasGramTotal,
     userEmasTukarGramTotal,
-    userEmasRupiahTotal,    userEmasGoal,
+    userEmasRupiahTotal,
+    userEmasGoal,
     userTabunganPribadiTotal,
+    userTabunganMandiriTotal,
+    userTabunganBerjangkaTotal,
     userTabunganQurbanTotal,
     userTotalSaldo,
     unreadNotifikasiCount,
@@ -1364,6 +1465,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     deleteRekeningBank,
     markNotifikasiRead,
     markAllNotifikasiRead,
+    bayarGadaiUser,
+    verifikasiAngsuranGadai,
+    tolakAngsuranGadai,
+    tabunganBerjangka,
+    fetchTabunganBerjangka,
+    buatTabunganBerjangka,
+    setorTabunganBerjangka,
+    cairkanTabunganBerjangka,
+    batalTabunganBerjangka,
+    approveTabunganBerjangka,
+    tolakTabunganBerjangka,
     toastMessage,
     showToast
   };

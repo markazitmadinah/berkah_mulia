@@ -31,9 +31,12 @@ export const UserRiwayatTransaksi: React.FC<UserRiwayatTransaksiProps> = ({
   const [filterStatus, setFilterStatus] = useState<string>('all');
 
   const filteredTransactions = userTransaksi.filter((trx) => {
+    const q = searchQuery.toLowerCase();
     const matchesSearch =
-      trx.nomor_referensi.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      trx.jenis_tabungan_nama?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      trx.nomor_referensi.toLowerCase().includes(q) ||
+      trx.jenis_tabungan_nama?.toLowerCase().includes(q) ||
+      (trx.nomor_gadai && trx.nomor_gadai.toLowerCase().includes(q)) ||
+      (trx.catatan_admin && trx.catatan_admin.toLowerCase().includes(q)) ||
       trx.nominal.toString().includes(searchQuery);
 
     const matchesTipe = filterTipe === 'all' || trx.tipe_tabungan === filterTipe;
@@ -52,7 +55,7 @@ export const UserRiwayatTransaksi: React.FC<UserRiwayatTransaksiProps> = ({
             <span>Riwayat Transaksi Saya</span>
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Seluruh mutasi setoran dan penarikan tabungan emas, pribadi, serta qurban Anda
+            Seluruh mutasi setoran, penarikan tabungan emas, pribadi, qurban, serta angsuran gadai Anda
           </p>
         </div>
 
@@ -64,10 +67,11 @@ export const UserRiwayatTransaksi: React.FC<UserRiwayatTransaksiProps> = ({
             onChange={(e) => setFilterTipe(e.target.value)}
             className="py-2 px-3 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 shadow-sm cursor-pointer"
           >
-            <option value="all">Semua Produk Tabungan</option>
+            <option value="all">Semua Produk Tabungan & Pembiayaan</option>
             <option value="emas">Tabungan Emas</option>
             <option value="pribadi">Tabungan Pribadi</option>
             <option value="qurban">Tabungan Qurban</option>
+            <option value="gadai">Angsuran Gadai Emas</option>
           </select>
 
           {/* Status Filter */}

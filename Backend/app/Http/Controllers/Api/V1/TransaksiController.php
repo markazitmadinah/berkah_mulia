@@ -31,7 +31,7 @@ class TransaksiController extends Controller
         ]);
 
         $query = Transaksi::milikUser($request->user()->id)
-            ->with(['jenisTabungan', 'rekeningBank']);
+            ->with(['jenisTabungan', 'rekeningBank', 'gadai']);
 
         if ($request->filled('status')) {
             $query->where('status_verifikasi', $request->status);
@@ -67,7 +67,7 @@ class TransaksiController extends Controller
             return $this->errorResponse('Anda tidak memiliki akses ke transaksi ini.', 403, 'FORBIDDEN');
         }
 
-        $transaksi->load(['jenisTabungan', 'rekeningBank', 'pendaftaranQurban']);
+        $transaksi->load(['jenisTabungan', 'rekeningBank', 'pendaftaranQurban', 'gadai']);
 
         return $this->successResponse(new TransaksiResource($transaksi));
     }

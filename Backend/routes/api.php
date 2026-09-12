@@ -10,10 +10,12 @@ use App\Http\Controllers\Api\V1\Admin\PembayaranHarianController;
 use App\Http\Controllers\Api\V1\Admin\RekeningBankController as AdminRekeningBankController;
 use App\Http\Controllers\Api\V1\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Api\V1\Admin\AuditLogController;
+use App\Http\Controllers\Api\V1\Admin\TabunganBerjangkaController as AdminTabunganBerjangkaController;
 use App\Http\Controllers\Api\V1\JenisTabunganController;
 use App\Http\Controllers\Api\V1\EmasController;
 use App\Http\Controllers\Api\V1\KonfigurasiSetoranEmasController;
 use App\Http\Controllers\Api\V1\TabunganPribadiController;
+use App\Http\Controllers\Api\V1\TabunganBerjangkaController;
 use App\Http\Controllers\Api\V1\HariRayaController;
 use App\Http\Controllers\Api\V1\QurbanController;
 use App\Http\Controllers\Api\V1\TransaksiController;
@@ -88,9 +90,9 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::get('/emas/harga-terkini', [EmasController::class, 'hargaTerkini']);
         Route::get('/emas/harga-riwayat', [EmasController::class, 'hargaRiwayat']);
         Route::post('/emas/setor', [EmasController::class, 'setor']);
-Route::post('/emas/tarik', [EmasController::class, 'tarik']);
-Route::post('/emas/tukar', [EmasController::class, 'tukar']);
-Route::post('/emas/batal', [EmasController::class, 'batal']);
+        Route::post('/emas/tarik', [EmasController::class, 'tarik']);
+        Route::post('/emas/tukar', [EmasController::class, 'tukar']);
+        Route::post('/emas/batal', [EmasController::class, 'batal']);
         Route::put('/emas/goal', [EmasController::class, 'updateGoal']);
         Route::get('/emas/setoran-berkala', [KonfigurasiSetoranEmasController::class, 'index']);
         Route::post('/emas/setoran-berkala', [KonfigurasiSetoranEmasController::class, 'store']);
@@ -102,6 +104,13 @@ Route::post('/emas/batal', [EmasController::class, 'batal']);
         Route::post('/tabungan-pribadi/tarik', [TabunganPribadiController::class, 'tarik']);
         Route::get('/tabungan-pribadi/progress', [TabunganPribadiController::class, 'progress']);
 
+        // Tabungan Berjangka — user buat & kelola
+        Route::get('/tabungan-berjangka', [TabunganBerjangkaController::class, 'index']);
+        Route::post('/tabungan-berjangka', [TabunganBerjangkaController::class, 'store']);
+        Route::post('/tabungan-berjangka/{tabunganBerjangka}/setor', [TabunganBerjangkaController::class, 'setor']);
+        Route::post('/tabungan-berjangka/{tabunganBerjangka}/cairkan', [TabunganBerjangkaController::class, 'cairkan']);
+        Route::post('/tabungan-berjangka/{tabunganBerjangka}/batal', [TabunganBerjangkaController::class, 'batal']);
+
         // Tabungan Hari Raya — target user sendiri + pencairan 1 minggu sebelum hari raya
         Route::get('/tabungan-hari-raya/status', [HariRayaController::class, 'status']);
         Route::put('/tabungan-hari-raya/target', [HariRayaController::class, 'updateTarget']);
@@ -112,19 +121,20 @@ Route::post('/emas/batal', [EmasController::class, 'batal']);
         Route::get('/qurban/hewan', [QurbanController::class, 'listHewan']);
         Route::post('/qurban/daftar', [QurbanController::class, 'daftar']);
         Route::get('/qurban/pendaftaran-saya', [QurbanController::class, 'pendaftaranSaya']);
-Route::post('/qurban/{pendaftaran}/setor', [QurbanController::class, 'setor']);
-Route::post('/qurban/{pendaftaran}/lunas', [QurbanController::class, 'lunas']);
-Route::get('/qurban/{pendaftaran}/progress', [QurbanController::class, 'progress']);
+        Route::post('/qurban/{pendaftaran}/setor', [QurbanController::class, 'setor']);
+        Route::post('/qurban/{pendaftaran}/lunas', [QurbanController::class, 'lunas']);
+        Route::get('/qurban/{pendaftaran}/progress', [QurbanController::class, 'progress']);
 
         // Transaksi — User
         Route::get('/transaksi-saya', [TransaksiController::class, 'index']);
         Route::get('/transaksi-saya/{transaksi}', [TransaksiController::class, 'show']);
         Route::post('/transaksi/{transaksi}/upload-bukti', [TransaksiController::class, 'uploadBukti']);
 
-        // Gadai — User (mengajukan & melihat sendiri)
+        // Gadai — User (mengajukan, melihat, dan membayar angsuran)
         Route::post('/gadai-saya', [GadaiController::class, 'store']);
         Route::get('/gadai-saya', [GadaiController::class, 'index']);
         Route::get('/gadai-saya/{gadai}', [GadaiController::class, 'show']);
+        Route::post('/gadai-saya/{gadai}/bayar', [GadaiController::class, 'bayar']);
 
         // Dashboard — User
         Route::get('/dashboard', [DashboardController::class, 'index']);
@@ -173,7 +183,7 @@ Route::get('/qurban/{pendaftaran}/progress', [QurbanController::class, 'progress
         Route::delete('/qurban/hewan/{hewan}', [AdminQurbanController::class, 'destroyHewan']);
         Route::get('/qurban/pendaftaran', [AdminQurbanController::class, 'listPendaftaran']);
         Route::post('/qurban/{pendaftaran}/cairkan', [AdminQurbanController::class, 'cairkan']);
-Route::post('/qurban/{pendaftaran}/lunas', [AdminQurbanController::class, 'lunas']);
+        Route::post('/qurban/{pendaftaran}/lunas', [AdminQurbanController::class, 'lunas']);
         Route::delete('/qurban/pendaftaran/{pendaftaran}', [AdminQurbanController::class, 'destroyPendaftaran']);
 
         // Transaksi — Admin
@@ -206,6 +216,17 @@ Route::post('/qurban/{pendaftaran}/lunas', [AdminQurbanController::class, 'lunas
         Route::post('/gadai/{gadai}/terlambat', [AdminGadaiController::class, 'terlambat']);
         Route::post('/gadai/{gadai}/perpanjang', [AdminGadaiController::class, 'perpanjang']);
         Route::delete('/gadai/{gadai}', [AdminGadaiController::class, 'destroy']);
+
+        // Gadai — Verifikasi angsuran dari user
+        Route::post('/gadai/angsuran/{angsuran}/verifikasi', [AdminGadaiController::class, 'verifikasiAngsuran']);
+        Route::post('/gadai/angsuran/{angsuran}/tolak', [AdminGadaiController::class, 'tolakAngsuran']);
+        Route::get('/gadai/angsuran/{angsuran}/bukti', [AdminGadaiController::class, 'showBukti']);
+
+        // Tabungan Berjangka — Admin
+        Route::get('/tabungan-berjangka', [AdminTabunganBerjangkaController::class, 'index']);
+        Route::post('/tabungan-berjangka', [AdminTabunganBerjangkaController::class, 'store']);
+        Route::post('/tabungan-berjangka/{tabunganBerjangka}/approve', [AdminTabunganBerjangkaController::class, 'approve']);
+        Route::post('/tabungan-berjangka/{tabunganBerjangka}/tolak', [AdminTabunganBerjangkaController::class, 'tolak']);
 
         // Audit Logs
         Route::get('/audit-logs', [AuditLogController::class, 'index']);

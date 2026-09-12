@@ -21,6 +21,8 @@ class Transaksi extends Model
         'user_id',
         'jenis_tabungan_id',
         'pendaftaran_qurban_id',
+        'tabungan_berjangka_id',
+        'gadai_id',
         'konfigurasi_id',
         'jenis_transaksi',
         'nominal',
@@ -73,6 +75,16 @@ class Transaksi extends Model
     public function pendaftaranQurban(): BelongsTo
     {
         return $this->belongsTo(PendaftaranQurban::class);
+    }
+
+    public function tabunganBerjangka(): BelongsTo
+    {
+        return $this->belongsTo(TabunganBerjangka::class);
+    }
+
+    public function gadai(): BelongsTo
+    {
+        return $this->belongsTo(Gadai::class);
     }
 
     public function konfigurasiSetoranEmas(): BelongsTo

@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Enums\StatusGadai;
+use App\Enums\StatusVerifikasi;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Models\AngsuranGadai;
 use App\Models\AuditLog;
 use App\Models\Gadai;
+use App\Models\Transaksi;
 use App\Models\User;
 use App\Services\EmasConversionService;
 use App\Services\GadaiService;
@@ -16,6 +18,7 @@ use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Gadai Emas (modul utama). Admin membuat & mengelola seluruh siklus:
@@ -39,7 +42,7 @@ class GadaiController extends Controller
     public function index(Request $request): JsonResponse
     {
         $gadai = Gadai::query()
-            ->with(['user:id,name,phone,nomor_anggota'])
+            ->with(['user:id,name,phone,nomor_anggota', 'angsuran'])
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
             ->when($request->filled('user_id'), fn ($q) => $q->where('user_id', (int) $request->user_id))
             ->when($request->filled('q'), function ($q) use ($request) {
@@ -139,6 +142,9 @@ class GadaiController extends Controller
             'nominal' => (float) $a->nominal,
             'metode_pembayaran' => $a->metode_pembayaran,
             'catatan' => $a->catatan,
+            'status_verifikasi' => $a->status_verifikasi?->value ?? 'terverifikasi',
+            'bukti_transfer_path' => $a->bukti_transfer_path,
+            'catatan_admin' => $a->catatan_admin,
             'pencatat' => $a->createdBy?->name,
         ])->values();
 
@@ -234,19 +240,40 @@ class GadaiController extends Controller
         $sebelumDibayar = (float) $gadai->total_dibayar;
 
         $angsuran = DB::transaction(function () use ($request, $gadai, $nominal, $terbayar, $lunas, $sebelumDibayar) {
+            $tanggalBayar = $request->filled('tanggal_bayar') ? $request->tanggal_bayar : now()->toDateString();
+            $metode = $request->metode_pembayaran ?? 'cash';
+
             $a = AngsuranGadai::create([
                 'gadai_id' => $gadai->id,
-                'tanggal_bayar' => $request->filled('tanggal_bayar') ? $request->tanggal_bayar : now()->toDateString(),
+                'tanggal_bayar' => $tanggalBayar,
                 'nominal' => $nominal,
-                'metode_pembayaran' => $request->metode_pembayaran ?? 'cash',
+                'metode_pembayaran' => $metode,
                 'catatan' => $request->catatan,
                 'created_by' => $request->user()->id,
+                'status_verifikasi' => StatusVerifikasi::Terverifikasi->value,
+                'diverifikasi_oleh' => $request->user()->id,
+                'diverifikasi_pada' => now(),
             ]);
 
             $gadai->update([
                 'total_dibayar' => $terbayar,
                 'status' => $lunas ? StatusGadai::Lunas : $gadai->status,
                 'tanggal_lunas' => $lunas ? now()->toDateString() : $gadai->tanggal_lunas,
+            ]);
+
+            // Sync to riwayat transaksi user
+            Transaksi::create([
+                'nomor_referensi' => Transaksi::generateNomorReferensi(),
+                'user_id' => $gadai->user_id,
+                'gadai_id' => $gadai->id,
+                'jenis_transaksi' => 'setor',
+                'nominal' => $nominal,
+                'metode_pembayaran' => $metode,
+                'status_verifikasi' => StatusVerifikasi::Terverifikasi->value,
+                'diverifikasi_oleh' => $request->user()->id,
+                'diverifikasi_pada' => now(),
+                'catatan_admin' => 'Pembayaran angsuran gadai ' . $gadai->nomor_gadai . ($request->catatan ? ' - ' . $request->catatan : ''),
+                'tanggal_transaksi' => $tanggalBayar,
             ]);
 
             AuditLog::record(
@@ -296,8 +323,23 @@ class GadaiController extends Controller
                     'tanggal_bayar' => now()->toDateString(),
                     'nominal' => $sisa,
                     'metode_pembayaran' => 'transfer',
+                    'status_verifikasi' => StatusVerifikasi::Terverifikasi->value,
                     'catatan' => 'Pelunasan penuh sisa pokok.',
                     'created_by' => $request->user()->id,
+                ]);
+
+                Transaksi::create([
+                    'nomor_referensi' => Transaksi::generateNomorReferensi(),
+                    'user_id' => $gadai->user_id,
+                    'gadai_id' => $gadai->id,
+                    'jenis_transaksi' => 'setor',
+                    'nominal' => $sisa,
+                    'metode_pembayaran' => 'transfer',
+                    'status_verifikasi' => StatusVerifikasi::Terverifikasi->value,
+                    'diverifikasi_oleh' => $request->user()->id,
+                    'diverifikasi_pada' => now(),
+                    'catatan_admin' => 'Pelunasan penuh sisa pokok gadai ' . $gadai->nomor_gadai,
+                    'tanggal_transaksi' => now()->toDateString(),
                 ]);
             }
 
@@ -413,6 +455,88 @@ class GadaiController extends Controller
     }
 
     /**
+     * POST /admin/gadai/angsuran/{angsuran}/verifikasi — verifikasi angsuran dari user.
+     */
+    public function verifikasiAngsuran(Request $request, AngsuranGadai $angsuran): JsonResponse
+    {
+        if (! $angsuran->isMenungguVerifikasi()) {
+            return $this->errorResponse('Angsuran ini sudah diverifikasi sebelumnya.', 409, 'CONFLICT');
+        }
+
+        $gadai = $angsuran->gadai;
+        $nominal = (float) $angsuran->nominal;
+        $terbayar = round((float) $gadai->total_dibayar + $nominal, 2);
+        $lunas = $terbayar >= (float) $gadai->besaran_gadai;
+
+        DB::transaction(function () use ($request, $angsuran, $gadai, $nominal, $terbayar, $lunas) {
+            $angsuran->update([
+                'status_verifikasi' => StatusVerifikasi::Terverifikasi->value,
+                'diverifikasi_oleh' => $request->user()->id,
+                'diverifikasi_pada' => now(),
+            ]);
+
+            $gadai->update([
+                'total_dibayar' => $terbayar,
+                'status' => $lunas ? StatusGadai::Lunas : $gadai->status,
+                'tanggal_lunas' => $lunas ? now()->toDateString() : $gadai->tanggal_lunas,
+            ]);
+
+            // Sync to riwayat transaksi user
+            Transaksi::create([
+                'nomor_referensi' => Transaksi::generateNomorReferensi(),
+                'user_id' => $gadai->user_id,
+                'gadai_id' => $gadai->id,
+                'jenis_transaksi' => 'setor',
+                'nominal' => $nominal,
+                'metode_pembayaran' => $angsuran->metode_pembayaran ?? 'transfer',
+                'status_verifikasi' => StatusVerifikasi::Terverifikasi->value,
+                'diverifikasi_oleh' => $request->user()->id,
+                'diverifikasi_pada' => now(),
+                'catatan_admin' => 'Pembayaran angsuran gadai ' . $gadai->nomor_gadai,
+                'catatan_user' => $angsuran->catatan,
+                'tanggal_transaksi' => $angsuran->tanggal_bayar->toDateString(),
+            ]);
+
+            AuditLog::record('gadai.verifikasi_angsuran', $angsuran, null, [
+                'nominal' => $nominal,
+                'total_dibayar' => $terbayar,
+                'lunas' => $lunas,
+            ]);
+        });
+
+        $message = $lunas
+            ? 'Angsuran diverifikasi — gadai LUNAS. Emas dikembalikan ke peserta.'
+            : 'Angsuran diverifikasi. Sisa pokok: Rp ' . number_format(round($gadai->sisaPokok() - $nominal, 2), 0, ',', '.') . '.';
+
+        return $this->successResponse($this->gadaiArray($gadai->fresh(['user'])), $message);
+    }
+
+    /**
+     * POST /admin/gadai/angsuran/{angsuran}/tolak — tolak angsuran dari user.
+     */
+    public function tolakAngsuran(Request $request, AngsuranGadai $angsuran): JsonResponse
+    {
+        if (! $angsuran->isMenungguVerifikasi()) {
+            return $this->errorResponse('Angsuran ini sudah diproses sebelumnya.', 409, 'CONFLICT');
+        }
+
+        $request->validate([
+            'catatan_admin' => 'required|string|max:500',
+        ]);
+
+        $angsuran->update([
+            'status_verifikasi' => StatusVerifikasi::Ditolak->value,
+            'catatan_admin' => $request->catatan_admin,
+            'diverifikasi_oleh' => $request->user()->id,
+            'diverifikasi_pada' => now(),
+        ]);
+
+        AuditLog::record('gadai.tolak_angsuran', $angsuran);
+
+        return $this->successResponse(null, 'Angsuran ditolak.');
+    }
+
+    /**
      * DELETE /admin/gadai/{gadai} — hapus hanya pengajuan yang belum berjalan.
      */
     public function destroy(Request $request, Gadai $gadai): JsonResponse
@@ -497,6 +621,34 @@ class GadaiController extends Controller
             'status_label' => $gadai->status->label(),
             'catatan' => $gadai->catatan,
             'created_at' => $gadai->created_at?->toISOString(),
+            'angsuran' => $gadai->relationLoaded('angsuran')
+                ? $gadai->angsuran->map(fn (AngsuranGadai $a) => [
+                    'id' => $a->id,
+                    'gadai_id' => $a->gadai_id,
+                    'tanggal_bayar' => $a->tanggal_bayar?->toDateString(),
+                    'nominal' => (float) $a->nominal,
+                    'metode_pembayaran' => $a->metode_pembayaran,
+                    'catatan' => $a->catatan,
+                    'status_verifikasi' => $a->status_verifikasi instanceof StatusVerifikasi
+                        ? $a->status_verifikasi->value
+                        : (string) $a->status_verifikasi,
+                    'bukti_transfer_path' => $a->bukti_transfer_path,
+                    'bukti_transfer_url' => $a->bukti_transfer_path ? url('/api/v1/admin/gadai/angsuran/' . $a->id . '/bukti') : null,
+                    'created_at' => $a->created_at?->toISOString(),
+                ])->values()
+                : [],
         ];
+    }
+
+    /**
+     * GET /admin/gadai/angsuran/{angsuran}/bukti — lihat file bukti pembayaran angsuran.
+     */
+    public function showBukti(Request $request, AngsuranGadai $angsuran)
+    {
+        if (! $angsuran->bukti_transfer_path || ! Storage::disk('local')->exists($angsuran->bukti_transfer_path)) {
+            abort(404, 'Bukti transfer tidak ditemukan.');
+        }
+
+        return Storage::disk('local')->response($angsuran->bukti_transfer_path);
     }
 }

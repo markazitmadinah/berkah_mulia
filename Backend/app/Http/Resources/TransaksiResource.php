@@ -25,6 +25,13 @@ class TransaksiResource extends JsonResource
                 'tipe' => $this->jenisTabungan->tipe->value,
             ]),
             'pendaftaran_qurban_id' => $this->pendaftaran_qurban_id,
+            'tabungan_berjangka_id' => $this->tabungan_berjangka_id,
+            'gadai_id' => $this->gadai_id,
+            'gadai' => $this->whenLoaded('gadai', fn () => [
+                'id' => $this->gadai->id,
+                'nomor_gadai' => $this->gadai->nomor_gadai,
+                'jenis_emas' => $this->gadai->jenis_emas,
+            ]),
             'jenis_transaksi' => $this->jenis_transaksi->value,
             'jenis_transaksi_label' => $this->jenis_transaksi->label(),
             'nominal' => $this->nominal,

@@ -38,13 +38,31 @@ export const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
 };
 
 export const GadaiDetailModal: React.FC<{ gadai: Gadai; onClose: () => void }> = ({ gadai: initial, onClose }) => {
-  const { gadaiDetail, fetchGadaiDetail, clearGadaiDetail } = useApp();
+  const { gadaiDetail, fetchGadaiDetail, clearGadaiDetail, verifikasiAngsuranGadai, tolakAngsuranGadai, showToast, currentUser } = useApp();
   const g = gadaiDetail || initial;
+  const [tolakId, setTolakId] = useState<number | null>(null);
+  const [tolakCatatan, setTolakCatatan] = useState('');
 
   useEffect(() => {
     clearGadaiDetail();
     fetchGadaiDetail(initial.id);
   }, [initial.id]);
+
+  const pct = Number(g.besaran_gadai) > 0 ? Math.min(100, (Number(g.total_dibayar) / Number(g.besaran_gadai)) * 100) : 0;
+  const isAdmin = currentUser?.role === 'admin';
+
+  const handleVerifikasi = (angsuranId: number) => {
+    verifikasiAngsuranGadai(angsuranId);
+    setTimeout(() => fetchGadaiDetail(g.id), 500);
+  };
+
+  const handleTolak = (angsuranId: number) => {
+    if (!tolakCatatan.trim()) return showToast('Alasan penolakan wajib diisi.', 'error');
+    tolakAngsuranGadai(angsuranId, tolakCatatan);
+    setTolakId(null);
+    setTolakCatatan('');
+    setTimeout(() => fetchGadaiDetail(g.id), 500);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-sm">
@@ -94,6 +112,29 @@ export const GadaiDetailModal: React.FC<{ gadai: Gadai; onClose: () => void }> =
               <span>Dibayar: {formatRupiah(g.total_dibayar)}</span>
               <span>Sisa Pokok: {formatRupiah(g.sisa_pokok)}</span>
             </div>
+
+            {/* Progress Bar */}
+            {Number(g.besaran_gadai) > 0 && g.status !== 'diajukan' && g.status !== 'disetujui' && (
+              <div className="mt-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">Progres Pelunasan</span>
+                  <span className={`text-[11px] font-extrabold ${pct >= 100 ? 'text-emerald-700' : 'text-amber-800 dark:text-amber-200'}`}>
+                    {Math.round(pct * 10) / 10}%
+                  </span>
+                </div>
+                <div className="w-full h-2.5 rounded-full bg-amber-200/60 dark:bg-amber-900/40 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-700 ease-out ${
+                      pct >= 100
+                        ? 'bg-gradient-to-r from-emerald-500 to-emerald-400'
+                        : 'bg-gradient-to-r from-amber-500 to-amber-400'
+                    }`}
+                    style={{ width: `${Math.max(pct, 1)}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
             {g.status === 'batal' && (
               <p className="text-[11px] font-semibold mt-2 text-amber-700 dark:text-amber-300">
                 Emas dikembalikan · potongan 10% dari total yang dibayar
@@ -119,15 +160,75 @@ export const GadaiDetailModal: React.FC<{ gadai: Gadai; onClose: () => void }> =
               <p className="text-xs text-slate-400 bg-slate-50 dark:bg-slate-800/60 rounded-xl px-3 py-3">Belum ada pembayaran tercatat.</p>
             ) : (
               <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700/70">
-                {g.angsuran.map((a) => (
-                  <div key={a.id} className="flex items-center justify-between px-4 py-2.5 text-xs">
-                    <div>
-                      <div className="font-bold text-slate-800 dark:text-slate-100">{a.tanggal_bayar}</div>
-                      <div className="text-[10px] text-slate-400">{a.pencatat || 'Admin'} · {a.metode_pembayaran || 'cash'}</div>
+                {g.angsuran.map((a) => {
+                  const isPending = a.status_verifikasi === 'menunggu_verifikasi';
+                  const isDitolak = a.status_verifikasi === 'ditolak';
+                  const verBadge = isPending
+                    ? 'bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                    : isDitolak
+                    ? 'bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                    : 'bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800';
+                  const verLabel = isPending ? 'Menunggu' : isDitolak ? 'Ditolak' : 'Terverifikasi';
+
+                  return (
+                    <div key={a.id} className="px-4 py-3 text-xs">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-slate-800 dark:text-slate-100">{a.tanggal_bayar}</span>
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${verBadge}`}>{verLabel}</span>
+                          </div>
+                          <div className="text-[10px] text-slate-400 mt-0.5">
+                            {a.pencatat || 'User'} · {a.metode_pembayaran || 'cash'}
+                            {a.catatan && <span> · {a.catatan}</span>}
+                          </div>
+                          {isDitolak && a.catatan_admin && (
+                            <div className="text-[10px] text-rose-500 mt-0.5">Alasan: {a.catatan_admin}</div>
+                          )}
+                        </div>
+                        <span className={`font-extrabold font-mono ${isDitolak ? 'text-slate-400 line-through' : 'text-emerald-600'}`}>
+                          {formatRupiah(a.nominal)}
+                        </span>
+                      </div>
+
+                      {/* Admin verification buttons */}
+                      {isAdmin && isPending && (
+                        <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                          {tolakId === a.id ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                value={tolakCatatan}
+                                onChange={e => setTolakCatatan(e.target.value)}
+                                placeholder="Alasan penolakan..."
+                                className="flex-1 px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px]"
+                              />
+                              <button onClick={() => handleTolak(a.id)} className="px-3 py-1.5 rounded-xl bg-rose-500 text-white text-[10px] font-bold cursor-pointer">Tolak</button>
+                              <button onClick={() => { setTolakId(null); setTolakCatatan(''); }} className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 text-[10px] font-bold cursor-pointer">Batal</button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleVerifikasi(a.id)}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[10px] font-bold hover:bg-emerald-100 cursor-pointer"
+                              >
+                                <CheckCircle2 className="w-3 h-3" /> Verifikasi
+                              </button>
+                              <button
+                                onClick={() => setTolakId(a.id)}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 text-[10px] font-bold hover:bg-rose-100 cursor-pointer"
+                              >
+                                <X className="w-3 h-3" /> Tolak
+                              </button>
+                              {a.bukti_transfer_path && (
+                                <span className="text-[10px] text-indigo-500 font-bold ml-auto">📎 Bukti terlampir</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <span className="font-extrabold font-mono text-emerald-600">{formatRupiah(a.nominal)}</span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

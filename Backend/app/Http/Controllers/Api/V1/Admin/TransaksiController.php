@@ -44,7 +44,7 @@ class TransaksiController extends Controller
             'search' => 'nullable|string|max:255',
         ]);
 
-        $query = Transaksi::with(['user', 'jenisTabungan', 'rekeningBank']);
+        $query = Transaksi::with(['user', 'jenisTabungan', 'rekeningBank', 'gadai']);
 
         if ($request->filled('status')) {
             $query->where('status_verifikasi', $request->status);

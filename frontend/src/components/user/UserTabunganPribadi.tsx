@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { formatRupiah } from '../../utils/format';
 import { UserTabunganQurban } from './UserTabunganQurban';
 import { UserTabunganHariRaya } from './UserTabunganHariRaya';
+import { UserTabunganBerjangka } from './UserTabunganBerjangka';
 import { JenisTabungan } from '../../types';
 import {
   Wallet,
@@ -56,7 +57,8 @@ export const UserTabunganPribadi: React.FC<UserTabunganPribadiProps> = ({
 }) => {
   const {
     userTransaksi,
-    jenisTabungan
+    jenisTabungan,
+    userTabunganMandiriTotal
   } = useApp();
 
   const subJenisList = SUB_ORDER
@@ -70,28 +72,13 @@ export const UserTabunganPribadi: React.FC<UserTabunganPribadiProps> = ({
   );
   const activeJenis = subJenisList.find((j) => j.sub_jenis === activeSub);
 
-  // ─── Tab Qurban: rendern modul qurban yang sudah ada ─────────
-  if (activeSub === 'qurban') {
-    return (
-      <div className="space-y-6 animate-in fade-in duration-200">
-        <UserTabunganQurban
-          onOpenDaftarQurban={onOpenDaftarQurban}
-          onOpenSetorQurban={onOpenSetorQurban}
-        />
-      </div>
-    );
-  }
-
-  // ─── Tab Hari Raya: rendern modul target+pencairan khusus ─────────
-  if (activeSub === 'hari_raya') {
-    return (
-      <div className="space-y-6 animate-in fade-in duration-200">
-        <UserTabunganHariRaya onOpenSetorPribadi={onOpenSetorPribadi} />
-      </div>
-    );
-  }
-
-  const trx = userTransaksi.filter((t) => t.jenis_tabungan_id === activeJenis?.id);
+  const trx = userTransaksi.filter((t) => {
+    if (t.jenis_tabungan_id === activeJenis?.id) {
+      if (t.tabungan_berjangka_id) return false;
+      return true;
+    }
+    return false;
+  });
 
   const totalSetor = trx
     .filter((t) => t.status_verifikasi === 'terverifikasi' && t.jenis_transaksi === 'setor')
@@ -101,104 +88,98 @@ export const UserTabunganPribadi: React.FC<UserTabunganPribadiProps> = ({
     .filter((t) => t.status_verifikasi === 'terverifikasi' && t.jenis_transaksi === 'tarik')
     .reduce((acc, c) => acc + c.nominal, 0);
 
-  const saldo = totalSetor - totalTarik;
+  const saldo = userTabunganMandiriTotal;
 
   const deadlineDate = activeJenis?.deadline ? new Date(activeJenis.deadline + 'T00:00:00') : null;
   const deadlinePassed = deadlineDate != null && deadlineDate < new Date();
   const style = SUB_STYLE[activeJenis?.sub_jenis ?? 'mandiri'] ?? SUB_STYLE.mandiri;
-  const isBerjangka = activeJenis?.sub_jenis === 'berjangka';
-
-  const desc = isBerjangka
-    ? 'Simpanan dengan target tenggat waktu. Setoran berkala sampai tanggal deadline, dana terkunci sampai jatuh tempo.'
-    : activeJenis?.sub_jenis === 'hari_raya'
-      ? 'Simpanan khusus menyambut hari raya. Setoran bebas kapan saja, dana dicairkan saat hari raya tiba.'
-      : 'Simpanan fleksibel dengan prinsip titipan amanah (Wadi\u2019ah Yad Dhamanah). Setor kapan saja dan tarik saat dibutuhkan tanpa potongan biaya bulanan.';
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
+      {/* Persistent Sub-Tab Switcher */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+        {subJenisList.map((j) => {
+          const isActive = activeSub === j.sub_jenis;
+          const label = j.sub_jenis_label ?? j.nama;
+          return (
+            <button
+              key={j.id}
+              onClick={() => setActiveSub(j.sub_jenis as string)}
+              className={`px-4 py-2.5 rounded-2xl text-xs font-extrabold whitespace-nowrap transition-all cursor-pointer flex items-center gap-2 ${
+                isActive
+                  ? (SUB_STYLE[j.sub_jenis]?.active ?? 'bg-emerald-600 text-white shadow-md')
+                  : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60 border border-slate-200/80 dark:border-slate-700/60'
+              }`}
+            >
+              <Wallet className="w-3.5 h-3.5" />
+              <span>{label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ─── Tab Qurban ─── */}
+      {activeSub === 'qurban' && (
+        <UserTabunganQurban
+          onOpenDaftarQurban={onOpenDaftarQurban}
+          onOpenSetorQurban={onOpenSetorQurban}
+        />
+      )}
+
+      {/* ─── Tab Hari Raya ─── */}
+      {activeSub === 'hari_raya' && (
+        <UserTabunganHariRaya onOpenSetorPribadi={onOpenSetorPribadi} />
+      )}
+
+      {/* ─── Tab Berjangka ─── */}
+      {activeSub === 'berjangka' && (
+        <UserTabunganBerjangka
+          onOpenSetorPribadi={onOpenSetorPribadi}
+          jenisTabunganId={activeJenis?.id}
+        />
+      )}
+
+      {/* ─── Tab Mandiri (Default) ─── */}
+      {activeSub === 'mandiri' && (
+        <>
       {/* Top Banner */}
       <div className={`rounded-3xl p-6 lg:p-8 bg-gradient-to-r ${style.grad} shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6`}>
         <div>
           <div className="flex items-center gap-2 mb-2 flex-wrap">
             <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${style.badge} flex items-center gap-1.5`}>
               <Wallet className="w-3.5 h-3.5" />
-              {activeJenis?.sub_jenis_label ?? activeJenis?.nama}
+              Tabungan Mandiri
             </span>
-            {isBerjangka && (
-              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300">
-                Dana Terkunci sampai Jatuh Tempo
-              </span>
-            )}
+            <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
+              Bebas Tarik & Setor Kapan Saja
+            </span>
           </div>
           <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-            {activeJenis?.nama ?? 'Tabungan Pribadi'}
+            Tabungan Mandiri (Wadi'ah)
           </h1>
           <p className="text-xs md:text-sm text-slate-600 dark:text-slate-300 mt-1 max-w-xl">
-            {desc}
+            Simpanan fleksibel dengan prinsip titipan amanah (Wadi'ah Yad Dhamanah). Setor kapan saja dan tarik saat dibutuhkan tanpa potongan biaya bulanan (terpisah dari Tabungan Berjangka).
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           <button
             onClick={() => onOpenSetorPribadi(activeJenis?.id)}
-            disabled={deadlinePassed}
-            className="py-3 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="py-3 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 transition-all cursor-pointer"
           >
             <ArrowDownLeft className="w-4 h-4" />
-            <span>{deadlinePassed ? 'Setoran Ditutup' : 'Setor'}</span>
+            <span>Setor</span>
           </button>
 
-          {activeJenis?.allow_withdrawal && (
-            <button
-              onClick={onOpenTarikPribadi}
-              className="py-3 px-5 rounded-2xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm active:scale-95 transition-all cursor-pointer"
-            >
-              <ArrowUpRight className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              <span>Tarik</span>
-            </button>
-          )}
+          <button
+            onClick={onOpenTarikPribadi}
+            className="py-3 px-5 rounded-2xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm active:scale-95 transition-all cursor-pointer"
+          >
+            <ArrowUpRight className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            <span>Tarik Saldo</span>
+          </button>
         </div>
       </div>
-
-      {isBerjangka && (
-        <div className={`rounded-3xl p-5 border ${deadlinePassed ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800/50' : 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800/50'} flex flex-col sm:flex-row sm:items-center gap-4`}>
-          <div className="flex items-center gap-3">
-            <span className="w-10 h-10 rounded-2xl bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center flex-shrink-0">
-              <Calendar className="w-5 h-5" />
-            </span>
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Tanggal Jatuh Tempo</p>
-              <p className="font-extrabold text-base text-slate-900 dark:text-white">
-                {deadlineDate
-                  ? deadlineDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
-                  : '-'}
-              </p>
-            </div>
-          </div>
-          <div className="sm:ml-4 flex items-center gap-3">
-            <span className="w-10 h-10 rounded-2xl bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center flex-shrink-0">
-              <Repeat className="w-5 h-5" />
-            </span>
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Frekuensi Setoran</p>
-              <p className="font-extrabold text-sm text-slate-900 dark:text-white capitalize">
-                {activeJenis?.frekuensi_setoran ?? 'Berkala'}
-              </p>
-            </div>
-          </div>
-          <div className="sm:ml-auto">
-            {deadlinePassed ? (
-              <span className="inline-flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-2xl bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300">
-                <Flame className="w-4 h-4" /> Periode setoran berakhir
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-2xl bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300">
-                Setoran aktif sampai deadline
-              </span>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* 3 Metric Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -307,6 +288,8 @@ export const UserTabunganPribadi: React.FC<UserTabunganPribadiProps> = ({
           )}
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 };

@@ -58,6 +58,7 @@ class TabunganPribadiController extends Controller
             'bukti_transfer' => 'required|file|mimes:jpg,jpeg,png,pdf|max:2048',
             'catatan_user' => 'nullable|string|max:500',
             'jenis_tabungan_id' => 'nullable|exists:jenis_tabungan,id',
+            'tabungan_berjangka_id' => 'nullable|exists:tabungan_berjangka,id',
         ]);
 
         $jenisTabungan = $this->resolveJenis($request);
@@ -105,6 +106,7 @@ class TabunganPribadiController extends Controller
             $transaksi = $this->transaksiService->buatTransaksi([
                 'user_id' => $request->user()->id,
                 'jenis_tabungan_id' => $jenisTabungan->id,
+                'tabungan_berjangka_id' => $request->tabungan_berjangka_id,
                 'jenis_transaksi' => JenisTransaksi::Setor,
                 'nominal' => $request->nominal,
                 'metode_pembayaran' => $request->metode_pembayaran,
@@ -136,8 +138,37 @@ class TabunganPribadiController extends Controller
             return $this->errorResponse('Penarikan tidak diizinkan untuk jenis tabungan ini.', 403, 'WITHDRAWAL_NOT_ALLOWED');
         }
 
-        // Balance is validated at admin verification time (see
-        // Admin\TransaksiController::verifikasi) so no overdraft is ever confirmed.
+        if ($jenisTabungan->sub_jenis === SubJenisTabungan::Berjangka) {
+            return $this->errorResponse('Tabungan berjangka hanya dapat dicairkan setelah target tercapai dan tanggal jatuh tempo tiba melalui menu Tabungan Berjangka.', 422, 'BERJANGKA_WITHDRAWAL_RESTRICTED');
+        }
+
+        // Saldo guard: pastikan saldo tabungan mandiri mencukupi dan terpisah dari dana berjangka
+        $totalSetor = Transaksi::milikUser($request->user()->id)
+            ->where('jenis_tabungan_id', $jenisTabungan->id)
+            ->whereNull('tabungan_berjangka_id')
+            ->terverifikasi()
+            ->where('jenis_transaksi', 'setor')
+            ->sum('nominal');
+
+        $totalTarik = Transaksi::milikUser($request->user()->id)
+            ->where('jenis_tabungan_id', $jenisTabungan->id)
+            ->whereNull('tabungan_berjangka_id')
+            ->terverifikasi()
+            ->where('jenis_transaksi', 'tarik')
+            ->sum('nominal');
+
+        $pendingTarik = Transaksi::milikUser($request->user()->id)
+            ->where('jenis_tabungan_id', $jenisTabungan->id)
+            ->whereNull('tabungan_berjangka_id')
+            ->menungguVerifikasi()
+            ->where('jenis_transaksi', 'tarik')
+            ->sum('nominal');
+
+        $saldoTersedia = (float) $totalSetor - (float) $totalTarik - (float) $pendingTarik;
+
+        if ((float) $request->nominal > $saldoTersedia) {
+            return $this->errorResponse('Saldo ' . $jenisTabungan->nama . ' tidak mencukupi (Tersedia: Rp ' . number_format(max(0, $saldoTersedia), 0, ',', '.') . ').', 422, 'INSUFFICIENT_BALANCE');
+        }
 
         $transaksi = $this->transaksiService->buatTransaksi([
             'user_id' => $request->user()->id,
