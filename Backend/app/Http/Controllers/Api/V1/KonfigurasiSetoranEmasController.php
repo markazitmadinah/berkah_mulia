@@ -200,6 +200,15 @@ class KonfigurasiSetoranEmasController extends Controller
             ]);
 
             $transaksi = DB::transaction(function () use ($user, $konfigurasi, $gram, $nilaiGram, $penalti, $danaRencana, $refund, $request) {
+                // Kunci baris rencana: dua pengajuan batal paralel tidak boleh
+                // menghasilkan refund ganda (rapat pre-check refundTerkunci di atas).
+                KonfigurasiSetoranEmas::whereKey($konfigurasi->id)->lockForUpdate()->firstOrFail();
+                $konfigurasi->refresh();
+
+                if ($konfigurasi->status !== StatusKonfigurasiSetoran::Aktif) {
+                    abort(422, 'Konfigurasi setoran berkala ini sudah tidak aktif.');
+                }
+
                 return $this->transaksiService->buatTransaksi([
                     'user_id' => $user->id,
                     'jenis_tabungan_id' => $konfigurasi->jenis_tabungan_id,

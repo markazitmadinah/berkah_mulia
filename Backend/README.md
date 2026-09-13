@@ -44,11 +44,13 @@ mysql -u root -e "CREATE DATABASE IF NOT EXISTS berkahmulia"
 php artisan migrate --seed
 ```
 
-### 4. Storage Setup
+### 4. Storage & File Bukti Transfer
 
 ```bash
-php artisan storage:link
+php artisan storage:link   # OPSIONAL — hanya diperlukan jika ada unggahan ke disk publik
 ```
+
+File bukti transfer memakai disk privat `bukti_transfer` dan **dikirim lewat endpoint ber-API key** (`GET /api/v1/transaksi/{transaksi}/bukti`, `GET /api/v1/admin/gadai/angsuran/{angsuran}/bukti`), sehingga **tidak butuh `storage:link`** dan tidak bisa diakses publik tanpa token.
 
 ### 5. Run Development Server
 
@@ -58,13 +60,25 @@ php artisan serve
 
 API tersedia di: `http://localhost:8000/api/v1/...`
 
-### 6. Queue Worker (Wajib untuk Notifikasi & Import/Export)
+### 6. Queue Worker
+
+**Tidak wajib.** Saat ini tidak ada job yang diantrekan — notifikasi, import, dan export berjalan sinkron. Jika nanti ada job `ShouldQueue` yang ditambahkan, jalankan:
 
 ```bash
 php artisan queue:work --queue=default
 ```
 
-### 7. Task Scheduler (Wajib untuk Auto-close Qurban & Pengingat Setoran)
+### 7. Sinkronisasi Harga Emas (sebelum fitur emas dipakai)
+
+Aplikasi **tidak menanam harga emas di seeder** (menghindari data basi). Setelah migrasi, ambil harga dari `harga-emas.org` atau input manual lewat menu admin:
+
+```bash
+php artisan hargaemas:sync
+```
+
+Tanpa ada baris aktif `harga_emas_harian`, endpoint emas mengembalikan 400/404 sampai harga tersedia.
+
+### 8. Task Scheduler (Wajib untuk Auto-close Qurban, Sync Harga & Pengingat Setoran)
 
 Jadwal aktif di `routes/console.php`:
 - `hargaemas:sync` — sinkronisasi harga emas (12:00).

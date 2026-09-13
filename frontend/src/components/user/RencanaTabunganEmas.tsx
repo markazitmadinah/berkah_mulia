@@ -86,17 +86,23 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
   const goalTotal = goalVal > 0 ? goalVal : (userEmasGoal ?? 0);
   const nominalVal = toNominal(kNominal);
   const durasiVal = Number(kDurasi) || 0;
-  const gramPerPeriode = durasiVal > 0 && goalTotal > 0 ? goalTotal / durasiVal : 0;
-  const biayaPeriode = activeHarga > 0 && gramPerPeriode > 0 ? Math.ceil(gramPerPeriode * activeHarga) : 0;
-  const tanggalSelesai = durasiVal > 0 && goalTotal > 0
-    ? tambahPeriode(new Date(), Math.max(0, durasiVal - 1), kFrek)
-    : '';
 
   // Dua arah: isi nominal => durasi sampai target; isi durasi => nominal per periode. Yang terakhir diedit = sumber.
   const durasiDariNominal = (goal: number, nom: number): number =>
     goal > 0 && nom > 0 && activeHarga > 0 ? Math.ceil((goal * activeHarga) / nom) : 0;
   const nominalDariDurasi = (goal: number, dur: number): number =>
     goal > 0 && dur > 0 && activeHarga > 0 ? Math.ceil((goal * activeHarga) / dur) : 0;
+
+  // Sumber terakhir yang diedit menentukan pasangan yang dipakai. Hitung ulang
+  // di sini (bukan percaya state), supaya tampilan & submit selalu konsisten.
+  const nominalDipakai = kSource === 'durasi' ? nominalDariDurasi(goalTotal, durasiVal) : nominalVal;
+  const durasiDipakai = kSource === 'durasi' ? durasiVal : durasiDariNominal(goalTotal, nominalVal);
+
+  const gramPerPeriode = durasiDipakai > 0 && goalTotal > 0 ? goalTotal / durasiDipakai : 0;
+  const biayaPeriode = activeHarga > 0 && gramPerPeriode > 0 ? Math.ceil(gramPerPeriode * activeHarga) : 0;
+  const tanggalSelesai = durasiDipakai > 0 && goalTotal > 0
+    ? tambahPeriode(new Date(), Math.max(0, durasiDipakai - 1), kFrek)
+    : '';
 
   const onChangeGoal = (raw: string) => {
     setKGoal(raw);
@@ -135,19 +141,19 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
       showToast('Isi target rencana ini: berapa gram emas yang ingin dicapai.', 'error');
       return;
     }
-    if (nominalVal < 10000) {
+    if (nominalDipakai < 10000) {
       showToast('Nominal pembayaran minimal Rp 10.000.', 'error');
       return;
     }
-    if (durasiVal < 1) {
+    if (durasiDipakai < 1) {
       showToast('Isi berapa lama menabung (jumlah periode).', 'error');
       return;
     }
     buatSetoranBerkala({
-      nominal_per_periode: nominalVal,
+      nominal_per_periode: nominalDipakai,
       target_gram_total: goalVal,
       frekuensi_setor: kFrek,
-      durasi_periode: durasiVal
+      durasi_periode: durasiDipakai
     });
     setKGoal('');
     setKNominal('');
@@ -410,7 +416,7 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
           </div>
           <div>
             <label className={labelCls}>
-              Berapa lama ({goalTotal > 0 && durasiVal > 0 ? `${gramPerPeriode.toFixed(4)} gr/${kFrek === 'harian' ? 'hari' : kFrek === 'mingguan' ? 'minggu' : 'bulan'}` : ''})
+              Berapa lama ({goalTotal > 0 && durasiDipakai > 0 ? `${gramPerPeriode.toFixed(4)} gr/${kFrek === 'harian' ? 'hari' : kFrek === 'mingguan' ? 'minggu' : 'bulan'}` : ''})
             </label>
             <input
               type="number" min={1}
@@ -445,10 +451,10 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
           </div>
         </div>
 
-        {durasiVal > 0 && (goalTotal > 0 || nominalVal > 0) && (
+        {durasiDipakai > 0 && (goalTotal > 0 || nominalDipakai > 0) && (
           <div className="p-4 rounded-2xl border border-emerald-200/70 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-950/20 space-y-1.5 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
             <p className="flex items-center gap-1.5"><CornerDownLeft className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              Bayar <strong>Rp {formatRupiah(nominalVal)}</strong> {FREK_LABEL[kFrek]} selama <strong>{durasiVal}x</strong>
+              Bayar <strong>Rp {formatRupiah(nominalDipakai)}</strong> {FREK_LABEL[kFrek]} selama <strong>{durasiDipakai}x</strong>
             </p>
             {goalTotal > 0 && (
               <p>
@@ -461,9 +467,9 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
                 Target {goalTotal} gr tercapai sekitar <strong>{tanggalSelesai}</strong>
               </p>
             )}
-            {nominalVal > 0 && biayaPeriode > 0 && (
-              <p className={biayaPeriode > nominalVal ? 'text-rose-600 dark:text-rose-400' : 'text-slate-500 dark:text-slate-400'}>
-                {biayaPeriode > nominalVal
+            {nominalDipakai > 0 && biayaPeriode > 0 && (
+              <p className={biayaPeriode > nominalDipakai ? 'text-rose-600 dark:text-rose-400' : 'text-slate-500 dark:text-slate-400'}>
+                {biayaPeriode > nominalDipakai
                   ? `Biaya ${gramPerPeriode.toFixed(4)}gr (Rp ${formatRupiah(Math.round(biayaPeriode))}) melebihi setoran — kelebihannya menunggu di saldo dana.`
                   : `Biaya ${gramPerPeriode.toFixed(4)}gr saat ini ≈ Rp ${formatRupiah(Math.round(biayaPeriode))}`}
               </p>
@@ -516,8 +522,8 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
 
       {/* ============ MODAL: Cairkan Emas ============ */}
       {keluarMode && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
-          <div className="bg-white dark:bg-slate-800 rounded-t-3xl sm:rounded-3xl border border-slate-200 dark:border-slate-700 shadow-2xl w-full max-w-lg overflow-hidden sm:my-8 animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-2xl w-full max-w-lg overflow-hidden sm:my-8 animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between p-6 border-b border-slate-100 dark:border-slate-700">
               <div>
                 <h3 className="font-extrabold text-lg text-slate-900 dark:text-white">
@@ -583,8 +589,8 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
 
       {/* ============ MODAL: Batal & Refund per Rencana ============ */}
       {batalPlan && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
-          <div className="bg-white dark:bg-slate-800 rounded-t-3xl sm:rounded-3xl border border-slate-200 dark:border-slate-700 shadow-2xl w-full max-w-lg overflow-hidden sm:my-8 animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-2xl w-full max-w-lg overflow-hidden sm:my-8 animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between p-6 border-b border-slate-100 dark:border-slate-700">
               <div>
                 <h3 className="font-extrabold text-lg text-slate-900 dark:text-white">Batal & Refund {batalPlan.label}</h3>

@@ -57,7 +57,7 @@ async function request<T = { data: unknown; message?: string; meta?: unknown }>(
   }
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs ?? (isForm ? 120_000 : 15_000));
+  const timer = setTimeout(() => controller.abort(), timeoutMs ?? (isForm ? 120_000 : 30_000));
   try {
     const res = await fetch(`${API_URL}${url}`, { method, headers, body: payload, signal: controller.signal });
 

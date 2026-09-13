@@ -42,7 +42,7 @@ class ProgressCalculatorService
             ->where('jenis_transaksi', 'tarik')
             ->sum('nominal');
 
-        return (float) ($totalSetor - $totalTarik);
+        return max(0, (float) ($totalSetor - $totalTarik));
     }
 
     /**
@@ -71,7 +71,7 @@ class ProgressCalculatorService
                 ->where('jenis_transaksi', 'setor')
                 ->sum('nominal');
 
-            $saldo = $totalTerverifikasi - $totalPenarikan;
+            $saldo = max(0, $totalTerverifikasi - $totalPenarikan);
 
             $target = $this->targetUser($user, $jenis);
 
@@ -132,7 +132,7 @@ class ProgressCalculatorService
                 ->sum('unit_didapat');
         }
 
-        $saldo = $totalSetor - $totalTarik;
+        $saldo = max(0, $totalSetor - $totalTarik);
 
         $target = $this->targetUser($user, $jenisTabungan);
 

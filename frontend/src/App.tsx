@@ -239,14 +239,14 @@ return (
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto pt-2 sm:pt-3">
         <Navbar
           onOpenProfile={() => setActiveTab('profil')}
           onOpenPasswordModal={() => setActiveTab('ganti-password')}
           onToggleMobileMenu={() => setIsMobileSidebarOpen(true)}
         />
 
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8">
           {loading && transaksi.length === 0 && activeTab === 'dashboard' ? (
             <DashboardSkeleton />
           ) : (

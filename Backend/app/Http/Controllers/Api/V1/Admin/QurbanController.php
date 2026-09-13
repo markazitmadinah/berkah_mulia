@@ -207,6 +207,11 @@ class QurbanController extends Controller
             return $this->errorResponse('Pendaftaran ini sudah dicairkan.', 409, 'CONFLICT');
         }
 
+        // Dana tidak boleh dicairkan sebelum target tercapai (atau sudah dinyatakan lunas).
+        if (! in_array($pendaftaran->status, [StatusPendaftaranQurban::TargetTercapai, StatusPendaftaranQurban::SudahLunas], true)) {
+            return $this->errorResponse('Dana qurban belum bisa dicairkan karena target belum tercapai.', 422, 'GOAL_NOT_REACHED');
+        }
+
         $oldValues = ['status' => $pendaftaran->status->value, 'total_terkumpul' => $pendaftaran->total_terkumpul];
 
         $pendaftaran->update([
@@ -258,10 +263,11 @@ class QurbanController extends Controller
         $oldValues = ['status' => $pendaftaran->status->value, 'total_terkumpul' => $pendaftaran->total_terkumpul];
 
         DB::transaction(function () use ($pendaftaran) {
-            // Hapus seluruh setoran qurban terkait (pembatalan penuh → saldo balik ke 0).
+            // Hapus setoran qurban terkait secara lunak (soft delete) — riwayat dana
+            // nasabah tetap ada sebagai jejak audit, tapi tak lagi masuk perhitungan saldo.
             Transaksi::where('pendaftaran_qurban_id', $pendaftaran->id)
                 ->where('jenis_transaksi', JenisTransaksi::Setor->value)
-                ->forceDelete();
+                ->delete();
 
             $pendaftaran->delete();
         });

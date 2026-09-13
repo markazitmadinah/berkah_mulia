@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Casts\UserStatusCast;
 use App\Enums\UserRole;
 use App\Enums\UserStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -51,7 +52,7 @@ class User extends Authenticatable
             'last_login_at' => 'datetime',
             'password' => 'hashed',
             'role' => UserRole::class,
-            'status' => UserStatus::class,
+            'status' => UserStatusCast::class,
         ];
     }
 
@@ -97,5 +98,19 @@ class User extends Authenticatable
     public function isActive(): bool
     {
         return $this->status === UserStatus::Active;
+    }
+
+    // Status & role tidak fillable; defaultkan di sini agar tak bergantung
+    // pada default kolom DB (mis. DB lama yang masih ber-default 'pending').
+    protected static function booted(): void
+    {
+        static::creating(function (User $user) {
+            if (($user->getAttributes()['status'] ?? null) === null) {
+                $user->status = UserStatus::Active;
+            }
+            if (($user->getAttributes()['role'] ?? null) === null) {
+                $user->role = UserRole::User;
+            }
+        });
     }
 }

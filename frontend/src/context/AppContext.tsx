@@ -501,7 +501,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // ─── Data loading ─────────────────────────────────────────
-  const POLL_MS = 25_000;
+  const POLL_MS = 10_000;
   const hargaTerkiniAtRef = useRef(0);
   const refreshingRef = useRef(false);
   const userRef = useRef(currentUser);
@@ -534,9 +534,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             .get<HargaEmasHarian>(isAdmin ? '/admin/emas/harga-terkini' : '/emas/harga-terkini')
             .catch(() => null)
         : null;
-      const riwayat$ = api
-        .get<HargaEmasHarian[]>(isAdmin ? '/admin/emas/harga-riwayat?per_page=500' : '/emas/harga-riwayat?per_page=500')
-        .catch(() => null);
+      // Riwayat harga (500 baris) paling berat; light poll skip supaya notif +
+      // transaksi/verifikasi selalu ter-update bersama dan tidak kena timeout.
+      const riwayat$ = light
+        ? null
+        : api
+            .get<HargaEmasHarian[]>(isAdmin ? '/admin/emas/harga-riwayat?per_page=500' : '/emas/harga-riwayat?per_page=500')
+            .catch(() => null);
       const qurbanMaster$ = light
         ? null
         : isAdmin
@@ -1293,7 +1297,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const bayarGadaiUser = (gadaiId: number, formData: FormData) =>
     withRefresh(
-      () => api.post(`/gadai-saya/${gadaiId}/bayar`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+      () => api.post(`/gadai-saya/${gadaiId}/bayar`, formData),
       'Pembayaran angsuran berhasil dikirim. Tunggu verifikasi admin.'
     );
 

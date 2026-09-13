@@ -231,15 +231,10 @@ class EmasController extends Controller
             return $this->errorResponse('Pencairan hanya bisa diajukan setelah goal tabungan emas Anda tercapai.', 422, 'GOAL_NOT_REACHED');
         }
 
-        // Include pending penarikan agar tidak terjadi overdraw beruntun.
-        $pendingGram = Transaksi::milikUser($request->user()->id)
-            ->where('jenis_tabungan_id', $jenisTabungan->id)
-            ->where('jenis_transaksi', 'tarik')
-            ->menungguVerifikasi()
-            ->sum('unit_didapat');
-
-        if (($saldoGram + (float) $pendingGram) <= 0) {
-            return $this->errorResponse('Saldo emas sudah habis atau sedang dalam penarikan lain.', 422, 'INSUFFICIENT_BALANCE');
+        // Anti overdraw & double payout: hanya SATU pengajuan penarikan/pembatalan
+        // yang boleh menunggu verifikasi pada satu waktu (tarik = full saldo).
+        if ($this->adaPengajuanPending($request, $jenisTabungan)) {
+            return $this->errorResponse('Anda masih memiliki pengajuan penarikan/pembatalan yang menunggu verifikasi admin.', 422, 'WITHDRAWAL_PENDING');
         }
 
         $nominal = round($saldoGram * (float) $harga->harga_per_gram, 2);
@@ -294,6 +289,11 @@ class EmasController extends Controller
         $target = $request->user()->target_emas_gram;
         if ($target === null || $saldoGram < (float) $target) {
             return $this->errorResponse('Tukar emas hanya bisa dilakukan setelah goal tabungan emas Anda tercapai.', 422, 'GOAL_NOT_REACHED');
+        }
+
+        // Anti overdraw: emas fisik tidak boleh ditukar saat masih ada pengajuan penarikan pending.
+        if ($this->adaPengajuanPending($request, $jenisTabungan)) {
+            return $this->errorResponse('Anda masih memiliki pengajuan penarikan yang menunggu verifikasi admin.', 422, 'WITHDRAWAL_PENDING');
         }
 
         $nominal = round($saldoGram * (float) $harga->harga_per_gram, 2);
@@ -383,6 +383,11 @@ class EmasController extends Controller
             return $this->errorResponse('Goal tabungan emas sudah tercapai. Gunakan pencairan, bukan pembatalan.', 422, 'GOAL_REACHED');
         }
 
+        // Anti overdraw / refund ganda: batal ditolak selama ada pengajuan tarik/batal lain.
+        if ($this->adaPengajuanPending($request, $jenisTabungan)) {
+            return $this->errorResponse('Anda masih memiliki pengajuan penarikan/pembatalan yang menunggu verifikasi admin.', 422, 'WITHDRAWAL_PENDING');
+        }
+
         $hargaPerGram = (float) $harga->harga_per_gram;
         $nilaiSaldo = round($saldoGram * $hargaPerGram, 2);
         $penalti = round($nilaiSaldo * 0.10, 2);
@@ -440,5 +445,20 @@ class EmasController extends Controller
                 ? 'Target tabungan emas berhasil disimpan.'
                 : 'Target tabungan emas dihapus.'
         );
+    }
+
+    /**
+     * True bila masih ada pengajuan penarikan/pembatalan (jenis 'tarik') yang
+     * menunggu verifikasi pada jenis tabungan ini. Dipakai tarik/tukar/batal
+     * agar emas yang sama tidak dicairkan/ditukar/terefund lebih dari sekali.
+     */
+    private function adaPengajuanPending(Request $request, JenisTabungan $jenisTabungan): bool
+    {
+        return Transaksi::milikUser($request->user()->id)
+            ->where('jenis_tabungan_id', $jenisTabungan->id)
+            ->where('jenis_transaksi', 'tarik')
+            ->whereNotNull('unit_didapat')
+            ->menungguVerifikasi()
+            ->exists();
     }
 }

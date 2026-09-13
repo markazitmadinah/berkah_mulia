@@ -88,15 +88,24 @@ class UsersExport implements
 
         return [
             $no,
-            $user->name,
-            $user->nomor_anggota ?? '-',
-            $user->email,
-            $user->phone,
-            $user->address ?: '-',
-            $user->role instanceof UserRole ? $user->role->label() : (string) $user->role,
-            $user->status instanceof UserStatus ? $user->status->label() : (string) $user->status,
+            $this->safeCell($user->name),
+            $this->safeCell($user->nomor_anggota ?? '-'),
+            $this->safeCell($user->email),
+            $this->safeCell($user->phone),
+            $this->safeCell($user->address ?: '-'),
+            $this->safeCell($user->role instanceof UserRole ? $user->role->label() : (string) $user->role),
+            $this->safeCell($user->status instanceof UserStatus ? $user->status->label() : (string) $user->status),
             $user->created_at?->format('d/m/Y'),
         ];
+    }
+
+    /**
+     * Cegah formula injection: teks yang diawali =,+,-,@ dikencingi tanda kutip
+     * supaya Excel memperlakukannya sebagai teks, bukan formula.
+     */
+    private function safeCell(string $value): string
+    {
+        return in_array($value[0] ?? '', ['=', '+', '-', '@'], true) ? "'" . $value : $value;
     }
 
     public function columnFormats(): array

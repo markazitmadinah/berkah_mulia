@@ -39,6 +39,13 @@ class EnsureUserIsActive
                 'message' => 'Akun Anda telah dibekukan. Silakan hubungi admin.',
                 'error_code' => 'ACCOUNT_SUSPENDED',
             ], 403),
+
+            // Nilai status tak dikenal (mis. sisa 'pending' lama) tidak boleh 500.
+            default => response()->json([
+                'success' => false,
+                'message' => 'Akun Anda belum aktif. Silakan hubungi admin.',
+                'error_code' => 'ACCOUNT_INACTIVE',
+            ], 403),
         };
     }
 }

@@ -115,20 +115,22 @@ class TransaksiController extends Controller
             return $this->errorResponse('Transaksi ini sudah diproses sebelumnya.', 409, 'CONFLICT');
         }
 
-        // Balance guard for withdrawals: verify only if current balance can cover it.
-        if ($transaksi->jenis_transaksi === JenisTransaksi::Tarik) {
-            $jenis = $transaksi->jenisTabungan;
-            $user = $transaksi->user;
-            if ($jenis && $user) {
-                if ($jenis->tipe === TipeTabungan::Emas) {
-                    // Emas balance is tracked two ways: grams (unit_didapat) & saldo dana (nominal_selisih).
-                    // The withdrawal nominal is the rupiah market value (grams × price),
-                    // so it must not be compared against rupiah actually deposited.
+        // Balance guard: verify only if current balance can cover the transaction.
+        $jenis = $transaksi->jenisTabungan;
+        $user = $transaksi->user;
+        if ($jenis && $user) {
+            if ($jenis->tipe === TipeTabungan::Emas) {
+                // Emas balance is tracked two ways: grams (unit_didapat) & saldo dana (nominal_selisih).
+                // The withdrawal nominal is the rupiah market value (grams × price),
+                // so it must not be compared against rupiah actually deposited.
+                if ($transaksi->jenis_transaksi === JenisTransaksi::Tarik) {
                     $saldoGram = Transaksi::milikUser($user->id)
                         ->where('jenis_tabungan_id', $jenis->id)
                         ->terverifikasi()
                         ->sum('unit_didapat');
 
+                    // Pending penarikan lain bernilai negatif (unit_didapat < 0),
+                    // jadi sisa yang tersedia = saldo ditambah total pending (bukan dikurang).
                     $pendingLainGram = Transaksi::milikUser($user->id)
                         ->where('jenis_tabungan_id', $jenis->id)
                         ->where('jenis_transaksi', 'tarik')
@@ -137,36 +139,37 @@ class TransaksiController extends Controller
                         ->sum('unit_didapat');
 
                     $tarikGram = abs((float) $transaksi->unit_didapat);
-                    if ($tarikGram > ($saldoGram - (float) $pendingLainGram)) {
+                    if ($tarikGram > ($saldoGram + (float) $pendingLainGram)) {
                         return $this->errorResponse('Saldo emas tidak mencukupi untuk memverifikasi penarikan ini.', 422, 'INSUFFICIENT_BALANCE');
                     }
+                }
 
-                    // Guard saldo dana: semua transaksi emas punya delta dana (nominal_selisih);
-                    // hasil verifikasi tidak boleh membuat saldo dana negatif.
-                    if ($transaksi->nominal_selisih !== null) {
-                        $saldoDana = $this->saldoEmasService->getSaldoDana($user, $jenis);
-                        $pendingDanaLain = Transaksi::milikUser($user->id)
-                            ->where('jenis_tabungan_id', $jenis->id)
-                            ->where('id', '!=', $transaksi->id)
-                            ->menungguVerifikasi()
-                            ->sum('nominal_selisih');
-
-                        $danaSetelah = round($saldoDana + (float) $pendingDanaLain + (float) $transaksi->nominal_selisih, 2);
-                        if ($danaSetelah < 0) {
-                            return $this->errorResponse('Saldo dana tidak mencukupi untuk memverifikasi transaksi ini.', 422, 'INSUFFICIENT_BALANCE');
-                        }
-                    }
-                } else {
-                    $saldo = $this->progressService->getSaldo($user, $jenis);
-                    $pendingLain = Transaksi::milikUser($user->id)
+                // Guard saldo dana: semua transaksi emas punya delta dana (nominal_selisih).
+                // Setor bisa memakai saldo dana untuk melengkapi gram (nominal_selisih < 0) —
+                // verifikasi tidak boleh membuat saldo dana negatif.
+                if ($transaksi->nominal_selisih !== null && (float) $transaksi->nominal_selisih < 0) {
+                    $saldoDana = $this->saldoEmasService->getSaldoDana($user, $jenis);
+                    $pendingDanaLain = Transaksi::milikUser($user->id)
                         ->where('jenis_tabungan_id', $jenis->id)
-                        ->where('jenis_transaksi', 'tarik')
                         ->where('id', '!=', $transaksi->id)
                         ->menungguVerifikasi()
-                        ->sum('nominal');
-                    if ($transaksi->nominal > ($saldo - $pendingLain)) {
-                        return $this->errorResponse('Saldo tidak mencukupi untuk memverifikasi penarikan ini.', 422, 'INSUFFICIENT_BALANCE');
+                        ->sum('nominal_selisih');
+
+                    $danaSetelah = round($saldoDana + (float) $pendingDanaLain + (float) $transaksi->nominal_selisih, 2);
+                    if ($danaSetelah < 0) {
+                        return $this->errorResponse('Saldo dana tidak mencukupi untuk memverifikasi transaksi ini.', 422, 'INSUFFICIENT_BALANCE');
                     }
+                }
+            } elseif ($transaksi->jenis_transaksi === JenisTransaksi::Tarik) {
+                $saldo = $this->progressService->getSaldo($user, $jenis);
+                $pendingLain = Transaksi::milikUser($user->id)
+                    ->where('jenis_tabungan_id', $jenis->id)
+                    ->where('jenis_transaksi', 'tarik')
+                    ->where('id', '!=', $transaksi->id)
+                    ->menungguVerifikasi()
+                    ->sum('nominal');
+                if ($transaksi->nominal > ($saldo - $pendingLain)) {
+                    return $this->errorResponse('Saldo tidak mencukupi untuk memverifikasi penarikan ini.', 422, 'INSUFFICIENT_BALANCE');
                 }
             }
         }

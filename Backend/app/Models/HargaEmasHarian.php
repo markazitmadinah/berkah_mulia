@@ -60,6 +60,7 @@ class HargaEmasHarian extends Model
     public static function hargaTerkini(): ?self
     {
         return static::aktif()
+            ->whereDate('tanggal', '<=', now()->toDateString())
             ->orderByDesc('tanggal')
             ->orderByDesc('id')
             ->first();

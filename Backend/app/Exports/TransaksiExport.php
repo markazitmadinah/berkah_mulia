@@ -89,16 +89,25 @@ class TransaksiExport implements
 
         return [
             $no,
-            $row->nomor_referensi,
-            $row->user->name ?? ($row->user_name ?? '-'),
-            $row->jenisTabungan->nama ?? '-',
-            $row->jenis_transaksi instanceof JenisTransaksi ? $row->jenis_transaksi->label() : (string) $row->jenis_transaksi,
+            $this->safeCell($row->nomor_referensi),
+            $this->safeCell($row->user->name ?? ($row->user_name ?? '-')),
+            $this->safeCell($row->jenisTabungan->nama ?? '-'),
+            $this->safeCell($row->jenis_transaksi instanceof JenisTransaksi ? $row->jenis_transaksi->label() : (string) $row->jenis_transaksi),
             $row->nominal,
             $row->unit_didapat,
-            $row->metode_pembayaran instanceof MetodePembayaran ? $row->metode_pembayaran->label() : (string) $row->metode_pembayaran,
+            $this->safeCell($row->metode_pembayaran instanceof MetodePembayaran ? $row->metode_pembayaran->label() : (string) $row->metode_pembayaran),
             $row->tanggal_transaksi?->format('d/m/Y'),
-            $row->status_verifikasi instanceof StatusVerifikasi ? $row->status_verifikasi->label() : (string) $row->status_verifikasi,
+            $this->safeCell($row->status_verifikasi instanceof StatusVerifikasi ? $row->status_verifikasi->label() : (string) $row->status_verifikasi),
         ];
+    }
+
+    /**
+     * Cegah formula injection: teks yang diawali =,+,-,@ dikencingi tanda kutip
+     * supaya Excel memperlakukannya sebagai teks, bukan formula.
+     */
+    private function safeCell(string $value): string
+    {
+        return in_array($value[0] ?? '', ['=', '+', '-', '@'], true) ? "'" . $value : $value;
     }
 
     public function columnFormats(): array

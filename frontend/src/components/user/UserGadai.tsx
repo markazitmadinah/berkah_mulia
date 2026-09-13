@@ -193,18 +193,18 @@ export const UserGadai: React.FC = () => {
         Emas Anda menjadi jaminan pembiayaan. Jatuh tempo &amp; pembayaran diatur oleh pengurus koperasi.
       </p>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="rounded-3xl p-4 bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 shadow-sm">
           <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Pengajuan</div>
           <div className="text-lg sm:text-xl font-extrabold font-mono mt-0.5 text-slate-800 dark:text-slate-100">{gadai.length}</div>
         </div>
         <div className="rounded-3xl p-4 bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 shadow-sm">
           <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Pembiayaan Aktif</div>
-          <div className="text-lg sm:text-xl font-extrabold font-mono mt-0.5 text-amber-600 dark:text-amber-400 break-all">{formatRupiah(totalDipinjam)}</div>
+          <div className="text-lg sm:text-xl font-extrabold font-mono mt-0.5 text-amber-600 dark:text-amber-400 break-words whitespace-normal">{formatRupiah(totalDipinjam)}</div>
         </div>
         <div className="rounded-3xl p-4 bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 shadow-sm">
           <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Terbayar</div>
-          <div className="text-lg sm:text-xl font-extrabold font-mono mt-0.5 text-emerald-600 dark:text-emerald-400">{formatRupiah(totalTerbayar)}</div>
+          <div className="text-lg sm:text-xl font-extrabold font-mono mt-0.5 text-emerald-600 dark:text-emerald-400 break-words whitespace-normal">{formatRupiah(totalTerbayar)}</div>
         </div>
       </div>
 
@@ -234,7 +234,7 @@ export const UserGadai: React.FC = () => {
                   <div className="flex items-center gap-3">
                     <div className="text-right">
                       <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sisa Pokok</div>
-                      <div className="text-base sm:text-lg font-extrabold font-mono text-amber-600 dark:text-amber-400">{formatRupiah(g.sisa_pokok)}</div>
+                      <div className="text-base sm:text-lg font-extrabold font-mono text-amber-600 dark:text-amber-400 break-words whitespace-normal">{formatRupiah(g.sisa_pokok)}</div>
                       <div className="text-[10px] text-slate-400">Terbayar {formatRupiah(g.total_dibayar)}</div>
                     </div>
                     <div className="flex flex-col gap-1.5">

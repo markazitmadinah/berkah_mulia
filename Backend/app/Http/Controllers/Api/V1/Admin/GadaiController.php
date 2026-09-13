@@ -261,6 +261,13 @@ class GadaiController extends Controller
             return $this->errorResponse('Gadai tidak dalam masa pembayaran aktif.', 422, 'STATUS_TIDAK_VALID');
         }
 
+        // Cegah double-pay: pembayaran web yang masih pending harus dibereskan dahulu.
+        if (AngsuranGadai::where('gadai_id', $gadai->id)
+            ->where('status_verifikasi', StatusVerifikasi::MenungguVerifikasi->value)
+            ->exists()) {
+            return $this->errorResponse('Masih ada pembayaran angsuran yang menunggu verifikasi. Verifikasi/tolak dahulu sebelum mencatat pembayaran baru.', 422, 'ANGSURAN_PENDING');
+        }
+
         $request->validate([
             'nominal' => 'required|numeric|min:1',
             'tanggal_bayar' => 'nullable|date',
@@ -365,6 +372,13 @@ class GadaiController extends Controller
             StatusGadai::Diperpanjang,
         ], true)) {
             return $this->errorResponse('Gadai tidak dalam masa pembayaran aktif.', 422, 'STATUS_TIDAK_VALID');
+        }
+
+        // Cegah double-pay: selesaikan pembayaran pending dahulu sebelum pelunasan.
+        if (AngsuranGadai::where('gadai_id', $gadai->id)
+            ->where('status_verifikasi', StatusVerifikasi::MenungguVerifikasi->value)
+            ->exists()) {
+            return $this->errorResponse('Masih ada pembayaran angsuran yang menunggu verifikasi. Verifikasi/tolak dahulu sebelum pelunasan.', 422, 'ANGSURAN_PENDING');
         }
 
         $request->validate([
@@ -578,7 +592,28 @@ class GadaiController extends Controller
         }
 
         $gadai = $angsuran->gadai;
+
+        if (! in_array($gadai->status, [
+            StatusGadai::Aktif,
+            StatusGadai::JatuhTempo,
+            StatusGadai::Terlambat,
+            StatusGadai::Diperpanjang,
+        ], true)) {
+            return $this->errorResponse('Gadai tidak dalam masa pembayaran aktif.', 422, 'STATUS_TIDAK_VALID');
+        }
+
         $nominal = (float) $angsuran->nominal;
+        $sisa = round((float) $gadai->sisaPokok(), 2);
+        $pendingLain = round((float) AngsuranGadai::where('gadai_id', $gadai->id)
+            ->where('id', '!=', $angsuran->id)
+            ->where('status_verifikasi', StatusVerifikasi::MenungguVerifikasi->value)
+            ->sum('nominal'), 2);
+        $sisaEfektif = round($sisa - $pendingLain, 2);
+
+        if ($nominal > $sisaEfektif && abs($nominal - $sisaEfektif) > 0.01) {
+            return $this->errorResponse('Nominal melebihi sisa pokok yang belum dibayar (Rp ' . number_format($sisaEfektif, 0, ',', '.') . ').', 422, 'MELEBIHI_SISA');
+        }
+
         $terbayar = round((float) $gadai->total_dibayar + $nominal, 2);
         $lunas = $terbayar >= (float) $gadai->besaran_gadai;
 

@@ -367,7 +367,9 @@ class QurbanTest extends ApiTestCase
             ->assertOk();
 
         $this->assertSoftDeleted('pendaftaran_qurban', ['id' => $pendaftaran->id]);
-        $this->assertDatabaseMissing('transaksi', ['id' => $trx->id]);
+        // Setoran ikut dihapus lunak (soft delete) — riwayat dana nasabah tetap ada sebagai jejak audit,
+        // tapi tidak lagi masuk perhitungan saldo qurban.
+        $this->assertSoftDeleted('transaksi', ['id' => $trx->id]);
     }
 
     public function test_admin_tidak_bisa_hapus_pendaftaran_sudah_dicairkan(): void

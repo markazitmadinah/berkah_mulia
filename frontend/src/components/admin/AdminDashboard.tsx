@@ -527,7 +527,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <button
                             onClick={() => {
                               setPreviewBuktiTitle(`Bukti Angsuran Gadai - ${item.gadaiParent.nomor_gadai}`);
-                              const path = (item as any).bukti_transfer_url || `/api/v1/admin/gadai/angsuran/${item.id}/bukti`;
+                              const path = (item as any).bukti_transfer_url || `/admin/gadai/angsuran/${item.id}/bukti`;
                               authFileUrl(path)
                                 .then(setPreviewBuktiUrl)
                                 .catch(() => showToast('Gagal memuat bukti pembayaran.', 'error'));

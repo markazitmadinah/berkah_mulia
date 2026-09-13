@@ -73,19 +73,20 @@ export const LoginPage: React.FC = () => {
       {/* Login Form */}
       <div className="flex-1 flex items-center justify-center p-6 sm:p-10">
         <div className="w-full max-w-md">
-          <div className="lg:hidden flex items-center gap-3 mb-8 justify-center">
+          <div className="lg:hidden flex flex-col items-center gap-2 mb-8 justify-center">
             <img
               src={logo}
               alt="Logo Berkah Mulia"
-              className="w-10 h-10 object-cover"
+              className="w-20 h-20 object-cover rounded-2xl shadow-lg shadow-blue-600/10"
             />
-            <span className="font-extrabold text-lg text-slate-900 dark:text-white font-display">Berkah Mulia</span>
+            <span className="font-extrabold text-xl sm:text-2xl text-slate-900 dark:text-white font-display">Berkah Mulia</span>
+            <p className="text-[10px] font-bold text-blue-500 tracking-widest uppercase">Wealth & Ethics Syariah</p>
           </div>
 
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white font-display leading-tight">
-            Selamat Datang kembali
+          <h2 className="text-[1.7rem] sm:text-3xl font-extrabold text-slate-900 dark:text-white font-display leading-tight text-center lg:text-left">
+            Selamat Datang Kembali
           </h2>
-          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+          <p className="mt-2 text-sm sm:text-base text-slate-500 dark:text-slate-400 text-center lg:text-left">
             Masuk untuk mengakses dashboard tabungan syariah Anda.
           </p>
 

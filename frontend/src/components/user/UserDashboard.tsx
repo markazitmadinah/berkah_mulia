@@ -173,7 +173,6 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           glowRadius={20}
           glowIntensity={1.1}
           coneSpread={26}
-          animated
           colors={isDark ? ['#fbbf24', '#f59e0b', '#b45309'] : ['#fcd34d', '#f59e0b', '#d97706']}
         >
           <div className="h-full p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-amber-50/80 via-orange-50/50 to-amber-100/60 dark:from-slate-800/80 dark:via-slate-800/60 dark:to-amber-950/30 border border-amber-200/70 dark:border-amber-500/20 flex flex-col justify-between relative overflow-hidden group shine-sweep">
@@ -242,7 +241,6 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           glowRadius={28}
           glowIntensity={1.25}
           coneSpread={28}
-          animated
           colors={['#34d399', '#2dd4bf', '#10b981']}
         >
           <div className="h-full p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-slate-900/80 via-slate-800/70 to-emerald-950/80 text-white border border-slate-700/50 flex flex-col justify-between relative overflow-hidden shine-sweep">
@@ -321,7 +319,6 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           glowRadius={18}
           glowIntensity={1.1}
           coneSpread={24}
-          animated
           colors={['#34d399', '#22d3ee', '#10b981']}
         >
           <div className="h-full p-5 sm:p-6 rounded-3xl bg-white/80 dark:bg-slate-800/75 border border-slate-200/80 dark:border-slate-700/70 flex flex-col justify-between">
