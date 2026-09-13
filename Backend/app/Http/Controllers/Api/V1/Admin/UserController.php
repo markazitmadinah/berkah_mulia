@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Enums\UserRole;
 use App\Enums\UserStatus;
+use App\Enums\TipeNotifikasi;
 use App\Enums\TipeTabungan;
 use App\Exports\UsersExport;
 use App\Exports\UsersTemplate;
@@ -18,6 +19,7 @@ use App\Models\KonfigurasiSetoranEmas;
 use App\Models\PendaftaranQurban;
 use App\Models\Transaksi;
 use App\Models\User;
+use App\Services\NotifikasiService;
 use App\Services\ProgressCalculatorService;
 use App\Services\SaldoEmasService;
 use App\Traits\ApiResponse;
@@ -30,6 +32,8 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 class UserController extends Controller
 {
     use ApiResponse;
+
+    public function __construct(private NotifikasiService $notif) {}
 
     /**
      * GET /admin/users
@@ -173,7 +177,7 @@ class UserController extends Controller
             'nomor_anggota' => 'required|string|regex:/^\d{16}$/|unique:users,nomor_anggota',
             'password' => 'required|string|min:8',
             'role' => 'sometimes|string|in:admin,user',
-            'status' => 'sometimes|string|in:pending,active',
+            'status' => 'sometimes|string|in:active,suspended,rejected',
             'address' => 'nullable|string|max:500',
             'created_at' => 'sometimes|date',
         ]);
@@ -249,53 +253,6 @@ class UserController extends Controller
     }
 
     /**
-     * POST /admin/users/{user}/approve
-     */
-    public function approve(User $user): JsonResponse
-    {
-        if ($user->status !== UserStatus::Pending) {
-            return $this->errorResponse('Hanya akun berstatus pending yang bisa di-approve.', 409, 'CONFLICT');
-        }
-
-        $oldValues = ['status' => $user->status->value];
-        $user->status = UserStatus::Active;
-        $user->approved_by = auth()->id();
-        $user->approved_at = now();
-        $user->save();
-
-        AuditLog::record('approve', $user, $oldValues, ['status' => 'active']);
-
-        // TODO: Dispatch SendUserApprovalNotification job
-
-        return $this->successResponse(new UserResource($user->fresh()), 'Akun berhasil disetujui.');
-    }
-
-    /**
-     * POST /admin/users/{user}/reject
-     */
-    public function reject(Request $request, User $user): JsonResponse
-    {
-        $request->validate([
-            'rejected_reason' => 'required|string|max:500',
-        ]);
-
-        if ($user->status !== UserStatus::Pending) {
-            return $this->errorResponse('Hanya akun berstatus pending yang bisa ditolak.', 409, 'CONFLICT');
-        }
-
-        $oldValues = ['status' => $user->status->value];
-        $user->status = UserStatus::Rejected;
-        $user->rejected_reason = $request->rejected_reason;
-        $user->save();
-
-        AuditLog::record('reject', $user, $oldValues, ['status' => 'rejected', 'rejected_reason' => $request->rejected_reason]);
-
-        // TODO: Dispatch SendUserRejectedNotification job
-
-        return $this->successResponse(new UserResource($user->fresh()), 'Akun berhasil ditolak.');
-    }
-
-    /**
      * POST /admin/users/{user}/suspend
      */
     public function suspend(User $user): JsonResponse
@@ -312,6 +269,14 @@ class UserController extends Controller
         $user->tokens()->delete();
 
         AuditLog::record('suspend', $user, $oldValues, ['status' => 'suspended']);
+
+        $this->notif->kirim(
+            $user,
+            'Akun Dibekukan',
+            'Akun Anda dibekukan oleh admin. Anda tidak dapat login sampai akun diaktifkan kembali. Hubungi admin untuk informasi lebih lanjut.',
+            TipeNotifikasi::ApprovalAkun,
+            ['status' => 'suspended']
+        );
 
         return $this->successResponse(new UserResource($user->fresh()), 'Akun berhasil dibekukan.');
     }
@@ -332,6 +297,14 @@ class UserController extends Controller
         $user->save();
 
         AuditLog::record('activate', $user, $oldValues, ['status' => 'active']);
+
+        $this->notif->kirim(
+            $user,
+            'Akun Diaktifkan Kembali',
+            'Akun Anda telah diaktifkan kembali oleh admin. Anda sudah bisa login dan bertransaksi seperti biasa.',
+            TipeNotifikasi::ApprovalAkun,
+            ['status' => 'active']
+        );
 
         return $this->successResponse(new UserResource($user->fresh()), 'Akun berhasil diaktifkan kembali.');
     }

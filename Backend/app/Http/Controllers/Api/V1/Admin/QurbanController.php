@@ -6,17 +6,16 @@ use App\Enums\JenisTransaksi;
 use App\Enums\StatusPendaftaranQurban;
 use App\Enums\StatusPeriodeQurban;
 use App\Enums\TipeNotifikasi;
-use App\Enums\ChannelNotifikasi;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\HewanQurbanResource;
 use App\Http\Resources\PendaftaranQurbanResource;
 use App\Http\Resources\PeriodeQurbanResource;
 use App\Models\AuditLog;
 use App\Models\HewanQurban;
-use App\Models\Notifikasi;
 use App\Models\PendaftaranQurban;
 use App\Models\PeriodeQurban;
 use App\Models\Transaksi;
+use App\Services\NotifikasiService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,6 +24,8 @@ use Illuminate\Support\Facades\DB;
 class QurbanController extends Controller
 {
     use ApiResponse;
+
+    public function __construct(private NotifikasiService $notif) {}
 
     public function storePeriode(Request $request): JsonResponse
     {
@@ -237,14 +238,13 @@ class QurbanController extends Controller
 
         AuditLog::record('lunas', $pendaftaran, $oldValues, ['status' => 'sudah_lunas']);
 
-        Notifikasi::create([
-            'user_id' => $pendaftaran->user_id,
-            'judul' => 'Qurban Anda Lunas',
-            'pesan' => 'Selamat! Qurban Anda telah dinyatakan lunas. Panitia sedang menyiapkan qurban Anda.',
-            'tipe' => TipeNotifikasi::Info,
-            'channel' => ChannelNotifikasi::InApp,
-            'data' => ['pendaftaran_qurban_id' => $pendaftaran->id],
-        ]);
+        $this->notif->kirim(
+            $pendaftaran->user,
+            'Qurban Anda Lunas',
+            'Selamat! Qurban Anda telah dinyatakan lunas. Panitia sedang menyiapkan qurban Anda.',
+            TipeNotifikasi::Info,
+            ['pendaftaran_qurban_id' => $pendaftaran->id]
+        );
 
         return $this->successResponse(new PendaftaranQurbanResource($pendaftaran->fresh()->load(['user', 'hewanQurban'])), 'Pendaftaran qurban berhasil dinyatakan lunas.');
     }

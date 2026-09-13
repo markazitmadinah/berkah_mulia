@@ -44,19 +44,20 @@ class AuditLogTest extends ApiTestCase
             ->assertOk()->assertJsonPath('meta.total', 1);
     }
 
-    public function test_aksi_register_tercatat_di_audit_log(): void
+    public function test_aksi_create_user_via_admin_tercatat_di_audit_log(): void
     {
         $this->seedBase();
+        $this->actingAsAdmin();
 
-        $this->postJson('/api/v1/auth/register', [
+        $this->postJson('/api/v1/admin/users', [
             'name' => 'Siti',
             'email' => 'siti@example.com',
             'phone' => '081233344455',
+            'nomor_anggota' => '0000000020260002',
             'password' => 'password123',
-            'password_confirmation' => 'password123',
         ])->assertStatus(201);
 
-        $this->assertDatabaseHas('audit_logs', ['action' => 'register', 'user_id' => null]);
+        $this->assertDatabaseHas('audit_logs', ['action' => 'create', 'model_type' => User::class]);
     }
 
     public function test_purge_audit_log_menghapus_riwayat_dan_menyisakan_jejak_purge(): void

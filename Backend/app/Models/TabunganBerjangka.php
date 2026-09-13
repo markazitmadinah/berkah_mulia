@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 class TabunganBerjangka extends Model
 {
@@ -123,6 +124,41 @@ class TabunganBerjangka extends Model
     public function isGoalReached(): bool
     {
         return $this->terkumpulNominal() >= (float) $this->target_nominal;
+    }
+
+    /**
+     * Periode jatuh tempo (harian/mingguan/bulanan) yang sudah lewat tapi belum
+     * dibayar. Periode "terlaksana" = nominal terkumpul ÷ nominal per periode.
+     * Matematikanya mengikuti SaldoEmasService::jumlahPeriodeTerlewati agar
+     * konsisten dengan tunggakan setoran emas.
+     */
+    public function tertunggak(): array
+    {
+        $mulai = Carbon::parse($this->tanggal_mulai ?: $this->created_at)->startOfDay();
+        $sampai = now()->startOfDay();
+
+        $hitungPeriode = function (Carbon $dari, Carbon $ke) {
+            $hari = (int) max(0, $dari->diffInDays($ke));
+
+            return match ($this->frekuensi_setor) {
+                'mingguan' => intdiv($hari, 7) + 1,
+                'bulanan' => max(1, $dari->diffInMonths($ke) + 1),
+                default => $hari + 1,
+            };
+        };
+
+        $seharusnya = $hitungPeriode($mulai, $sampai);
+        if ($this->tanggal_jatuh_tempo) {
+            $seharusnya = min($seharusnya, $hitungPeriode($mulai, $this->tanggal_jatuh_tempo->copy()->startOfDay()));
+        }
+
+        $nominalPeriode = (float) $this->nominal_per_periode;
+        $terlaksana = $nominalPeriode > 0 ? (int) floor($this->terkumpulNominal() / $nominalPeriode) : 0;
+
+        return [
+            'jumlah_periode' => max(0, $seharusnya - $terlaksana),
+            'nominal' => round(max(0, $seharusnya - $terlaksana) * $nominalPeriode, 2),
+        ];
     }
 
     /**

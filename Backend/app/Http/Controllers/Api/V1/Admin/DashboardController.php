@@ -22,7 +22,6 @@ class DashboardController extends Controller
     public function index(): JsonResponse
     {
         $totalNasabahAktif = User::where('role', 'user')->where('status', UserStatus::Active)->count();
-        $totalPending = User::where('status', UserStatus::Pending)->count();
 
         $transaksiPending = Transaksi::menungguVerifikasi()->count();
         $transaksiTerverifikasi = Transaksi::terverifikasi()->count();
@@ -48,7 +47,6 @@ class DashboardController extends Controller
 
         return $this->successResponse([
             'total_nasabah_aktif' => $totalNasabahAktif,
-            'total_nasabah_pending' => $totalPending,
             'transaksi_pending' => $transaksiPending,
             'transaksi_terverifikasi' => $transaksiTerverifikasi,
             'rata_rata_waktu_verifikasi_jam' => round($avgVerifikasiTime ?? 0, 1),

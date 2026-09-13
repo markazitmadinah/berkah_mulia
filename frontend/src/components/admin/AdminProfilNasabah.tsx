@@ -12,7 +12,6 @@ interface AdminProfilNasabahProps {
 
 const statusBadge: Record<string, string> = {
   active: 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300',
-  pending: 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300',
   suspended: 'bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300',
   rejected: 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300'
 };

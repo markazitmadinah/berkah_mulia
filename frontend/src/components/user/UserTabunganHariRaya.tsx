@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { formatRupiah } from '../../utils/format';
+import { formatRupiah, parseRupiah, fmtRupiahTyping, fmtRupiahBlur } from '../../utils/format';
 import { ArrowDownLeft, ArrowUpRight, Calendar, Gift, Target, Sparkles } from 'lucide-react';
 
 interface UserTabunganHariRayaProps {
@@ -34,7 +34,7 @@ export const UserTabunganHariRaya: React.FC<UserTabunganHariRayaProps> = ({
     : 'pada tanggal yang diatur admin';
 
   const handleSimpanTarget = () => {
-    const nominal = Number(targetInput.replace(/\D/g, '') || 0);
+    const nominal = parseRupiah(targetInput);
     if (nominal < 10000) {
       showToast('Minimal target Rp 10.000.', 'error');
       return;
@@ -115,13 +115,11 @@ export const UserTabunganHariRaya: React.FC<UserTabunganHariRayaProps> = ({
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">Rp</span>
               <input
                 type="text"
-                inputMode="numeric"
+                inputMode="decimal"
                 value={targetInput}
-                onChange={(e) => {
-                  const digits = e.target.value.replace(/\D/g, '');
-                  setTargetInput(digits ? Number(digits).toLocaleString('id-ID') : '');
-                }}
-                placeholder="Contoh: 3.000.000"
+                onChange={(e) => setTargetInput(fmtRupiahTyping(e.target.value))}
+                onBlur={() => setTargetInput(fmtRupiahBlur(targetInput))}
+                placeholder="Contoh: 3.000.000,50"
                 className="w-full pl-10 pr-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-bold text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500/50"
               />
             </div>
@@ -173,7 +171,7 @@ export const UserTabunganHariRaya: React.FC<UserTabunganHariRayaProps> = ({
         <button
           onClick={() => onOpenSetorPribadi(st.jenis_tabungan_id)}
           disabled={st.target === 0}
-          className="w-full py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-600/25 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           title={st.target === 0 ? 'Atur target tabungan hari raya terlebih dahulu' : undefined}
         >
           <ArrowDownLeft className="w-4 h-4" />

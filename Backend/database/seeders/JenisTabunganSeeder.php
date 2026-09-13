@@ -19,9 +19,9 @@ class JenisTabunganSeeder extends Seeder
 
         $tabunganData = [
             [
-                'kode' => 'emas-harian',
-                'nama' => 'Tabungan Emas Harian',
-                'deskripsi' => 'Tabungan emas dengan setoran harian yang dikonversi ke gram emas berdasarkan harga per gram yang berlaku saat transaksi.',
+                'kode' => 'EMAS',
+                'nama' => 'Tabungan Emas',
+                'deskripsi' => 'Tabungan emas syariah. Setoran rupiah dikonversi ke gram emas berdasarkan harga per gram yang berlaku saat transaksi, dengan target dan setoran berkala (harian/mingguan/bulanan).',
                 'tipe' => TipeTabungan::Emas,
                 'mode_perhitungan' => ModePerhitungan::KonversiUnit,
                 'unit_label' => 'gram',

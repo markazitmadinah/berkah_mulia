@@ -7,8 +7,6 @@ import {
   Upload,
   Download,
   Search,
-  CheckCircle2,
-  XCircle,
   Ban,
   RotateCcw,
   Trash2,
@@ -24,7 +22,6 @@ interface AdminUserManagementProps {
   onOpenCreateUser: () => void;
   onOpenEditUser: (user: User) => void;
   onOpenDetailUser: (user: User) => void;
-  onOpenRejectUserModal: (user: User) => void;
   onOpenImportModal: () => void;
   onOpenExportModal: () => void;
   onOpenProfilNasabah: (user: User) => void;
@@ -34,7 +31,6 @@ export const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
   onOpenCreateUser,
   onOpenEditUser,
   onOpenDetailUser,
-  onOpenRejectUserModal,
   onOpenImportModal,
   onOpenExportModal,
   onOpenProfilNasabah
@@ -42,7 +38,6 @@ export const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
   const {
     users,
     searchQuery,
-    approveUser,
     suspendUser,
     activateUser,
     deleteUser,
@@ -78,7 +73,7 @@ export const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
             <span>Manajemen User & Nasabah</span>
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Kelola persetujuan akun nasabah baru, verifikasi status, dan data kepengurusan
+            Kelola data nasabah, verifikasi status akun, dan data kepengurusan
           </p>
         </div>
 
@@ -86,7 +81,7 @@ export const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={onOpenCreateUser}
-            className="py-2.5 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
+            className="py-2.5 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-blue-600/20 transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Tambah User</span>
@@ -127,7 +122,6 @@ export const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
           className="py-2 px-3 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-sm cursor-pointer"
         >
           <option value="all">Semua Status Akun</option>
-          <option value="pending">Menunggu Persetujuan (Pending)</option>
           <option value="active">Aktif (Active)</option>
           <option value="suspended">Ditangguhkan (Suspended)</option>
           <option value="rejected">Ditolak (Rejected)</option>
@@ -211,8 +205,6 @@ export const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                       <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold capitalize ${
                         u.status === 'active'
                           ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
-                          : u.status === 'pending'
-                          ? 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300'
                           : u.status === 'suspended'
                           ? 'bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300'
                           : 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300'
@@ -250,28 +242,6 @@ export const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                         >
                           <Edit className="w-3.5 h-3.5" />
                         </button>
-
-                        {/* Approve (for pending) */}
-                        {u.status === 'pending' && (
-                          <button
-                            onClick={() => approveUser(u.id)}
-                            className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors cursor-pointer"
-                            title="Approve Nasabah"
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-
-                        {/* Reject (for pending) */}
-                        {u.status === 'pending' && (
-                          <button
-                            onClick={() => onOpenRejectUserModal(u)}
-                            className="p-1.5 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-700 dark:bg-rose-950 dark:text-rose-300 transition-colors cursor-pointer"
-                            title="Tolak Pendaftaran (Isi Alasan)"
-                          >
-                            <XCircle className="w-3.5 h-3.5" />
-                          </button>
-                        )}
 
                         {/* Suspend (for active) */}
                         {u.status === 'active' && u.role !== 'admin' && (

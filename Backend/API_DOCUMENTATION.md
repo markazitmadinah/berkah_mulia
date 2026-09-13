@@ -1181,16 +1181,22 @@ POST /emas/setoran-berkala/{id}/batalkan
 
 Membatalkan **satu** rencana pembayaran emas saja — rencana lain tidak tersentuh.
 Nilai emas rencana direfund **90%** (potongan 10%), saldo dana rencana **100%**.
-Refund menjadi transaksi `tarik` berstatus `menunggu_verifikasi` (gram & saldo dana
-benar-benar keluar setelah admin verifikasi). Goal global (`target_emas_gram`) **tidak**
-dihapus oleh refund per-rencana.
+Refund menjadi transaksi `tarik` berstatus `menunggu_verifikasi`; gram & saldo dana
+benar-benar keluar **setelah admin memverifikasi** transaksi refund tersebut. Sampai
+diverifikasi, rencana tetap berstatus `aktif` tapi **dikunci** — tidak bisa disetor ulang
+dan tidak bisa diajukan batal dua kali. Begitu transaksi refund diverifikasi admin,
+rencana otomatis berstatus `batal` (lihat `POST /admin/transaksi/{id}/verifikasi`).
+Goal global (`target_emas_gram`) **tidak** dihapus oleh refund per-rencana.
+
+Status rencana di `GET /emas/setoran-berkala` memuat flag `refund_diajukan: true`
+selama masih ada pengajuan yang menunggu verifikasi.
 
 ### Request Body
 
 | Field | Tipe | Wajib | Validasi |
 |---|---|---|---|
 | `bank_tujuan` | string | Saat ada refund | max 100 |
-| `no_rekening` | numeric | Saat ada refund | 10–16 digit |
+| `no_rekening` | numeric | Saat ada refund | 6–20 digit |
 | `atas_nama` | string | Saat ada refund | max 100 |
 | `catatan_user` | string | Tidak | max 500 |
 
@@ -1211,9 +1217,9 @@ curl -X POST http://localhost:8000/api/v1/emas/setoran-berkala/12/batalkan \
 ```json
 {
   "success": true,
-  "message": "Rencana dibatalkan. Pengajuan refund (setelah potongan 10%) diajukan — menunggu verifikasi admin.",
+  "message": "Pengajuan batal & refund diajukan. Rencana dikunci sampai refund diverifikasi admin.",
   "data": {
-    "rencana": { "id": 12, "status": "batal" },
+    "rencana": { "id": 12, "status": "aktif" },
     "refund": {
       "gram_dibatalkan": 0.012,
       "nilai_gram": 12000,
@@ -1230,6 +1236,8 @@ curl -X POST http://localhost:8000/api/v1/emas/setoran-berkala/12/batalkan \
 
 - `404` + `NOT_FOUND`: rencana bukan milik user.
 - `422` + `TIDAK_AKTIF`: rencana sudah batal/selesai.
+- `422` + `REFUND_PENDING`: masih ada pengajuan batal & refund yang menunggu verifikasi
+  (juga dikembalikan oleh `POST /emas/setor` bila setoran ditujukan ke rencana terkunci).
 - `400`: tidak ada harga emas aktif saat rencana punya gram emas.
 
 ---
@@ -1503,6 +1511,11 @@ GET /admin/transaksi/{id}
 POST /admin/transaksi/{id}/verifikasi
 ```
 
+Menyetujui transaksi. Efek samping khusus:
+- Tarik **full** emas (tanpa `konfigurasi_id`) → goal global `target_emas_gram` user direset (`null`).
+- Tarik **refund per rencana** (ber-`konfigurasi_id`) → rencana setoran berkala yang
+  bersangkutan otomatis berstatus `batal` (pengajuan batal & refund selesai diproses).
+
 ### Contoh Response (200)
 
 ```json
@@ -1747,6 +1760,43 @@ GET /notifikasi?dibaca=false
 ## 10.2 Tandai Dibaca: `PATCH /notifikasi/{id}/read`
 ## 10.3 Tandai Semua Dibaca: `PATCH /notifikasi/read-all`
 
+### 10.4 Matriks Event Notifikasi
+
+Notifikasi dibuat otomatis oleh backend (channel `in_app`, tipe dari `TipeNotifikasi`:
+`info`, `verifikasi`, `pengingat_setor`, `pengingat_pencairan`, `approval_akun`).
+
+| Event | Diterima | Tipe |
+|---|---|---|
+| Transaksi user diverifikasi / ditolak admin (dengan alasan) | User | `verifikasi` |
+| Refund batal rencana setoran emas terverifikasi → rencana resmi BATAL | User | `info` |
+| Pengajuan batal & refund rencana setoran emas | Semua Admin | `verifikasi` |
+| Setoran emas terverifikasi mencapai `target_emas_gram` (1×/hari, anti-duplikat) | User | `pengingat_pencairan` |
+| Tukar emas selesai (goal tercapai) | User | `info` |
+| User mencapai target & menukar emas | Semua Admin | `verifikasi` |
+| Pengajuan gadai baru | Semua Admin | `verifikasi` |
+| Gadai disetujui / pembiayaan disalurkan / angsuran tercatat / lunas / dibatalkan | User | `info` |
+| Verifikasi angsuran gadai ditolak | User | `verifikasi` |
+| Pembayaran angsuran gadai dari user | Semua Admin | `verifikasi` |
+| Pendaftaran qurban baru | Semua Admin | `info` |
+| Qurban dinyatakan lunas → jumlah hewan tersedia | User | `info` |
+| Tabungan berjangka dibuat/aktif/disetujui | User | `info` |
+| Tabungan berjangka ditolak | User | `verifikasi` |
+| Pembatalan tabungan berjangka diajukan (ada saldo) | Semua Admin | `verifikasi` |
+| Pembatalan tabungan berjangka disetujui → dana dikembalikan utuh | User | `info` |
+| Akun dibekukan / diaktifkan kembali | User | `approval_akun` |
+
+### 10.5 Pengingat Terjadwal (Scheduler)
+
+| Command | Jadwal | Isi |
+|---|---|---|
+| `pengingat:setoran` | tiap hari 10:00 | Pengingat setor **Tabungan Emas & Tabungan Berjangka** sesuai `frekuensi_setor` (harian setiap hari; mingguan = hari yang sama dgn `tanggal_mulai`; bulanan = tanggal sama / akhir bulan). Dilewati bila hari itu sudah ada setoran, melewati deadline, atau sudah dikirim hari itu. |
+| `pengingat:gadai` | tiap hari 08:30 | Pengingat jatuh tempo gadai H-1 ("besok jatuh tempo") dan hari H. |
+| `gadai:cek-jatuh-tempo` | tiap hari 08:00 | Auto-update status gadai (lewat jatuh tempo → `jatuh_tempo`/`terlambat`). |
+| `bersihkan-notifikasi-lama` | tiap hari | Hapus notifikasi berumur > 1 bulan. |
+
+Pengingat memakai `data` untuk anti-duplikat per hari:
+`konfigurasi_setoran_id` / `tabungan_berjangka_id` / `gadai_id`.
+
 ---
 
 # 11. Audit Log (Admin, Read-Only)
@@ -1804,7 +1854,8 @@ Satu jejak `purge` tetap ditulis oleh pelaku sebagai bukti tindakan (model `User
 
 Modul pembiayaan gadai emas: peserta menggadaikan emas sebagai jaminan, koperasi
 memberikan pembiayaan = **persen gadai × nilai taksiran** (taksiran = berat bersih × harga acuan).
-Siklus status: `diajukan` → `disetujui` → `aktif` → `jatuh_tempo`(`terlambat`) → `lunas`/`diperpanjang`; ada pula `batal` (potongan 10%).
+Siklus status: `diajukan` → `aktif` → `jatuh_tempo`(`terlambat`) → `lunas`/`diperpanjang`; ada pula `batal` (potongan 10%).
+Persetujuan admin langsung menyetujui sekaligus menyalurkan pembiayaan (satu langkah). Status `disetujui` hanya eksis untuk rekaman lawas.
 
 ## 12.1 List Gadai (Admin)
 
@@ -1884,15 +1935,31 @@ Mengembalikan data gadai + `angsuran` (riwayat pembayaran).
 ## 12.4 Transisi Status (Admin)
 
 ```
-POST /admin/gadai/{id}/approve      # diajukan → disetujui
-POST /admin/gadai/{id}/aktifkan     # disetujui → aktif (set tanggal_aktif + jatuh tempo)
+POST /admin/gadai/{id}/approve      # diajukan → aktif (setujui & salurkan, set tanggal_aktif + jatuh tempo)
+POST /admin/gadai/{id}/aktifkan     # disetujui → aktif (legacy untuk rekaman lama)
 POST /admin/gadai/{id}/bayar        # catat angsuran (parameter: nominal, tanggal_bayar, metode_pembayaran, catatan)
-POST /admin/gadai/{id}/lunasi       # → lunas (pelunasan sisa pokok, emas dikembalikan)
+                                    #   nominal penuh = sisa → status LUNAS (tunggu kembalikan-emas)
+POST /admin/gadai/{id}/lunasi       # → emas_dikembalikan (pelunasan sisa pokok oleh admin; parameter opsional: nominal
+                                    #   = nominal yang dilunasi user; bila < sisa → 422). Notif "Silakan Ambil Emas
+                                    #   Anda Kembali" dikirim hanya ke user.
+POST /admin/gadai/{id}/kembalikan-emas  # lunas → emas_dikembalikan (serah terima emas). Notif "Silakan Ambil Emas
+                                    #   Anda Kembali" dikirim hanya ke user.
 POST /admin/gadai/{id}/batal        # → batal (potongan 10% dari total dibayar, emas dikembalikan)
 POST /admin/gadai/{id}/terlambat    # jatuh_tempo → terlambat
 POST /admin/gadai/{id}/perpanjang   # jatuh_tempo/terlambat/diperpanjang → diperpanjang (+1 periode)
-DELETE /admin/gadai/{id}            # hapus hanya dari status diajukan/disetujui
+DELETE /admin/gadai/{id}            # hapus rekaman diajukan/disetujui/batal (lunas/emas_dikembalikan ditolak)
+
+# Siklus status: diajukan → disetujui → aktif → (jatuh_tempo → terlambat → diperpanjang)
+#                → lunas → emas_dikembalikan   (batal menyimpang kapan saja sebelum lunas)
 ```
+
+### Bayar / Pelunasan dari User: `POST /gadai-saya/{id}/bayar`
+
+User hanya boleh membayar sebesar **nominal_angkuran yang diset admin** atau **sisa pokok
+efektif** (pelunasan). Nominal lain → `422 NOMINAL_HARUS_SESUAI_ATURAN`. Pelunasan wajib
+melampirkan `bukti_transfer` → `422 BUKTI_WAJIB`. Pembayaran masuk antrean verifikasi admin.
+Setelah angsuran terverifikasi terakhir → `lunas`; admin menekan **Kembalikan Emas**
+(`kembalikan-emas`) → `emas_dikembalikan`, user melihat "Silakan ambil emas Anda kembali di toko".
 
 ## 12.5 List Gadai Milik Sendiri (User): `GET /gadai-saya?per_page=15`
 
@@ -1900,7 +1967,25 @@ Sama dengan 12.1 namun hanya menampilkan data milik user yang login.
 
 ---
 
-# Ringkasan Seluruh Endpoint (86 Total)
+# 13. Tabungan Berjangka
+
+## 13.1 Alur Pembatalan
+
+User dapat membatalkan tabungan berjangka (`POST /tabungan-berjangka/{id}/batal`):
+
+- **Tanpa saldo** (terkumpul = 0, termasuk `menunggu_approval`) → langsung `batal`,
+  tabungan **hilang dari riwayat** tanpa alur admin.
+- **Ada saldo** → status `pembatalan_diajukan`, semua admin mendapat notifikasi `verifikasi`.
+  Admin memverifikasi lewat `POST /admin/tabungan-berjangka/{id}/verifikasi-pembatalan`:
+  saldo dikembalikan **utuh** (transaksi `tarik` terverifikasi) lalu tabungan `batal` dan
+  **hilang dari daftar** (user & admin). Riwayat tetap bisa dilihat detail via
+  `GET /admin/tabungan-berjangka?status=batal`.
+
+Status: `menunggu_approval` → `aktif` → (`selesai` via pencairan) | `batal` | `pembatalan_diajukan` → `batal`.
+
+---
+
+# Ringkasan Seluruh Endpoint (97 Total)
 
 | # | Method | Endpoint | Akses |
 |---|---|---|---|
@@ -1986,12 +2071,23 @@ Sama dengan 12.1 namun hanya menampilkan data milik user yang login.
 | 77 | POST | `/admin/gadai/{id}/aktifkan` | Admin |
 | 78 | POST | `/admin/gadai/{id}/bayar` | Admin |
 | 79 | POST | `/admin/gadai/{id}/lunasi` | Admin |
-| 80 | POST | `/admin/gadai/{id}/batal` | Admin |
-| 81 | POST | `/admin/gadai/{id}/terlambat` | Admin |
-| 82 | POST | `/admin/gadai/{id}/perpanjang` | Admin |
-| 83 | DELETE | `/admin/gadai/{id}` | Admin |
-| 84 | GET | `/gadai-saya` | User |
-| 85 | GET | `/gadai-saya/{id}` | User |
+| 80 | POST | `/admin/gadai/{id}/kembalikan-emas` | Admin |
+| 81 | POST | `/admin/gadai/{id}/batal` | Admin |
+| 82 | POST | `/admin/gadai/{id}/terlambat` | Admin |
+| 83 | POST | `/admin/gadai/{id}/perpanjang` | Admin |
+| 84 | DELETE | `/admin/gadai/{id}` | Admin |
+| 85 | GET | `/gadai-saya` | User |
+| 86 | GET | `/gadai-saya/{id}` | User |
+| 87 | GET | `/tabungan-berjangka` | User |
+| 88 | POST | `/tabungan-berjangka` | User |
+| 89 | POST | `/tabungan-berjangka/{id}/setor` | User |
+| 90 | POST | `/tabungan-berjangka/{id}/cairkan` | User |
+| 91 | POST | `/tabungan-berjangka/{id}/batal` | User |
+| 92 | GET | `/admin/tabungan-berjangka` | Admin |
+| 93 | POST | `/admin/tabungan-berjangka` | Admin |
+| 94 | POST | `/admin/tabungan-berjangka/{id}/approve` | Admin |
+| 95 | POST | `/admin/tabungan-berjangka/{id}/tolak` | Admin |
+| 96 | POST | `/admin/tabungan-berjangka/{id}/verifikasi-pembatalan` | Admin |
 
 ---
 

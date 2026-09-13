@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { formatRupiah } from '../../utils/format';
+import { formatRupiah, parseRupiah, fmtRupiahTyping, fmtRupiahBlur } from '../../utils/format';
 import {
   Wallet,
   Plus,
@@ -47,6 +47,11 @@ const STATUS_CFG: Record<string, { label: string; cls: string; icon: React.React
     cls: 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700',
     icon: <XCircle className="w-3 h-3" />
   },
+  pembatalan_diajukan: {
+    label: 'Pembatalan Diajukan',
+    cls: 'bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800',
+    icon: <Hourglass className="w-3 h-3" />
+  },
 };
 
 // ─── Modal Buat Tabungan Berjangka ───────────────────────────
@@ -57,11 +62,11 @@ const CreateBerjangkaModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
   const [frekuensi, setFrekuensi] = useState<FrekuensiSetoran>('bulanan');
   const [catatan, setCatatan] = useState('');
 
-  const targetN = parseFloat(target) || 0;
+  const targetN = parseRupiah(target);
   const durasiN = parseInt(durasi) || 0;
 
   const totalPeriode = frekuensi === 'harian' ? durasiN * 30 : frekuensi === 'mingguan' ? durasiN * 4 : durasiN;
-  const perPeriode = totalPeriode > 0 ? Math.ceil(targetN / totalPeriode / 1000) * 1000 : 0;
+  const perPeriode = totalPeriode > 0 ? Math.ceil((targetN / totalPeriode) * 100) / 100 : 0;
 
   const submit = () => {
     if (targetN < 50000) return showToast('Target minimal Rp 50.000.', 'error');
@@ -92,7 +97,7 @@ const CreateBerjangkaModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
           <div className="space-y-3">
             <div>
               <label className={lCls}>Target Nominal (Rp)</label>
-              <input type="number" inputMode="numeric" value={target} onChange={e => setTarget(e.target.value)} placeholder="Contoh: 5000000" className={iCls} />
+              <input type="text" inputMode="decimal" value={fmtRupiahTyping(target)} onChange={e => setTarget(fmtRupiahTyping(e.target.value))} onBlur={() => setTarget(fmtRupiahBlur(target))} placeholder="Contoh: 5.000.000,00" className={iCls} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -154,9 +159,9 @@ const SetorBerjangkaModal: React.FC<{ tb: TabunganBerjangka; onClose: () => void
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const nominalNum = Number(nominal.replace(/\./g, ''));
-    if (nominalNum < 10000) {
-      showToast('Minimal setoran adalah Rp 10.000', 'error');
+    const nominalNum = parseRupiah(nominal);
+    if (nominalNum <= 0) {
+      showToast('Nominal setoran tidak valid.', 'error');
       return;
     }
     if (!buktiFile) {
@@ -200,12 +205,13 @@ const SetorBerjangkaModal: React.FC<{ tb: TabunganBerjangka; onClose: () => void
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-sm">Rp</span>
                 <input
                   type="text"
-                  inputMode="numeric"
-                  value={nominal ? Number(nominal.replace(/\D/g, '')).toLocaleString('id-ID') : ''}
-                  onChange={e => setNominal(e.target.value.replace(/\D/g, ''))}
-                  placeholder="Contoh: 100.000"
+                  inputMode="decimal"
+                  value={fmtRupiahTyping(nominal)}
+                  onChange={e => setNominal(fmtRupiahTyping(e.target.value))}
+                  onBlur={() => setNominal(fmtRupiahBlur(nominal))}
+                  placeholder="Contoh: 1.000.000,50"
                   required
-                  className="w-full pl-11 pr-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-extrabold text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  className="w-full pl-11 pr-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-extrabold text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
                 />
               </div>
             </div>
@@ -272,7 +278,7 @@ const SetorBerjangkaModal: React.FC<{ tb: TabunganBerjangka; onClose: () => void
               </button>
               <button
                 type="submit"
-                className="px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-600/25 cursor-pointer transition-all"
+                className="px-5 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-600/25 cursor-pointer transition-all"
               >
                 Kirim Bukti Setoran
               </button>
@@ -571,6 +577,25 @@ const BerjangkaCard: React.FC<{
         ? 'border-emerald-400 dark:border-emerald-600/80 shadow-md shadow-emerald-500/10 ring-1 ring-emerald-500/20'
         : 'border-slate-200/80 dark:border-slate-700/70 shadow-sm'
     }`}>
+      {/* Banner tagihan — periode setoran berkala yang belum dibayar */}
+      {tb.status === 'aktif' && (tb.tertunggak?.jumlah_periode ?? 0) > 0 && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/40 px-4 py-3">
+          <div className="flex items-center gap-2.5">
+            <AlertTriangle className="w-4 h-4 text-rose-500 flex-shrink-0" />
+            <p className="text-[11px] font-bold text-rose-700 dark:text-rose-300">
+              {tb.tertunggak?.jumlah_periode.toLocaleString('id-ID')}{' '}
+              {tb.frekuensi_setor === 'harian' ? 'hari' : tb.frekuensi_setor === 'mingguan' ? 'minggu' : 'bulan'} setoran belum dibayar ·{' '}
+              {formatRupiah(tb.tertunggak?.nominal ?? 0)}
+            </p>
+          </div>
+          <button
+            onClick={onSetor}
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-extrabold shadow-sm shadow-rose-600/30 cursor-pointer transition-all active:scale-95"
+          >
+            <ArrowDownLeft className="w-3.5 h-3.5" /> Setor Sekarang
+          </button>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
@@ -671,7 +696,7 @@ const BerjangkaCard: React.FC<{
           canWithdraw ? (
             <button
               onClick={onCairkan}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl text-xs font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-md shadow-emerald-600/25 cursor-pointer transition-all active:scale-95"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl text-xs font-bold text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 shadow-md shadow-blue-600/25 cursor-pointer transition-all active:scale-95"
             >
               <ArrowUpRight className="w-4 h-4" /> Cairkan Tabungan ({formatRupiah(terkumpul)})
             </button>
@@ -686,7 +711,7 @@ const BerjangkaCard: React.FC<{
           )
         )}
 
-        {(tb.status === 'menunggu_approval' || (tb.status === 'aktif' && terkumpul === 0)) && (
+        {(tb.status === 'menunggu_approval' || tb.status === 'aktif') && (
           <button
             onClick={onBatal}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-bold text-rose-600 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 hover:bg-rose-100 cursor-pointer transition-all ml-auto"
@@ -698,6 +723,12 @@ const BerjangkaCard: React.FC<{
         {tb.status === 'menunggu_approval' && (
           <span className="text-xs text-amber-600 dark:text-amber-400 font-bold ml-auto flex items-center gap-1">
             <Hourglass className="w-3.5 h-3.5" /> Menunggu persetujuan admin
+          </span>
+        )}
+
+        {tb.status === 'pembatalan_diajukan' && (
+          <span className="text-xs text-amber-600 dark:text-amber-400 font-bold ml-auto flex items-center gap-1">
+            <Hourglass className="w-3.5 h-3.5" /> Menunggu verifikasi pembatalan admin. Saldo akan dikembalikan utuh.
           </span>
         )}
 

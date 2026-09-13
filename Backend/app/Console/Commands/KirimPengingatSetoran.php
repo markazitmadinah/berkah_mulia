@@ -7,86 +7,138 @@ use App\Enums\JenisTransaksi;
 use App\Enums\TipeNotifikasi;
 use App\Models\KonfigurasiSetoranEmas;
 use App\Models\Notifikasi;
+use App\Models\TabunganBerjangka;
 use App\Models\Transaksi;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Model;
 
 class KirimPengingatSetoran extends Command
 {
     protected $signature = 'pengingat:setoran';
 
-    protected $description = 'Kirim pengingat setoran tabungan emas: harian setiap hari, mingguan & bulanan sesuai tanggal_mulai (pukul 10:00 via scheduler)';
+    protected $description = 'Kirim pengingat setoran: Tabungan Emas & Tabungan Berjangka, harian/mingguan/bulanan sesuai tanggal_mulai (pukul 10:00 via scheduler)';
 
     public function handle(): int
     {
         $hariIni = now();
         $dikirim = 0;
 
-        KonfigurasiSetoranEmas::query()
-            ->aktif()
-            ->lazyById()
+        KonfigurasiSetoranEmas::query()->aktif()->lazyById()
             ->each(function (KonfigurasiSetoranEmas $konfigurasi) use ($hariIni, &$dikirim) {
-                $mulai = Carbon::parse($konfigurasi->tanggal_mulai ?: $konfigurasi->created_at);
-
-                if (! $this->jatuhTempo($mulai, $hariIni, $konfigurasi->frekuensi_setor->value)) {
-                    return;
+                if ($this->kirimSatu(
+                    user: $konfigurasi->user,
+                    pemilik: $konfigurasi,
+                    label: 'Tabungan Emas',
+                    frekuensi: $konfigurasi->frekuensi_setor->value,
+                    mulai: Carbon::parse($konfigurasi->tanggal_mulai ?: $konfigurasi->created_at),
+                    nominal: (float) $konfigurasi->nominal_per_periode,
+                    deadline: $konfigurasi->tanggal_deadline ? Carbon::parse($konfigurasi->tanggal_deadline) : null,
+                    kurirDataKonfigurasi: fn (array $data, string $id) => $data + ['konfigurasi_setoran_id' => $id],
+                    transaksiId: $konfigurasi->id,
+                    transaksiKueri: fn ($q, $id) => $q
+                        ->where('jenis_tabungan_id', $konfigurasi->jenis_tabungan_id)
+                        ->where('konfigurasi_id', $id),
+                    sudahDikirim: fn ($q, $id) => $q->where('data->konfigurasi_setoran_id', $id),
+                )) {
+                    $dikirim++;
                 }
+            });
 
-                // Rencana yang deadline-nya sudah lewat tidak usah diingatkan.
-                if ($konfigurasi->tanggal_deadline && $hariIni->gt(Carbon::parse($konfigurasi->tanggal_deadline)->endOfDay())) {
-                    return;
+        TabunganBerjangka::where('status', 'aktif')->lazyById()
+            ->each(function (TabunganBerjangka $tb) use ($hariIni, &$dikirim) {
+                if ($this->kirimSatu(
+                    user: $tb->user,
+                    pemilik: $tb,
+                    label: 'Tabungan Berjangka',
+                    frekuensi: $tb->frekuensi_setor,
+                    mulai: Carbon::parse($tb->tanggal_mulai ?: $tb->created_at),
+                    nominal: (float) $tb->nominal_per_periode,
+                    deadline: $tb->tanggal_jatuh_tempo ? Carbon::parse($tb->tanggal_jatuh_tempo) : null,
+                    kurirDataKonfigurasi: fn (array $data, string $id) => $data + ['tabungan_berjangka_id' => $id],
+                    transaksiId: $tb->id,
+                    transaksiKueri: fn ($q, $id) => $q->where('tabungan_berjangka_id', $id),
+                    sudahDikirim: fn ($q, $id) => $q->where('data->tabungan_berjangka_id', $id),
+                )) {
+                    $dikirim++;
                 }
-
-                // Sudah ada setoran hari ini untuk rencana ini → bukan lagi pengingat.
-                $sudahSetor = Transaksi::milikUser($konfigurasi->user_id)
-                    ->where('jenis_tabungan_id', $konfigurasi->jenis_tabungan_id)
-                    ->where('jenis_transaksi', JenisTransaksi::Setor)
-                    ->where('konfigurasi_id', $konfigurasi->id)
-                    ->whereDate('tanggal_transaksi', $hariIni->toDateString())
-                    ->exists();
-
-                if ($sudahSetor) {
-                    return;
-                }
-
-                // Anti-duplikat bila perintah dijalankan ulang pada hari yang sama.
-                $sudahDikirim = Notifikasi::where('user_id', $konfigurasi->user_id)
-                    ->where('tipe', TipeNotifikasi::PengingatSetor)
-                    ->whereDate('created_at', $hariIni->toDateString())
-                    ->where('data->konfigurasi_setoran_id', $konfigurasi->id)
-                    ->exists();
-
-                if ($sudahDikirim) {
-                    return;
-                }
-
-                $nominal = number_format((float) $konfigurasi->nominal_per_periode, 0, ',', '.');
-
-                Notifikasi::create([
-                    'user_id' => $konfigurasi->user_id,
-                    'judul' => 'Pengingat Setor Tabungan Emas',
-                    'pesan' => 'Saatnya bayar setoran '
-                        . strtolower($konfigurasi->frekuensi_setor->label())
-                        . ' Tabungan Emas sebesar Rp '
-                        . $nominal
-                        . '. Segera lakukan pembayaran hari ini agar emas Anda terus bertambah.',
-                    'tipe' => TipeNotifikasi::PengingatSetor,
-                    'channel' => ChannelNotifikasi::InApp,
-                    'data' => [
-                        'konfigurasi_setoran_id' => $konfigurasi->id,
-                        'jenis_tabungan_id' => $konfigurasi->jenis_tabungan_id,
-                        'frekuensi_setor' => $konfigurasi->frekuensi_setor->value,
-                        'nominal_per_periode' => (float) $konfigurasi->nominal_per_periode,
-                        'tanggal_jatuh_tempo' => $hariIni->toDateString(),
-                    ],
-                ]);
-
-                $dikirim++;
             });
 
         $this->info("Kompel: {$dikirim} pengingat setoran dikirim.");
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Cek jadwal & kirim satu pengingat. true bila pengingat dikirim.
+     */
+    private function kirimSatu(
+        User $user,
+        Model $pemilik,
+        string $label,
+        string $frekuensi,
+        Carbon $mulai,
+        float $nominal,
+        ?Carbon $deadline,
+        \Closure $transaksiKueri,
+        string $transaksiId,
+        \Closure $sudahDikirim,
+        \Closure $kurirDataKonfigurasi,
+    ): bool {
+        $hariIni = now();
+
+        if (! $this->jatuhTempo($mulai, $hariIni, $frekuensi)) {
+            return false;
+        }
+
+        // Rencana yang deadline-nya sudah lewat tidak usah diingatkan.
+        if ($deadline && $hariIni->gt($deadline->copy()->endOfDay())) {
+            return false;
+        }
+
+        // Sudah ada setoran hari ini untuk rencana ini → bukan lagi pengingat.
+        $sudahSetor = Transaksi::milikUser($user->id)
+            ->where('jenis_transaksi', JenisTransaksi::Setor)
+            ->whereDate('tanggal_transaksi', $hariIni->toDateString())
+            ->when($pemilik instanceof KonfigurasiSetoranEmas, fn ($q) => $q->where('jenis_tabungan_id', $pemilik->jenis_tabungan_id))
+            ->tap(fn ($q) => $transaksiKueri($q, $transaksiId))
+            ->exists();
+
+        if ($sudahSetor) {
+            return false;
+        }
+
+        // Anti-duplikat bila perintah dijalankan ulang pada hari yang sama.
+        $sudahDikirimNotif = Notifikasi::where('user_id', $user->id)
+            ->where('tipe', TipeNotifikasi::PengingatSetor)
+            ->whereDate('created_at', $hariIni->toDateString())
+            ->tap(fn ($q) => $sudahDikirim($q, $transaksiId))
+            ->exists();
+
+        if ($sudahDikirimNotif) {
+            return false;
+        }
+
+        Notifikasi::create([
+            'user_id' => $user->id,
+            'judul' => 'Pengingat Setor ' . $label,
+            'pesan' => 'Saatnya bayar setoran '
+                . strtolower($this->labelFrekuensi($frekuensi))
+                . ' ' . $label . ' sebesar Rp '
+                . number_format($nominal, 0, ',', '.')
+                . '. Segera lakukan pembayaran hari ini agar tabungan Anda terus bertumbuh.',
+            'tipe' => TipeNotifikasi::PengingatSetor,
+            'channel' => ChannelNotifikasi::InApp,
+            'data' => $kurirDataKonfigurasi([
+                'jenis_tabungan_id' => data_get($pemilik, 'jenis_tabungan_id'),
+                'frekuensi_setor' => $frekuensi,
+                'nominal_per_periode' => $nominal,
+                'tanggal_jatuh_tempo' => $hariIni->toDateString(),
+            ], $transaksiId),
+        ]);
+
+        return true;
     }
 
     /**
@@ -103,6 +155,15 @@ class KirimPengingatSetoran extends Command
             'mingguan' => $hariIni->isoWeekday() === $mulai->isoWeekday(),
             'bulanan' => $hariIni->day === min($mulai->day, $hariIni->daysInMonth),
             default => false,
+        };
+    }
+
+    private function labelFrekuensi(string $frekuensi): string
+    {
+        return match ($frekuensi) {
+            'harian' => 'harian',
+            'mingguan' => 'mingguan',
+            default => 'bulanan',
         };
     }
 }

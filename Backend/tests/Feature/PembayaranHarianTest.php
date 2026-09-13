@@ -149,4 +149,43 @@ class PembayaranHarianTest extends ApiTestCase
             ->assertJsonPath('data.jadwal.0.status_verifikasi', 'menunggu_verifikasi')
             ->assertJsonPath('data.jadwal.0.nomor_referensi', 'TRX-PENDING');
     }
+
+    public function test_menampilkan_user_dengan_tagihan_terlewat(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+        $jenis = JenisTabungan::where('tipe', 'emas')->first();
+
+        // Mulai 3 hari lalu tanpa setoran → tagihan 4 hari (harian: hari+1 = 4 periode).
+        $userTelat = $this->createUser(['nomor_anggota' => 'BM-041']);
+        $this->buatKonfigurasi($userTelat, $jenis, [
+            'tanggal_mulai' => now()->subDays(3)->toDateString(),
+        ]);
+
+        // User tertib: mulai hari ini + sudah setor terverifikasi hari ini → tanpa tagihan.
+        $userTertib = $this->createUser(['nomor_anggota' => 'BM-042']);
+        $this->buatKonfigurasi($userTertib, $jenis);
+        Transaksi::create([
+            'nomor_referensi' => 'TRX-TERTIB',
+            'user_id' => $userTertib->id,
+            'jenis_tabungan_id' => $jenis->id,
+            'jenis_transaksi' => 'setor',
+            'nominal' => 15000,
+            'nominal_emas' => 12000,
+            'nominal_selisih' => 3000,
+            'unit_didapat' => 0.012,
+            'metode_pembayaran' => 'transfer',
+            'status_verifikasi' => 'terverifikasi',
+            'tanggal_transaksi' => now()->toDateString(),
+        ]);
+
+        $this->getJson('/api/v1/admin/pembayaran-harian/tunggakan')
+            ->assertOk()
+            ->assertJsonPath('data.total_user', 1)
+            ->assertJsonCount(1, 'data.items')
+            ->assertJsonPath('data.items.0.nama', $userTelat->name)
+            ->assertJsonPath('data.items.0.frekuensi', 'harian')
+            ->assertJsonPath('data.items.0.jumlah_periode_tertunggak', 4)
+            ->assertJsonPath('data.items.0.nominal_tagihan', 60000);
+    }
 }

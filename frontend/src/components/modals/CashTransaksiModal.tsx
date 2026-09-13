@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { QurbanIcon } from '../QurbanIcon';
-import { formatRupiah } from '../../utils/format';
+import { formatRupiah, parseRupiah, fmtRupiahTyping, fmtRupiahBlur } from '../../utils/format';
 import {
   X,
   Coins,
@@ -51,7 +51,7 @@ export const CashTransaksiModal: React.FC<CashTransaksiModalProps> = ({
 
   const selectedJenis = jenisTabungan.find(j => j.id === selectedJenisId);
 
-  const nominalValue = Number(nominal.replace(/\./g, ''));
+  const nominalValue = parseRupiah(nominal);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -164,13 +164,11 @@ export const CashTransaksiModal: React.FC<CashTransaksiModalProps> = ({
               </span>
               <input
                 type="text"
-                inputMode="numeric"
+                inputMode="decimal"
                 value={nominal}
-                onChange={(e) => {
-                  const digits = e.target.value.replace(/\D/g, '');
-                  setNominal(digits ? Number(digits).toLocaleString('id-ID') : '');
-                }}
-                placeholder="Masukkan nominal, contoh: 1.000.000"
+                onChange={(e) => setNominal(fmtRupiahTyping(e.target.value))}
+                onBlur={() => setNominal(fmtRupiahBlur(nominal))}
+                placeholder="Contoh: 1.000.000,50"
                 required
                 className="w-full pl-11 pr-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-extrabold text-base text-slate-900 dark:text-white"
               />
@@ -201,7 +199,7 @@ export const CashTransaksiModal: React.FC<CashTransaksiModalProps> = ({
             </button>
             <button
               type="submit"
-              className="py-2.5 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow-md shadow-emerald-600/25 cursor-pointer"
+              className="py-2.5 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold shadow-md shadow-blue-600/25 cursor-pointer"
             >
               Simpan Transaksi Cash
             </button>

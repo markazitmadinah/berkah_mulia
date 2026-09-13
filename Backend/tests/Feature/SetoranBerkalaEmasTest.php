@@ -411,17 +411,48 @@ class SetoranBerkalaEmasTest extends ApiTestCase
             ->assertJsonPath('data.items.0.progress.konsistensi.status', 'tepat_waktu');
     }
 
-    public function test_batalkan_konfigurasi_dan_bisa_buat_ulang(): void
+    public function test_batalkan_jadi_pengajuan_dan_batal_setelah_diverifikasi(): void
     {
         $this->seedBase();
         $user = $this->actingAsUser();
         $jenis = $this->buatHargaDanGoal($user);
         $konfigurasi = $this->buatKonfigurasi($user, $jenis);
+        $this->buatSetorTerverifikasi($user, $jenis, ['konfigurasi_id' => $konfigurasi->id]);
 
-        $this->postJson("/api/v1/emas/setoran-berkala/{$konfigurasi->id}/batalkan")
+        // Pengajuan batal: rencana TIDAK langsung batal, refund menunggu verifikasi.
+        $response = $this->postJson("/api/v1/emas/setoran-berkala/{$konfigurasi->id}/batalkan", [
+            'bank_tujuan' => 'BSI',
+            'no_rekening' => '7123456789',
+            'atas_nama' => 'Ahmad',
+        ])->assertOk();
+        $refundId = $response->json('data.refund.transaksi_refund_id');
+        $this->assertNotNull($refundId);
+
+        $this->getJson('/api/v1/emas/setoran-berkala')
             ->assertOk()
-            ->assertJsonPath('data.rencana.status', 'batal');
+            ->assertJsonPath('data.dapat_membuat', true)
+            ->assertJsonCount(1, 'data.items')
+            ->assertJsonPath('data.items.0.konfigurasi.status', 'aktif')
+            ->assertJsonPath('data.items.0.refund_diajukan', true);
 
+        // Tidak bisa diajukan dua kali / disetor ulang selagi menunggu.
+        $this->postJson("/api/v1/emas/setoran-berkala/{$konfigurasi->id}/batalkan", [
+            'bank_tujuan' => 'BSI',
+            'no_rekening' => '7123456789',
+            'atas_nama' => 'Ahmad',
+        ])->assertStatus(422)->assertJsonPath('error_code', 'REFUND_PENDING');
+
+        $this->postSetor('/api/v1/emas/setor', [
+            'nominal' => 20000,
+            'konfigurasi_id' => $konfigurasi->id,
+        ])->assertStatus(422)->assertJsonPath('error_code', 'REFUND_PENDING');
+
+        // Verifikasi admin → rencana resmi BATAL, slot terbuka lagi, bisa buat ulang.
+        $this->actingAsAdmin();
+        $this->postJson("/api/v1/admin/transaksi/{$refundId}/verifikasi")->assertOk();
+
+        $this->actingAsUser();
+        $this->assertDatabaseHas('konfigurasi_setoran_emas', ['id' => $konfigurasi->id, 'status' => 'batal']);
         $this->getJson('/api/v1/emas/setoran-berkala')
             ->assertOk()
             ->assertJsonPath('data.dapat_membuat', true)
@@ -453,7 +484,7 @@ class SetoranBerkalaEmasTest extends ApiTestCase
         ]);
 
         $response->assertOk()
-            ->assertJsonPath('data.rencana.status', 'batal')
+            ->assertJsonPath('data.rencana.status', 'aktif')
             ->assertJsonPath('data.refund.gram_dibatalkan', 0.012)
             ->assertJsonPath('data.refund.penalti_10_persen', 1200)
             ->assertJsonPath('data.refund.saldo_dana', 3000)
@@ -470,26 +501,33 @@ class SetoranBerkalaEmasTest extends ApiTestCase
             'status_verifikasi' => 'menunggu_verifikasi',
         ]);
 
-        // Rencana lain tidak tersentuh: membuat rencana kedua dulu, lalu batal satu.
+        // Rencana kosong langsung batal (tidak ada yang direfund).
         $rencanaB = $this->buatKonfigurasi($user, $jenis);
         $this->postJson("/api/v1/emas/setoran-berkala/{$rencanaB->id}/batalkan", [
             'bank_tujuan' => 'BSI',
             'no_rekening' => '7123456789',
             'atas_nama' => 'Ahmad',
         ])->assertOk()
-            ->assertJsonPath('data.refund.nominal_refund', 0);
+            ->assertJsonPath('data.refund.nominal_refund', 0)
+            ->assertJsonPath('data.rencana.status', 'batal');
 
         $this->assertDatabaseHas('konfigurasi_setoran_emas', [
             'id' => $rencanaB->id,
             'status' => 'batal',
         ]);
 
-        // Rencana yang sudah batal tidak bisa dibatalkan ulang.
+        // Rencana yang masih punya pengajuan refund tidak bisa diajukan ulang.
         $this->postJson("/api/v1/emas/setoran-berkala/{$rencana->id}/batalkan", [
             'bank_tujuan' => 'BSI',
             'no_rekening' => '7123456789',
             'atas_nama' => 'Ahmad',
-        ])->assertStatus(422)->assertJsonPath('error_code', 'TIDAK_AKTIF');
+        ])->assertStatus(422)->assertJsonPath('error_code', 'REFUND_PENDING');
+
+        // Verifikasi refund admin → rencana pertama resmi batal.
+        $refundId = $response->json('data.refund.transaksi_refund_id');
+        $this->actingAsAdmin();
+        $this->postJson("/api/v1/admin/transaksi/{$refundId}/verifikasi")->assertOk();
+        $this->assertDatabaseHas('konfigurasi_setoran_emas', ['id' => $rencana->id, 'status' => 'batal']);
     }
 
     public function test_cairkan_dana_mengurangi_saldo(): void

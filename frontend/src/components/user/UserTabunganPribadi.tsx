@@ -27,7 +27,7 @@ const SUB_ORDER = ['mandiri', 'hari_raya', 'qurban', 'berjangka'] as const;
 
 const SUB_STYLE: Record<string, { active: string; badge: string; grad: string }> = {
   mandiri: {
-    active: 'bg-emerald-600 text-white shadow-md shadow-emerald-600/25',
+    active: 'bg-blue-600 text-white shadow-md shadow-blue-600/25',
     badge: 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300',
     grad: 'from-emerald-500/10 via-teal-400/5 to-cyan-500/10 border-emerald-300/40 dark:border-emerald-500/20'
   },
@@ -65,7 +65,7 @@ export const UserTabunganPribadi: React.FC<UserTabunganPribadiProps> = ({
     .map((k) => jenisTabungan.find((j) => j.sub_jenis === k))
     .filter((j): j is JenisTabungan => Boolean(j));
 
-  const [activeSub, setActiveSub] = useState<string>(() =>
+  const [activeSub] = useState<string>(() =>
     subJenisList.some((j) => j.sub_jenis === initialSub)
       ? initialSub
       : SUB_ORDER.find((k) => subJenisList.some((j) => j.sub_jenis === k)) ?? 'mandiri'
@@ -96,28 +96,6 @@ export const UserTabunganPribadi: React.FC<UserTabunganPribadiProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
-      {/* Persistent Sub-Tab Switcher */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-        {subJenisList.map((j) => {
-          const isActive = activeSub === j.sub_jenis;
-          const label = j.sub_jenis_label ?? j.nama;
-          return (
-            <button
-              key={j.id}
-              onClick={() => setActiveSub(j.sub_jenis as string)}
-              className={`px-4 py-2.5 rounded-2xl text-xs font-extrabold whitespace-nowrap transition-all cursor-pointer flex items-center gap-2 ${
-                isActive
-                  ? (SUB_STYLE[j.sub_jenis]?.active ?? 'bg-emerald-600 text-white shadow-md')
-                  : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60 border border-slate-200/80 dark:border-slate-700/60'
-              }`}
-            >
-              <Wallet className="w-3.5 h-3.5" />
-              <span>{label}</span>
-            </button>
-          );
-        })}
-      </div>
-
       {/* ─── Tab Qurban ─── */}
       {activeSub === 'qurban' && (
         <UserTabunganQurban
@@ -165,7 +143,7 @@ export const UserTabunganPribadi: React.FC<UserTabunganPribadiProps> = ({
         <div className="flex items-center gap-3">
           <button
             onClick={() => onOpenSetorPribadi(activeJenis?.id)}
-            className="py-3 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 transition-all cursor-pointer"
+            className="py-3 px-5 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-600/25 transition-all cursor-pointer"
           >
             <ArrowDownLeft className="w-4 h-4" />
             <span>Setor</span>

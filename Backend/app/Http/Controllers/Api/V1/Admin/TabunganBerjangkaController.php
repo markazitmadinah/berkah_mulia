@@ -2,20 +2,28 @@
 
 namespace App\Http\Controllers\Api\V1\Admin;
 
+use App\Enums\JenisTransaksi;
+use App\Enums\StatusVerifikasi;
 use App\Enums\SubJenisTabungan;
+use App\Enums\TipeNotifikasi;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\JenisTabungan;
 use App\Models\TabunganBerjangka;
 use App\Models\User;
+use App\Services\NotifikasiService;
+use App\Services\TransaksiService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class TabunganBerjangkaController extends Controller
 {
     use ApiResponse;
+
+    public function __construct(private NotifikasiService $notif) {}
 
     /**
      * GET /admin/tabungan-berjangka — semua tabungan berjangka nasabah.
@@ -23,7 +31,7 @@ class TabunganBerjangkaController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = TabunganBerjangka::with('user:id,name,phone,nomor_anggota')
-            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
+            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status), fn ($q) => $q->where('status', '!=', 'batal'))
             ->when($request->filled('user_id'), fn ($q) => $q->where('user_id', $request->user_id))
             ->latest();
 
@@ -34,7 +42,9 @@ class TabunganBerjangkaController extends Controller
             'summary' => [
                 'menunggu_approval' => TabunganBerjangka::where('status', 'menunggu_approval')->count(),
                 'aktif' => TabunganBerjangka::where('status', 'aktif')->count(),
+                'pembatalan_diajukan' => TabunganBerjangka::where('status', 'pembatalan_diajukan')->count(),
                 'selesai' => TabunganBerjangka::where('status', 'selesai')->count(),
+                'dibatalkan' => TabunganBerjangka::where('status', 'batal')->count(),
             ],
             'meta' => [
                 'current_page' => $items->currentPage(),
@@ -86,7 +96,7 @@ class TabunganBerjangkaController extends Controller
             'bulanan' => $durasi,
         };
 
-        $nominalPerPeriode = $totalPeriode > 0 ? ceil($target / $totalPeriode / 1000) * 1000 : $target;
+        $nominalPerPeriode = $totalPeriode > 0 ? ceil($target / $totalPeriode * 100) / 100 : $target;
 
         // Admin create → auto-approve
         $tb = TabunganBerjangka::create([
@@ -109,6 +119,16 @@ class TabunganBerjangkaController extends Controller
             'target' => $target,
             'durasi' => $durasi,
         ]);
+
+        $this->notif->kirim(
+            $peserta,
+            'Tabungan Berjangka Aktif',
+            'Tabungan berjangka Anda sebesar Rp ' . number_format($target, 0, ',', '.')
+                . ' telah diaktifkan. Setoran ' . $tb->frekuensiLabel() . ' Rp '
+                . number_format($nominalPerPeriode, 0, ',', '.') . ' selama ' . $durasi . ' bulan.',
+            TipeNotifikasi::Info,
+            ['tabungan_berjangka_id' => $tb->id]
+        );
 
         return $this->createdResponse(
             $this->toArray($tb->load('user:id,name,phone,nomor_anggota')),
@@ -135,6 +155,16 @@ class TabunganBerjangkaController extends Controller
 
         AuditLog::record('tabungan_berjangka.approve', $tabunganBerjangka);
 
+        $this->notif->kirim(
+            $tabunganBerjangka->user,
+            'Tabungan Berjangka Disetujui',
+            'Tabungan berjangka Anda sebesar Rp ' . number_format((float) $tabunganBerjangka->target_nominal, 0, ',', '.')
+                . ' disetujui dan mulai aktif. Setoran ' . $tabunganBerjangka->frekuensiLabel() . ' Rp '
+                . number_format((float) $tabunganBerjangka->nominal_per_periode, 0, ',', '.') . '.',
+            TipeNotifikasi::Info,
+            ['tabungan_berjangka_id' => $tabunganBerjangka->id]
+        );
+
         return $this->successResponse(
             $this->toArray($tabunganBerjangka->fresh()->load('user:id,name,phone,nomor_anggota')),
             'Tabungan berjangka disetujui dan mulai aktif.'
@@ -154,7 +184,71 @@ class TabunganBerjangkaController extends Controller
 
         AuditLog::record('tabungan_berjangka.tolak', $tabunganBerjangka);
 
+        $this->notif->kirim(
+            $tabunganBerjangka->user,
+            'Tabungan Berjangka Ditolak',
+            'Pengajuan tabungan berjangka Anda ditolak admin.',
+            TipeNotifikasi::Verifikasi,
+            ['tabungan_berjangka_id' => $tabunganBerjangka->id]
+        );
+
         return $this->successResponse(null, 'Tabungan berjangka ditolak.');
+    }
+
+    /**
+     * POST /admin/tabungan-berjangka/{id}/verifikasi-pembatalan — verifikasi pembatalan
+     * tabungan berjangka yang diajukan nasabah. Dana dikembalikan utuh lalu tabungan hilang dari daftar.
+     */
+    public function verifikasiPembatalan(Request $request, TabunganBerjangka $tabunganBerjangka): JsonResponse
+    {
+        if ($tabunganBerjangka->status !== 'pembatalan_diajukan') {
+            return $this->errorResponse('Hanya tabungan berstatus pengajuan pembatalan yang dapat diverifikasi.', 422, 'STATUS_TIDAK_VALID');
+        }
+
+        $saldo = $tabunganBerjangka->terkumpulNominal();
+
+        $transaksi = DB::transaction(function () use ($request, $tabunganBerjangka, $saldo) {
+            if ($saldo > 0) {
+                $transaksi = (new TransaksiService)->buatTransaksi([
+                    'user_id' => $tabunganBerjangka->user_id,
+                    'jenis_tabungan_id' => $tabunganBerjangka->jenis_tabungan_id,
+                    'tabungan_berjangka_id' => $tabunganBerjangka->id,
+                    'jenis_transaksi' => JenisTransaksi::Tarik,
+                    'nominal' => $saldo,
+                    'metode_pembayaran' => 'transfer',
+                    'status_verifikasi' => StatusVerifikasi::Terverifikasi,
+                    'diverifikasi_oleh' => $request->user()->id,
+                    'diverifikasi_pada' => now(),
+                    'catatan_admin' => 'Pengembalian dana utuh pembatalan tabungan berjangka #' . $tabunganBerjangka->id . '.',
+                ]);
+            }
+
+            $tabunganBerjangka->update(['status' => 'batal']);
+
+            return $transaksi ?? null;
+        });
+
+        AuditLog::record('tabungan_berjangka.verifikasi_pembatalan', $tabunganBerjangka, null, [
+            'saldo' => $saldo,
+            'transaksi_id' => $transaksi?->id,
+        ]);
+
+        $this->notif->kirim(
+            $tabunganBerjangka->user,
+            'Pembatalan Disetujui & Dana Dikembalikan',
+            $saldo > 0
+                ? 'Pembatalan tabungan berjangka #' . $tabunganBerjangka->id . ' disetujui. Saldo Rp ' . number_format($saldo, 0, ',', '.') . ' dikembalikan utuh.'
+                : 'Pembatalan tabungan berjangka #' . $tabunganBerjangka->id . ' disetujui.',
+            TipeNotifikasi::Info,
+            ['tabungan_berjangka_id' => $tabunganBerjangka->id]
+        );
+
+        return $this->successResponse(
+            $this->toArray($tabunganBerjangka->fresh()->load('user:id,name,phone,nomor_anggota')),
+            $saldo > 0
+                ? 'Pembatalan diverifikasi. Dana Rp ' . number_format($saldo, 0, ',', '.') . ' dikembalikan utuh ke nasabah.'
+                : 'Pembatalan diverifikasi.'
+        );
     }
 
     private function toArray(TabunganBerjangka $tb): array

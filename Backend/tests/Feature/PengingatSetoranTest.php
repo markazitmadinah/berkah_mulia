@@ -4,8 +4,11 @@ namespace Tests\Feature;
 
 use App\Enums\StatusKonfigurasiSetoran;
 use App\Enums\TipeNotifikasi;
+use App\Models\Gadai;
+use App\Models\JenisTabungan;
 use App\Models\KonfigurasiSetoranEmas;
 use App\Models\Notifikasi;
+use App\Models\TabunganBerjangka;
 use App\Models\Transaksi;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -170,6 +173,84 @@ class PengingatSetoranTest extends ApiTestCase
         $this->artisan('pengingat:setoran')->assertSuccessful();
 
         $this->assertDatabaseCount('notifikasi', 0);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_berjangka_harian_diingatkan_dan_uang_atribut_berjangka(): void
+    {
+        $this->seedBase();
+        $user = $this->createUser();
+        $berjangka = JenisTabungan::where('kode', 'tabungan-berjangka')->first();
+
+        TabunganBerjangka::create([
+            'user_id' => $user->id,
+            'jenis_tabungan_id' => $berjangka->id,
+            'target_nominal' => 300000,
+            'durasi_bulan' => 1,
+            'frekuensi_setor' => 'harian',
+            'nominal_per_periode' => 10000,
+            'tanggal_mulai' => '2026-03-01',
+            'tanggal_jatuh_tempo' => '2026-04-01',
+            'status' => 'aktif',
+            'created_by' => $user->id,
+        ]);
+
+        Carbon::setTestNow('2026-03-10 10:00:00');
+        $this->artisan('pengingat:setoran')->assertSuccessful();
+
+        $notif = Notifikasi::first();
+        $this->assertEquals('Pengingat Setor Tabungan Berjangka', $notif->judul);
+        $this->assertEquals($user->id, $notif->user_id);
+        $this->assertEquals(10000.0, $notif->data['nominal_per_periode']);
+        $this->assertArrayHasKey('tabungan_berjangka_id', $notif->data);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_gadai_diingatkan_h1_dan_hari_h(): void
+    {
+        $this->seedBase();
+        $admin = $this->createAdmin();
+        $user = $this->createUser();
+
+        $gadai = Gadai::create([
+            'nomor_gadai' => 'GAD-' . time(),
+            'user_id' => $user->id,
+            'created_by' => $admin->id,
+            'jenis_emas' => 'emas_batangan',
+            'berat_gram' => 5.0,
+            'kadar' => 24,
+            'berat_bersih_gram' => 5.0,
+            'harga_acuan' => 1000000,
+            'nilai_taksiran' => 5000000,
+            'persen_gadai' => 0.8,
+            'besaran_gadai' => 4000000,
+            'tanggal_aju' => '2026-02-10',
+            'tenor_satuan' => 'bulan',
+            'frekuensi_bayar' => 'bulanan',
+            'nominal_angkuran' => 1333333,
+            'status' => 'aktif',
+            'tanggal_aktif' => '2026-02-10',
+            'tanggal_jatuh_tempo' => '2026-03-10',
+        ]);
+
+        // H-1: 2026-03-09 → dapat pengingat "besok jatuh tempo".
+        Carbon::setTestNow('2026-03-09 08:30:00');
+        $this->artisan('pengingat:gadai')->assertSuccessful();
+        $this->assertDatabaseCount('notifikasi', 1);
+        $this->assertStringContainsString('besok', Notifikasi::first()->pesan);
+
+        // Hari H: 2026-03-10 → pengingat kedua, anti-duplikat per hari.
+        Carbon::setTestNow('2026-03-10 08:30:00');
+        $this->artisan('pengingat:gadai')->assertSuccessful();
+        $this->assertDatabaseCount('notifikasi', 2);
+        $this->assertDatabaseHas('notifikasi', ['user_id' => $user->id, 'data->gadai_id' => $gadai->id]);
+
+        // Tidak ada jadwal pada hari lain.
+        Carbon::setTestNow('2026-03-11 08:30:00');
+        $this->artisan('pengingat:gadai')->assertSuccessful();
+        $this->assertDatabaseCount('notifikasi', 2);
 
         Carbon::setTestNow();
     }

@@ -8,6 +8,7 @@ use App\Enums\TipeTabungan;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\TransaksiResource;
 use App\Models\JenisTabungan;
+use App\Models\Transaksi;
 use App\Models\UserTabunganTarget;
 use App\Services\ProgressCalculatorService;
 use App\Services\TransaksiService;

@@ -40,7 +40,6 @@ import { RejectTransaksiModal } from './components/modals/RejectTransaksiModal';
 import { CashTransaksiModal } from './components/modals/CashTransaksiModal';
 import { UserFormModal } from './components/modals/UserFormModal';
 import { UserDetailModal } from './components/modals/UserDetailModal';
-import { RejectUserModal } from './components/modals/RejectUserModal';
 import { ImportUserModal } from './components/modals/ImportUserModal';
 import { JenisTabunganModal } from './components/modals/JenisTabunganModal';
 import { HargaEmasModal } from './components/modals/HargaEmasModal';
@@ -107,8 +106,6 @@ const MainLayout: React.FC = () => {
   const [userToEdit, setUserToEdit] = useState<User | null>(null);
   const [selectedUserDetail, setSelectedUserDetail] = useState<User | null>(null);
   const [isUserDetailOpen, setIsUserDetailOpen] = useState(false);
-  const [userToReject, setUserToReject] = useState<User | null>(null);
-  const [isRejectUserOpen, setIsRejectUserOpen] = useState(false);
   const [isImportUserOpen, setIsImportUserOpen] = useState(false);
   const [profilUserId, setProfilUserId] = useState<number | null>(null);
 
@@ -170,11 +167,6 @@ const MainLayout: React.FC = () => {
   const handleOpenDetailUser = (user: User) => {
     setSelectedUserDetail(user);
     setIsUserDetailOpen(true);
-  };
-
-  const handleOpenRejectUser = (user: User) => {
-    setUserToReject(user);
-    setIsRejectUserOpen(true);
   };
 
   const handleOpenProfilNasabah = (user: User) => {
@@ -339,7 +331,6 @@ return (
                     onOpenCreateUser={handleOpenCreateUser}
                     onOpenEditUser={handleOpenEditUser}
                     onOpenDetailUser={handleOpenDetailUser}
-                    onOpenRejectUserModal={handleOpenRejectUser}
                     onOpenImportModal={() => setIsImportUserOpen(true)}
                     onOpenExportModal={() => openExport('nasabah')}
                     onOpenProfilNasabah={handleOpenProfilNasabah}
@@ -451,12 +442,6 @@ return (
         user={selectedUserDetail}
       />
 
-      <RejectUserModal
-        isOpen={isRejectUserOpen}
-        onClose={() => setIsRejectUserOpen(false)}
-        user={userToReject}
-      />
-
       <ImportUserModal
         isOpen={isImportUserOpen}
         onClose={() => setIsImportUserOpen(false)}
@@ -540,7 +525,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { err
             </pre>
             <button
               onClick={() => this.setState({ error: null })}
-              className="mt-4 py-2 px-4 rounded-xl bg-emerald-600 text-white text-xs font-bold cursor-pointer"
+              className="mt-4 py-2 px-4 rounded-xl bg-blue-600 text-white text-xs font-bold cursor-pointer"
             >
               Coba Lagi
             </button>

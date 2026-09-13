@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { JenisTabungan } from '../../types';
 
-const DEFAULT_KODES = ['emas-harian', 'EMAS', 'tabungan-pribadi', 'tabungan-qurban', 'tabungan-hari-raya', 'tabungan-berjangka'];
+const DEFAULT_KODES = ['EMAS', 'tabungan-pribadi', 'tabungan-qurban', 'tabungan-hari-raya', 'tabungan-berjangka'];
 const MAX_JENIS_TABUNGAN = 6;
 
 interface AdminJenisTabunganProps {
@@ -97,7 +97,7 @@ export const AdminJenisTabungan: React.FC<AdminJenisTabunganProps> = ({
                     aria-pressed={item.status_aktif}
                     onClick={() => toggleStatusJenisTabungan(item.id)}
                     className={`relative w-11 h-6 rounded-full transition-colors duration-300 ease-in-out flex-shrink-0 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 ${
-                      item.status_aktif ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-600'
+                      item.status_aktif ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'
                     }`}
                     title={item.status_aktif ? 'Nonaktifkan Produk' : 'Aktifkan Produk'}
                   >

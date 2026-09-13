@@ -38,9 +38,6 @@ use Illuminate\Support\Facades\Route;
 
 // ─── Public (No Auth) ──────────────────────────────────────────
 Route::prefix('auth')->group(function () {
-    Route::post('/register', [AuthController::class, 'register'])
-        ->middleware('throttle:5,1');
-
     Route::post('/login', [AuthController::class, 'login'])
         ->middleware('throttle:15,1');
 
@@ -131,7 +128,6 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::post('/transaksi/{transaksi}/upload-bukti', [TransaksiController::class, 'uploadBukti']);
 
         // Gadai — User (mengajukan, melihat, dan membayar angsuran)
-        Route::post('/gadai-saya', [GadaiController::class, 'store']);
         Route::get('/gadai-saya', [GadaiController::class, 'index']);
         Route::get('/gadai-saya/{gadai}', [GadaiController::class, 'show']);
         Route::post('/gadai-saya/{gadai}/bayar', [GadaiController::class, 'bayar']);
@@ -154,8 +150,6 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::post('/users', [AdminUserController::class, 'store']);
         Route::put('/users/{user}', [AdminUserController::class, 'update']);
         Route::delete('/users/{user}', [AdminUserController::class, 'destroy']);
-        Route::post('/users/{user}/approve', [AdminUserController::class, 'approve']);
-        Route::post('/users/{user}/reject', [AdminUserController::class, 'reject']);
         Route::post('/users/{user}/suspend', [AdminUserController::class, 'suspend']);
         Route::post('/users/{user}/activate', [AdminUserController::class, 'activate']);
 
@@ -187,6 +181,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::delete('/qurban/pendaftaran/{pendaftaran}', [AdminQurbanController::class, 'destroyPendaftaran']);
 
         // Transaksi — Admin
+        Route::get('/pembayaran-harian/tunggakan', [PembayaranHarianController::class, 'tunggakan']);
         Route::get('/pembayaran-harian', [PembayaranHarianController::class, 'index']);
         Route::get('/transaksi', [AdminTransaksiController::class, 'index']);
         Route::get('/transaksi/export', [AdminTransaksiController::class, 'export']);
@@ -212,6 +207,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::post('/gadai/{gadai}/aktifkan', [AdminGadaiController::class, 'aktifkan']);
         Route::post('/gadai/{gadai}/bayar', [AdminGadaiController::class, 'bayar']);
         Route::post('/gadai/{gadai}/lunasi', [AdminGadaiController::class, 'lunasi']);
+        Route::post('/gadai/{gadai}/kembalikan-emas', [AdminGadaiController::class, 'kembalikanEmas']);
         Route::post('/gadai/{gadai}/batal', [AdminGadaiController::class, 'batal']);
         Route::post('/gadai/{gadai}/terlambat', [AdminGadaiController::class, 'terlambat']);
         Route::post('/gadai/{gadai}/perpanjang', [AdminGadaiController::class, 'perpanjang']);
@@ -227,6 +223,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::post('/tabungan-berjangka', [AdminTabunganBerjangkaController::class, 'store']);
         Route::post('/tabungan-berjangka/{tabunganBerjangka}/approve', [AdminTabunganBerjangkaController::class, 'approve']);
         Route::post('/tabungan-berjangka/{tabunganBerjangka}/tolak', [AdminTabunganBerjangkaController::class, 'tolak']);
+        Route::post('/tabungan-berjangka/{tabunganBerjangka}/verifikasi-pembatalan', [AdminTabunganBerjangkaController::class, 'verifikasiPembatalan']);
 
         // Audit Logs
         Route::get('/audit-logs', [AuditLogController::class, 'index']);

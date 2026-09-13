@@ -1,7 +1,7 @@
 // PRD Enums & Types for Koperasi Simpan Pinjam Syariah "Berkah Mulia"
 
 export type UserRole = 'admin' | 'user';
-export type UserStatus = 'pending' | 'active' | 'rejected' | 'suspended';
+export type UserStatus = 'active' | 'rejected' | 'suspended';
 export type TipeTabungan = 'emas' | 'pribadi' | 'qurban';
 export type SubJenisTabungan = 'mandiri' | 'hari_raya' | 'qurban' | 'berjangka';
 export type FrekuensiSetoran = 'harian' | 'mingguan' | 'bulanan';
@@ -15,7 +15,7 @@ export type StatusPendaftaranQurban = 'menabung' | 'target_tercapai' |
 'menunggu_verifikasi' | 'siap_dicairkan' | 'sudah_lunas' | 'sudah_dicairkan' | 'dibatalkan';
 export type TipeNotifikasi = 'info' | 'verifikasi' | 'pengingat_setor' | 'pengingat_pencairan' | 'approval_akun';
 export type ChannelNotifikasi = 'in_app' | 'email';
-export type StatusGadai = 'diajukan' | 'disetujui' | 'aktif' | 'jatuh_tempo' | 'terlambat' | 'diperpanjang' | 'lunas' | 'batal';
+export type StatusGadai = 'diajukan' | 'disetujui' | 'aktif' | 'jatuh_tempo' | 'terlambat' | 'diperpanjang' | 'lunas' | 'emas_dikembalikan' | 'batal';
 
 export interface User {
   id: number;
@@ -222,6 +222,10 @@ export interface SetoranBerkalaProgress {
     persentase: number;
     status: 'tepat_waktu' | 'tertinggal';
   };
+  tertunggak: {
+    jumlah_periode: number;
+    nominal: number;
+  };
   sisa_periode: number | null;
   estimasi_selesai: string | null;
   target_gram_total: number | null;
@@ -234,6 +238,7 @@ export interface SetoranBerkalaResponse {
   items: Array<{
     konfigurasi: KonfigurasiSetoranEmas;
     progress: SetoranBerkalaProgress;
+    refund_diajukan?: boolean;
   }>;
 }
 
@@ -333,6 +338,30 @@ export interface PembayaranHarianItem {
   metode_pembayaran?: string;
 }
 
+export interface TunggakanSetoranItem {
+  sumber?: 'emas' | 'berjangka';
+  id?: number;
+  konfigurasi_id?: number;
+  user_id: number;
+  nama: string;
+  nomor_anggota?: string;
+  jenis_tabungan_id: number;
+  jenis_tabungan_nama?: string;
+  frekuensi: string;
+  frekuensi_label: string;
+  jadwal_label?: string;
+  nominal_per_periode: number;
+  tanggal_mulai?: string;
+  jumlah_periode_tertunggak: number;
+  nominal_tagihan: number;
+}
+
+export interface TunggakanSetoranResponse {
+  total_user: number;
+  total_nominal: number;
+  items: TunggakanSetoranItem[];
+}
+
 export interface PembayaranHarianResponse {
   tanggal: string;
   jadwal: PembayaranHarianItem[];
@@ -396,16 +425,6 @@ export interface GadaiPayload {
   catatan?: string;
 }
 
-export interface AjukanGadaiPayload {
-  jenis_emas: string;
-  berat_gram: number;
-  kadar: number;
-  tenor_satuan: 'harian' | 'mingguan' | 'bulanan';
-  frekuensi_bayar: FrekuensiSetoran;
-  nominal_angkuran: number;
-  catatan?: string;
-}
-
 export interface GadaiBayarPayload {
   nominal: number;
   tanggal_bayar?: string;
@@ -420,7 +439,7 @@ export interface UserGadaiBayarPayload {
   catatan?: string;
 }
 
-export type StatusTabunganBerjangka = 'menunggu_approval' | 'aktif' | 'selesai' | 'batal';
+export type StatusTabunganBerjangka = 'menunggu_approval' | 'aktif' | 'selesai' | 'batal' | 'pembatalan_diajukan';
 
 export interface TabunganBerjangka {
   id: number;
@@ -441,6 +460,7 @@ export interface TabunganBerjangka {
   is_goal_reached?: boolean;
   can_withdraw?: boolean;
   sisa_target?: number;
+  tertunggak?: { jumlah_periode: number; nominal: number };
   created_at?: string;
 }
 

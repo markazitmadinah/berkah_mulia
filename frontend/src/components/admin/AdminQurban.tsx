@@ -71,7 +71,7 @@ export const AdminQurban: React.FC<AdminQurbanProps> = ({
           {adminQurbanTab === 'periode' && (
             <button
               onClick={onOpenCreatePeriode}
-              className="py-2.5 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
+              className="py-2.5 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-blue-600/20 transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>Buat Periode Baru</span>
@@ -81,7 +81,7 @@ export const AdminQurban: React.FC<AdminQurbanProps> = ({
           {adminQurbanTab === 'hewan' && (
             <button
               onClick={onOpenCreateHewan}
-              className="py-2.5 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
+              className="py-2.5 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-blue-600/20 transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>Tambah Hewan Qurban</span>
@@ -97,7 +97,7 @@ export const AdminQurban: React.FC<AdminQurbanProps> = ({
           onClick={() => setAdminQurbanTab('periode')}
           className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
             adminQurbanTab === 'periode'
-              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/25'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-600/25'
               : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
           }`}
         >
@@ -109,7 +109,7 @@ export const AdminQurban: React.FC<AdminQurbanProps> = ({
           onClick={() => setAdminQurbanTab('hewan')}
           className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
             adminQurbanTab === 'hewan'
-              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/25'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-600/25'
               : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
           }`}
         >
@@ -121,7 +121,7 @@ export const AdminQurban: React.FC<AdminQurbanProps> = ({
           onClick={() => setAdminQurbanTab('pendaftaran')}
           className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
             adminQurbanTab === 'pendaftaran'
-              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/25'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-600/25'
               : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
           }`}
         >
@@ -334,7 +334,7 @@ export const AdminQurban: React.FC<AdminQurbanProps> = ({
                             p.status === 'sudah_dicairkan'
                               ? 'bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300'
                               : p.status === 'sudah_lunas'
-                              ? 'bg-emerald-600 text-white'
+                              ? 'bg-blue-600 text-white'
                               : p.status === 'menunggu_verifikasi'
                               ? 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300'
                               : p.status === 'siap_dicairkan'
@@ -352,7 +352,7 @@ export const AdminQurban: React.FC<AdminQurbanProps> = ({
                             {p.status === 'menunggu_verifikasi' && (
                               <button
                                 onClick={() => setVerifyModalPendaftaran(p)}
-                                className="py-1 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold flex items-center gap-1 shadow-sm cursor-pointer"
+                                className="py-1 px-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold flex items-center gap-1 shadow-sm cursor-pointer"
                               >
                                 <CheckCircle2 className="w-3 h-3" />
                                 <span>Verifikasi</span>
@@ -419,7 +419,7 @@ export const AdminQurban: React.FC<AdminQurbanProps> = ({
                   lunasPendaftaranQurban(verifyModalPendaftaran.id);
                   setVerifyModalPendaftaran(null);
                 }}
-                className="py-2.5 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-extrabold shadow-md shadow-emerald-600/25 transition-all cursor-pointer"
+                className="py-2.5 px-6 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-extrabold shadow-md shadow-blue-600/25 transition-all cursor-pointer"
               >
                 Ya, Verifikasi Lunas
               </button>

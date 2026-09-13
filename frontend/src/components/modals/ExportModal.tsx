@@ -18,7 +18,6 @@ const ROLE_LABEL: Record<string, string> = {
   user: 'Nasabah',
 };
 const STATUS_LABEL: Record<string, string> = {
-  pending: 'Menunggu Persetujuan',
   active: 'Aktif',
   rejected: 'Ditolak',
   suspended: 'Dibekukan',
@@ -194,7 +193,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ type, isOpen, onClose 
                 type="button"
                 onClick={handleExport}
                 disabled={submitting}
-                className="py-2.5 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow-md shadow-emerald-600/25 cursor-pointer flex items-center gap-1.5 disabled:opacity-60"
+                className="py-2.5 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold shadow-md shadow-blue-600/25 cursor-pointer flex items-center gap-1.5 disabled:opacity-60"
               >
                 {format === 'pdf' ? <FileText className="w-3.5 h-3.5" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
                 {submitting ? 'Memproses...' : `Download ${format.toUpperCase()}`}

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { formatRupiah } from '../../utils/format';
+import { formatRupiah, parseRupiah, fmtRupiahTyping, fmtRupiahBlur } from '../../utils/format';
 import {
   X,
   ArrowUpRight,
@@ -31,7 +31,7 @@ export const TarikModal: React.FC<TarikModalProps> = ({ isOpen, onClose }) => {
 
   if (!isOpen) return null;
 
-  const nominalValue = Number(nominal.replace(/\./g, ''));
+  const nominalValue = parseRupiah(nominal);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,7 +99,7 @@ export const TarikModal: React.FC<TarikModalProps> = ({ isOpen, onClose }) => {
             <button
               type="button"
               onClick={() => setNominal(userTabunganMandiriTotal.toLocaleString('id-ID'))}
-              className="text-xs font-bold px-3 py-1.5 rounded-xl bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 cursor-pointer"
+              className="text-xs font-bold px-3 py-1.5 rounded-xl bg-blue-600 text-white shadow-sm hover:bg-blue-700 cursor-pointer"
             >
               Tarik Semua
             </button>
@@ -116,15 +116,13 @@ export const TarikModal: React.FC<TarikModalProps> = ({ isOpen, onClose }) => {
               </span>
               <input
                 type="text"
-                inputMode="numeric"
+                inputMode="decimal"
                 value={nominal}
-                onChange={(e) => {
-                  const digits = e.target.value.replace(/\D/g, '');
-                  setNominal(digits ? Number(digits).toLocaleString('id-ID') : '');
-                }}
-                placeholder="Masukkan nominal, contoh: 1.000.000"
+                onChange={(e) => setNominal(fmtRupiahTyping(e.target.value))}
+                onBlur={() => setNominal(fmtRupiahBlur(nominal))}
+                placeholder="Contoh: 1.000.000,50"
                 required
-                className="w-full pl-11 pr-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-extrabold text-base text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                className="w-full pl-11 pr-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-extrabold text-base text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40"
               />
             </div>
           </div>
@@ -194,7 +192,7 @@ export const TarikModal: React.FC<TarikModalProps> = ({ isOpen, onClose }) => {
             </button>
             <button
               type="submit"
-              className="py-2.5 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-extrabold shadow-md shadow-emerald-600/25 transition-all cursor-pointer"
+              className="py-2.5 px-6 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-extrabold shadow-md shadow-blue-600/25 transition-all cursor-pointer"
             >
               Ajukan Penarikan
             </button>

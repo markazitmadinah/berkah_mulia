@@ -88,7 +88,7 @@ export const AdminHargaEmas: React.FC<AdminHargaEmasProps> = ({
 
           <button
             onClick={onOpenInputHargaModal}
-            className="py-2.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all cursor-pointer flex-shrink-0"
+            className="py-2.5 px-4 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-blue-600/20 transition-all cursor-pointer flex-shrink-0"
           >
             <Plus className="w-4 h-4" />
             <span>Input Harga Baru</span>

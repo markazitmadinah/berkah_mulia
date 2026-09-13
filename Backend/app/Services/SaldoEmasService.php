@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\JenisTransaksi;
 use App\Enums\StatusKonfigurasiSetoran;
 use App\Models\JenisTabungan;
 use App\Models\KonfigurasiSetoranEmas;
@@ -20,6 +21,19 @@ class SaldoEmasService
     public function getAktif(User $user, JenisTabungan $jenisTabungan): ?KonfigurasiSetoranEmas
     {
         return $this->getAktifList($user, $jenisTabungan)->first();
+    }
+
+    /**
+     * Ada pengajuan batal & refund (tarik menunggu verifikasi) untuk rencana ini?
+     * Rencana dikunci: tidak bisa disetor ulang dan tidak bisa diajukan batal dua kali.
+     */
+    public function refundTerkunci(User $user, KonfigurasiSetoranEmas $konfigurasi): bool
+    {
+        return Transaksi::milikUser($user->id)
+            ->where('konfigurasi_id', $konfigurasi->id)
+            ->where('jenis_transaksi', JenisTransaksi::Tarik->value)
+            ->menungguVerifikasi()
+            ->exists();
     }
 
     public function getAktifList(User $user, JenisTabungan $jenisTabungan): \Illuminate\Support\Collection
@@ -220,6 +234,12 @@ if ($konfigurasi->tanggal_deadline && now()->endOfDay()->gt(Carbon::parse($konfi
                 'periode_terlaksana' => $terlaksana,
                 'persentase' => $persentase,
                 'status' => $persentase >= 100 ? 'tepat_waktu' : 'tertinggal',
+            ],
+            // Tagihan: periode jatuh tempo yang belum dibayar. Per frekuensi: harian=hari,
+            // mingguan=minggu, bulanan=bulan. Nominal = jumlah periode tertunggak × nominal/priode.
+            'tertunggak' => [
+                'jumlah_periode' => max(0, $seharusnya - $terlaksana),
+                'nominal' => round(max(0, $seharusnya - $terlaksana) * $nominalPeriode, 2),
             ],
             'sisa_periode' => $sisaPeriode,
             'estimasi_selesai' => $estimasiSelesai,

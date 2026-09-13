@@ -58,13 +58,8 @@ class GadaiTest extends ApiTestCase
         $user = $this->createUser();
         $g = $this->ajukanGadai($user->id);
 
-        // DIAJUKAN → DISETUJUI
-        $this->postJson("/api/v1/admin/gadai/{$g['id']}/approve")
-            ->assertOk()
-            ->assertJsonPath('data.status', 'disetujui');
-
-        // DISETUJUI → AKTIF (jatuh tempo = hari ini + 1 bulan)
-        $aktif = $this->postJson("/api/v1/admin/gadai/{$g['id']}/aktifkan")
+        // DIAJUKAN → AKTIF (setujui & salurkan sekali jalan; jatuh tempo = hari ini + 1 bulan)
+        $aktif = $this->postJson("/api/v1/admin/gadai/{$g['id']}/approve")
             ->assertOk()
             ->assertJsonPath('data.status', 'aktif')
             ->json('data');
@@ -89,13 +84,102 @@ class GadaiTest extends ApiTestCase
         $this->postJson("/api/v1/admin/gadai/{$g['id']}/bayar", ['nominal' => 99999999])
             ->assertStatus(422);
 
-        // Pelunasan sisa 3.328.000 → LUNAS, emas dikembalikan
+        // Pelunasan sisa 3.328.000 → EMAS DIKEMBALIKAN langsung (lunasi = serah terima)
         $lunas = $this->postJson("/api/v1/admin/gadai/{$g['id']}/lunasi")
             ->assertOk()->json('data');
-        $this->assertEquals('lunas', $lunas['status']);
+        $this->assertEquals('emas_dikembalikan', $lunas['status']);
         $this->assertEquals(7328000, $lunas['total_dibayar']);
         $this->assertNotNull($lunas['tanggal_lunas']);
         $this->assertDatabaseCount('angsuran_gadai', 3);
+
+        // Setelah emas dikembalikan tidak bisa lunasi/diubah lagi
+        $this->postJson("/api/v1/admin/gadai/{$g['id']}/lunasi")->assertStatus(422);
+        $this->postJson("/api/v1/admin/gadai/{$g['id']}/kembalikan-emas")->assertStatus(422);
+    }
+
+    public function test_kembalikan_emas_hanya_dari_status_lunas(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+        $user = $this->createUser();
+
+        // Belum lunas → tidak bisa kembalikan emas
+        $g = $this->ajukanGadai($user->id);
+        $this->postJson("/api/v1/admin/gadai/{$g['id']}/approve")->assertOk();
+        $this->postJson("/api/v1/admin/gadai/{$g['id']}/kembalikan-emas")->assertStatus(422);
+
+        // Bayar lunas via angsuran → status LUNAS (belum dikembalikan)
+        $this->postJson("/api/v1/admin/gadai/{$g['id']}/bayar", ['nominal' => 7328000])
+            ->assertOk()->assertJsonPath('data.gadai.status', 'lunas');
+
+        // Kembalikan emas → EMAS_DIKEMBALIKAN + notif untuk user saja
+        $kembali = $this->postJson("/api/v1/admin/gadai/{$g['id']}/kembalikan-emas")
+            ->assertOk()->json('data');
+        $this->assertEquals('emas_dikembalikan', $kembali['status']);
+
+        $this->assertDatabaseHas('notifikasi', [
+            'user_id' => $user->id,
+            'judul' => 'Silakan Ambil Emas Anda Kembali',
+        ]);
+    }
+
+    public function test_user_hanya_boleh_angsur_sesuai_ketentuan_admin(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+        $user = $this->createUser();
+        $g = $this->ajukanGadai($user->id);
+        $this->postJson("/api/v1/admin/gadai/{$g['id']}/approve")->assertOk();
+
+        \Laravel\Sanctum\Sanctum::actingAs($user);
+
+        // Nominal bukan angkuran (2jt) dan bukan sisa pokok (7.328.000) → 422
+        $this->postJson("/api/v1/gadai-saya/{$g['id']}/bayar", ['nominal' => 500000, 'metode_pembayaran' => 'transfer'])
+            ->assertStatus(422)
+            ->assertJsonPath('error_code', 'NOMINAL_HARUS_SESUAI_ATURAN');
+
+        // Angkuran sesuai admin → diterima (flag image)
+        $upload = \Illuminate\Http\UploadedFile::fake()->image('bukti.jpg', 200, 200);
+        $this->postJson("/api/v1/gadai-saya/{$g['id']}/bayar", [
+            'nominal' => 2000000,
+            'metode_pembayaran' => 'transfer',
+            'bukti_transfer' => $upload,
+        ])->assertCreated();
+    }
+
+    public function test_user_pelunasan_wajib_bukti_transfer(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+        $user = $this->createUser();
+        $g = $this->ajukanGadai($user->id);
+        $this->postJson("/api/v1/admin/gadai/{$g['id']}/approve")->assertOk();
+
+        \Laravel\Sanctum\Sanctum::actingAs($user);
+
+        // Pelunasan sisa penuh tanpa bukti → 422 BUKTI_WAJIB. Route user bayar.
+        $this->postJson("/api/v1/gadai-saya/{$g['id']}/bayar", [
+            'nominal' => 7328000,
+            'metode_pembayaran' => 'transfer',
+        ])->assertStatus(422)->assertJsonPath('error_code', 'BUKTI_WAJIB');
+
+        // Dengan bukti → pending verifikasi
+        $upload = \Illuminate\Http\UploadedFile::fake()->image('bukti.jpg', 200, 200);
+        $res = $this->postJson("/api/v1/gadai-saya/{$g['id']}/bayar", [
+            'nominal' => 7328000,
+            'metode_pembayaran' => 'transfer',
+            'bukti_transfer' => $upload,
+        ])->assertCreated()->json('data');
+        $this->assertEquals('menunggu_verifikasi', $res['status_verifikasi']);
+
+        // Admin verifikasi pelunasan → LUNAS, emas siap dikembalikan
+        $this->actingAsAdmin();
+        $this->postJson("/api/v1/admin/gadai/angsuran/{$res['id']}/verifikasi")
+            ->assertOk()->assertJsonPath('data.status', 'lunas');
+
+        // Admin serah terima emas → EMAS_DIKEMBALIKAN
+        $this->postJson("/api/v1/admin/gadai/{$g['id']}/kembalikan-emas")
+            ->assertOk()->assertJsonPath('data.status', 'emas_dikembalikan');
     }
 
     public function test_batal_mengembalikan_emas_dengan_potongan_10_persen(): void
@@ -106,7 +190,6 @@ class GadaiTest extends ApiTestCase
         $g = $this->ajukanGadai($user->id);
 
         $this->postJson("/api/v1/admin/gadai/{$g['id']}/approve")->assertOk();
-        $this->postJson("/api/v1/admin/gadai/{$g['id']}/aktifkan")->assertOk();
         $this->postJson("/api/v1/admin/gadai/{$g['id']}/bayar", ['nominal' => 5000000])->assertOk();
 
         $batal = $this->postJson("/api/v1/admin/gadai/{$g['id']}/batal")
@@ -121,7 +204,7 @@ class GadaiTest extends ApiTestCase
         $this->postJson("/api/v1/admin/gadai/{$g['id']}/batal")->assertStatus(422);
     }
 
-    public function test_perpanjang_menggeser_jatuh_tempo(): void
+    public function test_batal_lalu_hapus_rekaman_batal(): void
     {
         $this->seedBase();
         $this->actingAsAdmin();
@@ -129,7 +212,31 @@ class GadaiTest extends ApiTestCase
         $g = $this->ajukanGadai($user->id);
 
         $this->postJson("/api/v1/admin/gadai/{$g['id']}/approve")->assertOk();
-        $aktif = $this->postJson("/api/v1/admin/gadai/{$g['id']}/aktifkan")->assertOk()->json('data');
+        $this->postJson("/api/v1/admin/gadai/{$g['id']}/bayar", ['nominal' => 2000000])->assertOk();
+        $this->postJson("/api/v1/admin/gadai/{$g['id']}/batal")->assertOk();
+
+        $this->deleteJson("/api/v1/admin/gadai/{$g['id']}")
+            ->assertOk()
+            ->assertJsonPath('message', 'Data pengajuan gadai dihapus.');
+
+        $this->assertSoftDeleted('gadai', ['id' => $g['id']]);
+
+        // Rekaman lunas tetap tidak bisa dihapus
+        $lunas = $this->ajukanGadai($user->id);
+        $this->postJson("/api/v1/admin/gadai/{$lunas['id']}/approve")->assertOk();
+        $this->postJson("/api/v1/admin/gadai/{$lunas['id']}/lunasi")->assertOk();
+        $this->deleteJson("/api/v1/admin/gadai/{$lunas['id']}")->assertStatus(422);
+    }
+
+    public function test_perpanjang_menggeser_jatuh_tempo(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+        $user = $this->createUser();
+        $g = $this->ajukanGadai($user->id);
+
+        // DIAJUKAN → AKTIF langsung (setujui & salurkan sekali jalan)
+        $aktif = $this->postJson("/api/v1/admin/gadai/{$g['id']}/approve")->assertOk()->json('data');
         $jatuhTempoLama = $aktif['tanggal_jatuh_tempo'];
 
         // Simulasikan melewati jatuh tempo → tandai JATUH TEMPO → perpanjang
@@ -178,44 +285,13 @@ class GadaiTest extends ApiTestCase
         $this->assertEquals(StatusGadai::Terlambat, $g->fresh()->status);
     }
 
-    public function test_user_dapat_mengajukan_gadai_sendiri(): void
+    public function test_user_tidak_bisa_mengajukan_gadai_sendiri(): void
     {
-        $this->seedBase();
-        $admin = $this->actingAsAdmin();
-        $user = $this->createUser();
-
-        HargaEmasHarian::create([
-            'tanggal' => now()->toDateString(),
-            'harga_per_gram' => 1000000,
-            'status_aktif' => true,
-            'created_by' => $admin->id,
-        ]);
-
-        \Laravel\Sanctum\Sanctum::actingAs($user);
-
-        $res = $this->postJson('/api/v1/gadai-saya', [
-            'jenis_emas' => 'Antam LM 24K',
-            'berat_gram' => 10,
-            'kadar' => 916,
-            'tenor_satuan' => 'bulanan',
-            'frekuensi_bayar' => 'bulanan',
-            'nominal_angkuran' => 732800,
-        ])->assertStatus(201)->assertJsonPath('success', true)->json('data');
-
-        $this->assertEquals('diajukan', $res['status']);
-        $this->assertEquals(80, $res['persen_gadai']);
-        $this->assertEquals(9160000, $res['nilai_taksiran']);
-        $this->assertEquals(7328000, $res['besaran_gadai']);
-
-        // Harga acuan selalu pakai harga harian admin, bukan input nasabah.
-        $list = $this->getJson('/api/v1/gadai-saya')->assertOk()->json('data.items');
-        $this->assertCount(1, $list);
-        $this->assertEquals($res['id'], $list[0]['id']);
-
-        // Muncul di daftar admin untuk diproses (approve/aktifkan).
-        \Laravel\Sanctum\Sanctum::actingAs($admin);
-        $adminList = $this->getJson('/api/v1/admin/gadai?status=diajukan')->assertOk()->json('data.items');
-        $this->assertCount(1, $adminList);
+        // Endpoint POST /gadai-saya sudah dihapus; pembuatan gadai hanya via admin.
+        // Verifikasi route tidak ada: POST ke GET-only path → 405 (atau 500 di local Whoops).
+        $this->actingAsAdmin();
+        $res = $this->postJson('/api/v1/gadai-saya', ['jenis_emas' => 'x']);
+        $this->assertContains($res->status(), [405, 500], 'POST /gadai-saya harus ditolak (route dihapus).');
     }
 
     public function test_user_hanya_melihat_gadai_milik_sendiri(): void

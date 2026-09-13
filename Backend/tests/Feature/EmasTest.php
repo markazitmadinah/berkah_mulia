@@ -61,7 +61,7 @@ class EmasTest extends ApiTestCase
         $this->seedBase();
         $this->actingAsAdmin();
         $harga = HargaEmasHarian::create(['tanggal' => now()->toDateString(), 'harga_per_gram' => 1000000, 'status_aktif' => true, 'created_by' => auth()->id()]);
-        $jenis = JenisTabungan::where('kode', 'emas-harian')->first();
+        $jenis = JenisTabungan::where('kode', 'EMAS')->first();
         $user = $this->createUser();
 
         Transaksi::create([
@@ -116,7 +116,7 @@ class EmasTest extends ApiTestCase
             ->assertJsonPath('data.unit_didapat', '0.1000');
 
         $this->assertDatabaseHas('transaksi', [
-            'jenis_tabungan_id' => JenisTabungan::where('kode', 'emas-harian')->first()->id,
+            'jenis_tabungan_id' => JenisTabungan::where('kode', 'EMAS')->first()->id,
             'unit_didapat' => '0.1000',
             'harga_acuan_snapshot' => '1000000.00',
         ]);
@@ -138,7 +138,7 @@ class EmasTest extends ApiTestCase
         $user = $this->actingAsUser();
         $user->update(['target_emas_gram' => 10]);
         HargaEmasHarian::create(['tanggal' => now()->toDateString(), 'harga_per_gram' => 1000000, 'status_aktif' => true, 'created_by' => $user->id]);
-        $jenis = JenisTabungan::where('kode', 'emas-harian')->first();
+        $jenis = JenisTabungan::where('kode', 'EMAS')->first();
 
         Transaksi::create([
             'nomor_referensi' => 'TRX-E2',
@@ -236,7 +236,7 @@ class EmasTest extends ApiTestCase
         $this->seedBase();
         $user = $this->actingAsUser();
         HargaEmasHarian::create(['tanggal' => now()->toDateString(), 'harga_per_gram' => 1000000, 'status_aktif' => true, 'created_by' => $user->id]);
-        $jenis = JenisTabungan::where('kode', 'emas-harian')->first();
+        $jenis = JenisTabungan::where('kode', 'EMAS')->first();
 
         // Goal 5 gram, baru terkumpul 1 gram (terverifikasi).
         $user->update(['target_emas_gram' => 5]);
@@ -266,7 +266,7 @@ class EmasTest extends ApiTestCase
         $this->seedBase();
         $user = $this->actingAsUser();
         HargaEmasHarian::create(['tanggal' => now()->toDateString(), 'harga_per_gram' => 1000000, 'status_aktif' => true, 'created_by' => $user->id]);
-        $jenis = JenisTabungan::where('kode', 'emas-harian')->first();
+        $jenis = JenisTabungan::where('kode', 'EMAS')->first();
 
         // Goal 2 gram, terkumpul 10 gram → goal tercapai.
         $user->update(['target_emas_gram' => 2]);
@@ -309,7 +309,7 @@ class EmasTest extends ApiTestCase
         $this->seedBase();
         $user = $this->actingAsUser();
         HargaEmasHarian::create(['tanggal' => now()->toDateString(), 'harga_per_gram' => 1000000, 'status_aktif' => true, 'created_by' => $user->id]);
-        $jenis = JenisTabungan::where('kode', 'emas-harian')->first();
+        $jenis = JenisTabungan::where('kode', 'EMAS')->first();
 
         // Goal 5 gram, baru terkumpul 1.5 gram → belum tercapai.
         $user->update(['target_emas_gram' => 5]);
@@ -355,7 +355,7 @@ class EmasTest extends ApiTestCase
         $this->seedBase();
         $user = $this->actingAsUser();
         HargaEmasHarian::create(['tanggal' => now()->toDateString(), 'harga_per_gram' => 1000000, 'status_aktif' => true, 'created_by' => $user->id]);
-        $jenis = JenisTabungan::where('kode', 'emas-harian')->first();
+        $jenis = JenisTabungan::where('kode', 'EMAS')->first();
 
         // Goal 2 gram, terkumpul 3 gram → tercapai, tidak boleh batal.
         $user->update(['target_emas_gram' => 2]);
@@ -385,7 +385,7 @@ class EmasTest extends ApiTestCase
         $this->seedBase();
         $user = $this->actingAsUser();
         HargaEmasHarian::create(['tanggal' => now()->toDateString(), 'harga_per_gram' => 1000000, 'status_aktif' => true, 'created_by' => $user->id]);
-        $jenis = JenisTabungan::where('kode', 'emas-harian')->first();
+        $jenis = JenisTabungan::where('kode', 'EMAS')->first();
 
         // Goal 5 gram, baru terkumpul 1.5 gram → belum tercapai.
         $user->update(['target_emas_gram' => 5]);
@@ -427,7 +427,7 @@ class EmasTest extends ApiTestCase
         $this->seedBase();
         $user = $this->actingAsUser();
         HargaEmasHarian::create(['tanggal' => now()->toDateString(), 'harga_per_gram' => 1000000, 'status_aktif' => true, 'created_by' => $user->id]);
-        $jenis = JenisTabungan::where('kode', 'emas-harian')->first();
+        $jenis = JenisTabungan::where('kode', 'EMAS')->first();
 
         // Goal 2 gram, terkumpul 2.0558 gram yang nilainya (2.0558jt) lebih besar
         // dari rupiah yang disetor (1.500.000) karena apresiasi harga emas.
@@ -468,7 +468,7 @@ class EmasTest extends ApiTestCase
         $this->seedBase();
         $user = $this->actingAsUser();
         HargaEmasHarian::create(['tanggal' => now()->toDateString(), 'harga_per_gram' => 1000000, 'status_aktif' => true, 'created_by' => $user->id]);
-        $jenis = JenisTabungan::where('kode', 'emas-harian')->first();
+        $jenis = JenisTabungan::where('kode', 'EMAS')->first();
 
         $user->update(['target_emas_gram' => 2]);
         Transaksi::create([
@@ -504,7 +504,7 @@ class EmasTest extends ApiTestCase
         $this->seedBase();
         $user = $this->actingAsUser();
         HargaEmasHarian::create(['tanggal' => now()->toDateString(), 'harga_per_gram' => 1000000, 'status_aktif' => true, 'created_by' => $user->id]);
-        $jenis = JenisTabungan::where('kode', 'emas-harian')->first();
+        $jenis = JenisTabungan::where('kode', 'EMAS')->first();
 
         // Goal 5 gram, baru terkumpul 1 gram (belum tercapai).
         $user->update(['target_emas_gram' => 5]);

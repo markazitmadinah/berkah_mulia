@@ -51,7 +51,7 @@ export const AdminRekeningBank: React.FC<AdminRekeningBankProps> = ({
 
         <button
           onClick={onOpenCreateModal}
-          className="py-2.5 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all cursor-pointer flex-shrink-0"
+          className="py-2.5 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-blue-600/20 transition-all cursor-pointer flex-shrink-0"
         >
           <Plus className="w-4 h-4" />
           <span>Tambah Rekening</span>
@@ -73,19 +73,19 @@ export const AdminRekeningBank: React.FC<AdminRekeningBankProps> = ({
               }`}
             >
               <div>
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-                  <div className="flex items-center gap-2.5">
+                <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+                  <div className="flex items-start gap-2.5 min-w-0 flex-1">
                     <div
                       className="w-8 h-8 rounded-xl flex items-center justify-center font-extrabold text-white text-xs flex-shrink-0"
                       style={{ backgroundColor: rek.logo_color || '#10B981' }}
                     >
                       {rek.nama_bank.slice(0, 3).toUpperCase()}
                     </div>
-                    <div className="min-w-0">
-                      <h4 className="font-extrabold text-sm text-slate-900 dark:text-white truncate">
+                    <div className="min-w-0 flex-1">
+                      <h4 className="font-extrabold text-sm leading-snug text-slate-900 dark:text-white">
                         {rek.nama_bank}
                       </h4>
-                      <p className="text-[10px] text-slate-400 truncate">{rek.cabang || 'Kantor Pusat'}</p>
+                      <p className="text-[10px] text-slate-400 leading-snug mt-0.5">{rek.cabang || 'Kantor Pusat'}</p>
                     </div>
                   </div>
 
@@ -94,7 +94,7 @@ export const AdminRekeningBank: React.FC<AdminRekeningBankProps> = ({
                     type="button"
                     onClick={() => toggleStatusRekeningBank(rek.id)}
                     className={`relative w-11 h-6 rounded-full transition-colors duration-200 flex-shrink-0 cursor-pointer ${
-                      rek.status_aktif ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-600'
+                      rek.status_aktif ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'
                     }`}
                     title={rek.status_aktif ? 'Nonaktifkan Rekening' : 'Aktifkan Rekening'}
                   >

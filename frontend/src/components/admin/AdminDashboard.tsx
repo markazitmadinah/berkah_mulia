@@ -2,14 +2,12 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
   Users,
-  Clock,
   CheckCircle2,
   Coins,
   TrendingUp,
   ReceiptText,
-  Calendar,
   ArrowUpRight,
-  ShieldCheck,
+  Clock3,
   ChevronRight,
   Plus,
   Eye,
@@ -20,6 +18,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { Transaksi } from '../../types';
+import { authFileUrl } from '../../lib/api';
 import { PriceChart } from '../ui/PriceChart';
 import { formatRupiah } from '../../utils/format';
 
@@ -43,12 +42,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     verifikasiTransaksi,
     approveTabunganBerjangka,
     tolakTabunganBerjangka,
+    verifikasiPembatalanBerjangka,
     verifikasiAngsuranGadai,
     tolakAngsuranGadai,
     approveGadai,
     lunasQurban,
-    approveUser,
-    rejectUser,
     setActiveTab,
     activeHargaEmas,
     showToast
@@ -76,7 +74,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // KPI Calculations
   const activeUsersCount = users.filter(u => u.status === 'active' && u.role === 'user').length;
   const newUsersInRange = users.filter(u => u.role === 'user' && u.created_at && inRange(u.created_at.slice(0, 10))).length;
-  const pendingUsersCount = users.filter(u => u.status === 'pending').length;
 
   const pendingTrx = transaksi.filter(t => t.status_verifikasi === 'menunggu_verifikasi');
   const verifiedTrx = transaksi.filter(t => t.status_verifikasi === 'terverifikasi');
@@ -84,7 +81,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const pendingTrxInRange = pendingTrx.filter(t => inRange(t.tanggal_transaksi));
 
   // Approval Center state
-  const [approvalTab, setApprovalTab] = useState<'transaksi' | 'angsuran' | 'berjangka' | 'gadai' | 'qurban' | 'nasabah'>('transaksi');
+  const [approvalTab, setApprovalTab] = useState<'transaksi' | 'angsuran' | 'berjangka' | 'gadai' | 'qurban'>('transaksi');
   const [previewBuktiUrl, setPreviewBuktiUrl] = useState<string | null>(null);
   const [previewBuktiTitle, setPreviewBuktiTitle] = useState<string>('');
   const [rejectAngsuranId, setRejectAngsuranId] = useState<number | null>(null);
@@ -98,15 +95,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       .map(a => ({ ...a, gadaiParent: g }))
   );
   const pendingTabBerjangkaList = (tabunganBerjangka?.items ?? []).filter(t => t.status === 'menunggu_approval');
+  const pendingPembatalanList = (tabunganBerjangka?.items ?? []).filter(t => t.status === 'pembatalan_diajukan');
   const pendingGadaiList = gadai.filter(g => g.status === 'diajukan');
   const pendingQurbanList = (pendaftaranQurban ?? []).filter(p => p.status === 'menunggu_verifikasi');
-  const pendingNasabahList = users.filter(u => u.status === 'pending');
 
   const gadaiPengajuan = pendingGadaiList.length;
   const gadaiAktif = gadai.filter(g => ['aktif', 'jatuh_tempo', 'terlambat', 'diperpanjang'].includes(g.status)).length;
   const angsuranGadaiPending = pendingAngsuranList.length;
-  const tabBerjangkaPending = pendingTabBerjangkaList.length;
-  const totalAllPending = pendingTrx.length + angsuranGadaiPending + tabBerjangkaPending + gadaiPengajuan + pendingQurbanList.length + pendingUsersCount;
+  const tabBerjangkaPending = pendingTabBerjangkaList.length + pendingPembatalanList.length;
+  const totalAllPending = pendingTrx.length + angsuranGadaiPending + tabBerjangkaPending + gadaiPengajuan + pendingQurbanList.length;
 
   const totalVerifiedSetoranNominal = verifiedTrxInRange
     .filter(t => t.jenis_transaksi === 'setor')
@@ -161,7 +158,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 onClick={() => setDateRange(r)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold capitalize transition-all cursor-pointer ${
                   dateRange === r
-                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/25'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/25'
                     : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
                 }`}
               >
@@ -195,28 +192,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         </div>
 
-        {/* 2. Nasabah Pending */}
-        <div
-          onClick={() => setActiveTab('users')}
-          className="rounded-3xl p-5 bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 shadow-sm hover:border-amber-500/40 hover:shadow-md transition-all cursor-pointer"
-        >
-          <div className="flex items-center justify-between">
-            <div className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold">
-              <Clock className="w-4 h-4" />
-            </div>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300">
-              Perlu Review
-            </span>
-          </div>
-          <div className="mt-4">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Nasabah Pending</span>
-            <p className="text-xl sm:text-2xl font-extrabold text-amber-600 dark:text-amber-400 mt-0.5">
-              {pendingUsersCount}
-            </p>
-          </div>
-        </div>
-
-        {/* 3. Transaksi Pending & Terverifikasi */}
+        {/* 2. Transaksi Pending & Terverifikasi */}
         <div
           onClick={() => setActiveTab('transaksi')}
           className="rounded-3xl p-5 bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 shadow-sm hover:border-blue-500/40 hover:shadow-md transition-all cursor-pointer"
@@ -233,6 +209,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Trx Terverifikasi</span>
             <p className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white mt-0.5">
               {verifiedTrxInRange.length}
+            </p>
+          </div>
+        </div>
+
+        {/* 3. Trx Pending */}
+        <div
+          onClick={() => setActiveTab('transaksi')}
+          className="rounded-3xl p-5 bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 shadow-sm hover:border-amber-500/40 hover:shadow-md transition-all cursor-pointer"
+        >
+          <div className="flex items-center justify-between">
+            <div className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold">
+              <Clock3 className="w-4 h-4" />
+            </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300">
+              {pendingTrxInRange.length} Pending
+            </span>
+          </div>
+          <div className="mt-4">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Trx Pending</span>
+            <p className="text-xl sm:text-2xl font-extrabold text-amber-600 dark:text-amber-400 mt-0.5">
+              {pendingTrx.length}
             </p>
           </div>
         </div>
@@ -254,93 +251,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               Rp {formatRupiah(totalVerifiedSetoranNominal)}
             </p>
           </div>
-        </div>
-      </div>
-
-      {/* Approval Queue Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" id="pusat-approval">
-        {/* Angsuran Gadai Pending */}
-        <div
-          onClick={() => setApprovalTab('angsuran')}
-          className={`rounded-2xl p-4 bg-white dark:bg-slate-800/90 border shadow-sm transition-all cursor-pointer ${
-            approvalTab === 'angsuran'
-              ? 'border-amber-500 ring-2 ring-amber-500/20 shadow-md'
-              : 'border-slate-200/80 dark:border-slate-700/70 hover:border-amber-500/40 hover:shadow-md'
-          }`}
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center">
-              <ShieldCheck className="w-3.5 h-3.5" />
-            </div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Angsuran Gadai</span>
-          </div>
-          <p className="text-lg font-extrabold text-amber-600 dark:text-amber-400">
-            {angsuranGadaiPending}
-          </p>
-          <p className="text-[10px] text-slate-400">Menunggu verifikasi</p>
-        </div>
-
-        {/* Tabungan Berjangka Pending */}
-        <div
-          onClick={() => setApprovalTab('berjangka')}
-          className={`rounded-2xl p-4 bg-white dark:bg-slate-800/90 border shadow-sm transition-all cursor-pointer ${
-            approvalTab === 'berjangka'
-              ? 'border-indigo-500 ring-2 ring-indigo-500/20 shadow-md'
-              : 'border-slate-200/80 dark:border-slate-700/70 hover:border-indigo-500/40 hover:shadow-md'
-          }`}
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
-              <Calendar className="w-3.5 h-3.5" />
-            </div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Tab. Berjangka</span>
-          </div>
-          <p className="text-lg font-extrabold text-indigo-600 dark:text-indigo-400">
-            {tabBerjangkaPending}
-          </p>
-          <p className="text-[10px] text-slate-400">Menunggu approval</p>
-        </div>
-
-        {/* Gadai Pengajuan */}
-        <div
-          onClick={() => setApprovalTab('gadai')}
-          className={`rounded-2xl p-4 bg-white dark:bg-slate-800/90 border shadow-sm transition-all cursor-pointer ${
-            approvalTab === 'gadai'
-              ? 'border-sky-500 ring-2 ring-sky-500/20 shadow-md'
-              : 'border-slate-200/80 dark:border-slate-700/70 hover:border-sky-500/40 hover:shadow-md'
-          }`}
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-7 h-7 rounded-lg bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center">
-              <TrendingUp className="w-3.5 h-3.5" />
-            </div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Gadai Diajukan</span>
-          </div>
-          <p className="text-lg font-extrabold text-sky-600 dark:text-sky-400">
-            {gadaiPengajuan}
-          </p>
-          <p className="text-[10px] text-slate-400">Perlu review</p>
-        </div>
-
-        {/* Transaksi Pending */}
-        <div
-          onClick={() => setApprovalTab('transaksi')}
-          className={`rounded-2xl p-4 bg-white dark:bg-slate-800/90 border shadow-sm transition-all cursor-pointer ${
-            approvalTab === 'transaksi'
-              ? 'border-emerald-500 ring-2 ring-emerald-500/20 shadow-md'
-              : 'border-slate-200/80 dark:border-slate-700/70 hover:border-emerald-500/40 hover:shadow-md'
-          }`}
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-              <ReceiptText className="w-3.5 h-3.5" />
-            </div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Trx Pending</span>
-          </div>
-          <p className="text-lg font-extrabold text-emerald-600 dark:text-emerald-400">
-            {pendingTrx.length}
-          </p>
-          <p className="text-[10px] text-slate-400">Simpanan & Penarikan</p>
         </div>
       </div>
 
@@ -428,7 +338,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   else if (approvalTab === 'angsuran' || approvalTab === 'gadai') setActiveTab('gadai');
                   else if (approvalTab === 'berjangka') setActiveTab('tabungan');
                   else if (approvalTab === 'qurban') setActiveTab('qurban');
-                  else if (approvalTab === 'nasabah') setActiveTab('users');
                 }}
                 className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
               >
@@ -443,14 +352,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 onClick={() => setApprovalTab('transaksi')}
                 className={`px-2.5 py-1 rounded-xl text-[11px] font-bold whitespace-nowrap flex items-center gap-1.5 transition-all cursor-pointer ${
                   approvalTab === 'transaksi'
-                    ? 'bg-emerald-600 text-white shadow-sm'
+                    ? 'bg-blue-600 text-white shadow-sm'
                     : 'bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
                 }`}
               >
                 <span>Transaksi</span>
                 {pendingTrx.length > 0 && (
                   <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-extrabold ${
-                    approvalTab === 'transaksi' ? 'bg-white text-emerald-700' : 'bg-emerald-600 text-white'
+                    approvalTab === 'transaksi' ? 'bg-white text-emerald-700' : 'bg-blue-600 text-white'
                   }`}>
                     {pendingTrx.length}
                   </span>
@@ -528,24 +437,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </span>
                 )}
               </button>
-
-              <button
-                onClick={() => setApprovalTab('nasabah')}
-                className={`px-2.5 py-1 rounded-xl text-[11px] font-bold whitespace-nowrap flex items-center gap-1.5 transition-all cursor-pointer ${
-                  approvalTab === 'nasabah'
-                    ? 'bg-rose-600 text-white shadow-sm'
-                    : 'bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
-                }`}
-              >
-                <span>Nasabah</span>
-                {pendingNasabahList.length > 0 && (
-                  <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-extrabold ${
-                    approvalTab === 'nasabah' ? 'bg-white text-rose-700' : 'bg-rose-600 text-white'
-                  }`}>
-                    {pendingNasabahList.length}
-                  </span>
-                )}
-              </button>
             </div>
 
             {/* Tab Body Contents */}
@@ -585,7 +476,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </button>
                         <button
                           onClick={() => verifikasiTransaksi(trx.id)}
-                          className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                          className="p-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
                           title="Verifikasi Transaksi"
                         >
                           <Check className="w-3.5 h-3.5" />
@@ -635,9 +526,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         {item.bukti_transfer_path && (
                           <button
                             onClick={() => {
-                              const url = (item as any).bukti_transfer_url || `/api/v1/admin/gadai/angsuran/${item.id}/bukti`;
-                              setPreviewBuktiUrl(url);
                               setPreviewBuktiTitle(`Bukti Angsuran Gadai - ${item.gadaiParent.nomor_gadai}`);
+                              const path = (item as any).bukti_transfer_url || `/api/v1/admin/gadai/angsuran/${item.id}/bukti`;
+                              authFileUrl(path)
+                                .then(setPreviewBuktiUrl)
+                                .catch(() => showToast('Gagal memuat bukti pembayaran.', 'error'));
                             }}
                             className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950 text-blue-600 hover:bg-blue-100 cursor-pointer"
                             title="Lihat Foto Bukti Pembayaran"
@@ -647,7 +540,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         )}
                         <button
                           onClick={() => verifikasiAngsuranGadai(item.id)}
-                          className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                          className="p-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
                           title="Verifikasi Angsuran"
                         >
                           <Check className="w-3.5 h-3.5" />
@@ -670,50 +563,77 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               {/* 3. Tabungan Berjangka */}
               {approvalTab === 'berjangka' && (
-                pendingTabBerjangkaList.length === 0 ? (
+                pendingTabBerjangkaList.length === 0 && pendingPembatalanList.length === 0 ? (
                   <p className="text-center py-8 text-xs text-slate-400">
                     Tidak ada pengajuan tabungan berjangka yang menunggu approval.
                   </p>
                 ) : (
-                  pendingTabBerjangkaList.map((item) => (
-                    <div key={item.id} className="py-2.5 flex items-center justify-between gap-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-xs text-slate-900 dark:text-white">
-                            {item.user?.name || 'Nasabah'}
-                          </span>
-                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300">
-                            {item.durasi_bulan} Bulan
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                          Target: Rp {formatRupiah(item.target_nominal)} • Setoran: Rp {formatRupiah(item.nominal_per_periode)}/{item.frekuensi_label || item.frekuensi_setor}
-                        </p>
-                        {item.catatan && (
-                          <p className="text-[10px] text-slate-400 italic truncate max-w-xs">
-                            "{item.catatan}"
+                  <>
+                    {pendingPembatalanList.map((item) => (
+                      <div key={`pembatalan-${item.id}`} className="py-2.5 flex items-center justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-xs text-slate-900 dark:text-white">
+                              {item.user?.name || 'Nasabah'}
+                            </span>
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300">
+                              Pembatalan Diajukan
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                            Dana dikembalikan: Rp {formatRupiah(item.terkumpul ?? 0)} • Target: Rp {formatRupiah(item.target_nominal)}
                           </p>
-                        )}
-                      </div>
+                        </div>
 
-                      <div className="flex items-center gap-1.5">
                         <button
-                          onClick={() => approveTabunganBerjangka(item.id)}
-                          className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
-                          title="Setujui Tabungan Berjangka"
+                          onClick={() => verifikasiPembatalanBerjangka(item.id)}
+                          className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                          title="Verifikasi Pembatalan & Kembalikan Dana"
                         >
-                          <Check className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => setRejectBerjangkaId(item.id)}
-                          className="p-1.5 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-700 dark:bg-rose-950 dark:text-rose-300 cursor-pointer"
-                          title="Tolak Pengajuan"
-                        >
-                          <X className="w-3.5 h-3.5" />
+                          <Check className="w-3.5 h-3.5" /> Kembalikan Dana
                         </button>
                       </div>
-                    </div>
-                  ))
+                    ))}
+                    {pendingTabBerjangkaList.map((item) => (
+                      <div key={item.id} className="py-2.5 flex items-center justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-xs text-slate-900 dark:text-white">
+                              {item.user?.name || 'Nasabah'}
+                            </span>
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300">
+                              {item.durasi_bulan} Bulan
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                            Target: Rp {formatRupiah(item.target_nominal)} • Setoran: Rp {formatRupiah(item.nominal_per_periode)}/{item.frekuensi_label || item.frekuensi_setor}
+                          </p>
+                          {item.catatan && (
+                            <p className="text-[10px] text-slate-400 italic truncate max-w-xs">
+                              "{item.catatan}"
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => approveTabunganBerjangka(item.id)}
+                            className="p-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
+                            title="Setujui Tabungan Berjangka"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setRejectBerjangkaId(item.id)}
+                            className="p-1.5 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-700 dark:bg-rose-950 dark:text-rose-300 cursor-pointer"
+                            title="Tolak Pengajuan"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </>
                 )
               )}
 
@@ -743,8 +663,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => approveGadai(item.id)}
-                          className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
-                          title="Setujui Gadai (80% Taksiran)"
+                          className="p-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
+                          title="Setujui & Salurkan Gadai (80% Taksiran)"
                         >
                           <Check className="w-3.5 h-3.5" />
                         </button>
@@ -787,7 +707,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => lunasQurban(item.id)}
-                          className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                          className="p-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
                           title="Verifikasi Qurban Lunas"
                         >
                           <Check className="w-3.5 h-3.5" />
@@ -798,45 +718,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           title="Buka Modul Qurban"
                         >
                           <ExternalLink className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )
-              )}
-
-              {/* 6. Nasabah Baru */}
-              {approvalTab === 'nasabah' && (
-                pendingNasabahList.length === 0 ? (
-                  <p className="text-center py-8 text-xs text-slate-400">
-                    Tidak ada nasabah baru yang menunggu persetujuan akun.
-                  </p>
-                ) : (
-                  pendingNasabahList.map((item) => (
-                    <div key={item.id} className="py-2.5 flex items-center justify-between gap-3">
-                      <div>
-                        <span className="font-bold text-xs text-slate-900 dark:text-white">
-                          {item.name}
-                        </span>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                          {item.email} • {item.phone}
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => approveUser(item.id)}
-                          className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
-                          title="Aktifkan Akun Nasabah"
-                        >
-                          <Check className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => rejectUser(item.id, 'Data ditolak oleh admin.')}
-                          className="p-1.5 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-700 dark:bg-rose-950 dark:text-rose-300 cursor-pointer"
-                          title="Tolak Registrasi"
-                        >
-                          <X className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
@@ -894,7 +775,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </a>
               <button
                 onClick={() => setPreviewBuktiUrl(null)}
-                className="py-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer"
+                className="py-2 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold cursor-pointer"
               >
                 Tutup
               </button>

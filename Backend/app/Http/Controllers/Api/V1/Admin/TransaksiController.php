@@ -4,15 +4,20 @@ namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Enums\JenisTransaksi;
 use App\Enums\MetodePembayaran;
+use App\Enums\StatusKonfigurasiSetoran;
 use App\Enums\StatusVerifikasi;
+use App\Enums\TipeNotifikasi;
 use App\Enums\TipeTabungan;
 use App\Exports\TransaksiExport;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\TransaksiResource;
 use App\Models\AuditLog;
 use App\Models\JenisTabungan;
+use App\Models\KonfigurasiSetoranEmas;
+use App\Models\Notifikasi;
 use App\Models\Transaksi;
 use App\Models\User;
+use App\Services\NotifikasiService;
 use App\Services\ProgressCalculatorService;
 use App\Services\QurbanTargetService;
 use App\Services\SaldoEmasService;
@@ -33,6 +38,7 @@ class TransaksiController extends Controller
         private QurbanTargetService $qurbanService,
         private ProgressCalculatorService $progressService,
         private SaldoEmasService $saldoEmasService,
+        private NotifikasiService $notif,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -182,12 +188,65 @@ class TransaksiController extends Controller
                 $transaksi->user->update(['target_emas_gram' => null]);
             }
 
+            // Refund batal PER RENCANA terverifikasi → rencana baru resmi BATAL.
+            if ($transaksi->jenis_transaksi === JenisTransaksi::Tarik
+                && $transaksi->jenisTabungan?->tipe === TipeTabungan::Emas
+                && $transaksi->konfigurasi_id !== null) {
+                KonfigurasiSetoranEmas::where('id', $transaksi->konfigurasi_id)
+                    ->where('user_id', $transaksi->user_id)
+                    ->aktif()
+                    ->update(['status' => StatusKonfigurasiSetoran::Batal]);
+
+                $this->notif->kirim(
+                    $transaksi->user,
+                    'Rencana Setoran Dibuat Batal',
+                    'Rencana setoran berkala Anda resmi dibatalkan. Refund sebesar Rp '
+                        . number_format((float) $transaksi->nominal, 0, ',', '.')
+                        . ' telah diproses.',
+                    TipeNotifikasi::Info,
+                    ['konfigurasi_setoran_id' => $transaksi->konfigurasi_id, 'transaksi_id' => $transaksi->id]
+                );
+            }
+
+            // Notif ke user: transaksi terverifikasi.
+            $this->notif->kirim(
+                $transaksi->user,
+                'Transaksi Terverifikasi',
+                ($transaksi->jenis_transaksi === JenisTransaksi::Setor ? 'Setoran' : 'Pencairan')
+                    . ' ' . ($transaksi->jenisTabungan?->nama ?? '')
+                    . ' sebesar Rp ' . number_format((float) $transaksi->nominal, 0, ',', '.')
+                    . ' telah diverifikasi.',
+                TipeNotifikasi::Verifikasi,
+                ['transaksi_id' => $transaksi->id, 'jenis_transaksi' => $transaksi->jenis_transaksi]
+            );
+
+            // Setoran emas terverifikasi mencapai target → dorong user lanjut/ambil emas.
+            if ($transaksi->jenis_transaksi === JenisTransaksi::Setor
+                && $transaksi->jenisTabungan?->tipe === TipeTabungan::Emas) {
+                $target = $transaksi->user->fresh()->target_emas_gram;
+                if ($target !== null
+                    && $this->saldoEmasService->getSaldoGram($transaksi->user, $transaksi->jenisTabungan) >= (float) $target
+                    && ! Notifikasi::where('user_id', $transaksi->user_id)
+                        ->where('tipe', TipeNotifikasi::PengingatPencairan)
+                        ->whereDate('created_at', now()->toDateString())
+                        ->exists()) {
+                    $this->notif->kirim(
+                        $transaksi->user,
+                        'Target Tabungan Emas Tercapai!',
+                        'Selamat! Saldo emas Anda kini mencapai ' . number_format((float) $target, 6, ',', '.')
+                            . ' gram. Anda bisa melanjutkan menabung, menjual emas, atau menukarnya di toko.',
+                        TipeNotifikasi::PengingatPencairan,
+                        ['jenis_tabungan' => 'emas', 'target_gram' => (float) $target]
+                    );
+                }
+            }
+
             // Qurban total_terkumpul is updated automatically by TransaksiObserver::updated.
 
             AuditLog::record('verify', $transaksi, $oldValues, ['status_verifikasi' => 'terverifikasi']);
         });
 
-        // TODO: Dispatch SendTransaksiVerifiedNotification
+        // TODO: Dispatch SendTransaksiVerifiedNotification (in-app via NotifikasiService sudah terkirim)
 
         return $this->successResponse(new TransaksiResource($transaksi->fresh()->load(['user', 'jenisTabungan'])), 'Transaksi berhasil diverifikasi.');
     }
@@ -216,7 +275,17 @@ class TransaksiController extends Controller
 
         AuditLog::record('reject', $transaksi, $oldValues, ['status_verifikasi' => 'ditolak', 'catatan_admin' => $request->catatan_admin]);
 
-        // TODO: Dispatch SendTransaksiRejectedNotification
+        $this->notif->kirim(
+            $transaksi->user,
+            'Transaksi Ditolak',
+            ($transaksi->jenis_transaksi === JenisTransaksi::Setor ? 'Setoran' : 'Pencairan')
+                . ' Anda sebesar Rp ' . number_format((float) $transaksi->nominal, 0, ',', '.')
+                . ' ditolak admin. Alasan: ' . $request->catatan_admin,
+            TipeNotifikasi::Verifikasi,
+            ['transaksi_id' => $transaksi->id, 'jenis_transaksi' => $transaksi->jenis_transaksi]
+        );
+
+        // TODO: Dispatch SendTransaksiRejectedNotification (in-app via NotifikasiService sudah terkirim)
 
         return $this->successResponse(new TransaksiResource($transaksi->fresh()), 'Transaksi berhasil ditolak.');
     }

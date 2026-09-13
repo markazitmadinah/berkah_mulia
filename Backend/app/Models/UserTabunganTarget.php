@@ -13,7 +13,7 @@ class UserTabunganTarget extends Model
     protected function casts(): array
     {
         return [
-            'target_nominal' => 'integer',
+            'target_nominal' => 'decimal:2',
         ];
     }
 

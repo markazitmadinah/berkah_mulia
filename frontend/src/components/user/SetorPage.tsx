@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { api } from '../../lib/api';
-import { formatRupiah } from '../../utils/format';
+import { formatRupiah, parseRupiah, fmtRupiahTyping, fmtRupiahBlur } from '../../utils/format';
 import {
   ArrowLeft,
   Upload,
@@ -93,7 +93,7 @@ export const SetorPage: React.FC<SetorPageProps> = ({ defaultTipe = 'emas', defa
     prevJenisRef.current = selectedJenisIdNum;
   }, [selectedJenisIdNum]);
 
-  const nominalValue = Number(nominal.replace(/\./g, ''));
+  const nominalValue = parseRupiah(nominal);
   const activeHarga = activeHargaEmas ? activeHargaEmas.harga_per_gram : 1200000;
   const estimasiGram = selTipe === 'emas' && nominalValue > 0 ? (nominalValue / activeHarga).toFixed(4) : null;
   const activeRekening = rekeningBank.filter((r) => r.status_aktif);
@@ -229,7 +229,7 @@ export const SetorPage: React.FC<SetorPageProps> = ({ defaultTipe = 'emas', defa
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {langkahSetor.map((s, i) => (
           <div key={i} className="flex items-start gap-2.5 p-3 rounded-2xl bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70">
-            <div className="w-6 h-6 rounded-full bg-emerald-600 text-white text-[11px] font-extrabold flex items-center justify-center flex-shrink-0">
+            <div className="w-6 h-6 rounded-full bg-blue-600 text-white text-[11px] font-extrabold flex items-center justify-center flex-shrink-0">
               {i + 1}
             </div>
             <p className="text-[11px] leading-snug text-slate-600 dark:text-slate-300">{s}</p>
@@ -301,24 +301,21 @@ export const SetorPage: React.FC<SetorPageProps> = ({ defaultTipe = 'emas', defa
                 </span>
                 <input
                   type="text"
-                  inputMode="numeric"
+                  inputMode="decimal"
                   value={nominal}
                   onChange={(e) => {
-                    let digits = e.target.value.replace(/\D/g, '');
-                    if (!digits) {
-                      setNominal('');
+                    const raw = e.target.value;
+                    if (selectedJenis?.tipe === 'emas' && goalGram != null && parseRupiah(raw) > maxNominal) {
+                      setNominal(fmtRupiahBlur(String(maxNominal)));
                       return;
                     }
-                    let value = Number(digits);
-                    if (selectedJenis?.tipe === 'emas' && goalGram != null && value > maxNominal) {
-                      value = maxNominal;
-                    }
-                    setNominal(value ? value.toLocaleString('id-ID') : '');
+                    setNominal(fmtRupiahTyping(raw));
                   }}
-                  placeholder="Masukkan nominal, contoh: 1.000.000"
+                  onBlur={() => setNominal(fmtRupiahBlur(nominal))}
+                  placeholder="Contoh: 1.000.000,50"
                   disabled={selectedJenis?.tipe === 'emas' && goalTercapai}
                   required
-                  className="w-full pl-11 pr-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-extrabold text-base text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40 disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="w-full pl-11 pr-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-extrabold text-base text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
 
@@ -504,7 +501,7 @@ disabled={(selectedJenis?.tipe === 'emas' && goalTercapai) || deadlinePassed}
                 <button
                   type="submit"
                   disabled={selectedJenis?.tipe === 'emas' && goalTercapai}
-                  className="py-2.5 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-extrabold shadow-md shadow-emerald-600/25 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="py-2.5 px-6 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-extrabold shadow-md shadow-blue-600/25 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Kirim Konfirmasi Setoran
                 </button>
@@ -545,7 +542,7 @@ disabled={(selectedJenis?.tipe === 'emas' && goalTercapai) || deadlinePassed}
           {/* Keamanan */}
           <div className="rounded-3xl p-5 bg-gradient-to-br from-emerald-600/10 to-teal-500/10 border border-emerald-200/70 dark:border-emerald-800/50">
             <div className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-2xl bg-emerald-600/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center flex-shrink-0">
+              <div className="w-9 h-9 rounded-2xl bg-blue-600/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center flex-shrink-0">
                 <ShieldCheck className="w-5 h-5" />
               </div>
               <div>

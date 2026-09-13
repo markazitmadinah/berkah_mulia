@@ -13,6 +13,7 @@ import {
   Settings
 } from 'lucide-react';
 import { JenisTabungan } from '../../types';
+import { parseRupiah, fmtRupiahTyping } from '../../utils/format';
 
 interface JenisTabunganModalProps {
   isOpen: boolean;
@@ -46,7 +47,7 @@ const Toggle: React.FC<{
   >
     <span className="font-semibold text-slate-700 dark:text-slate-300">{label}</span>
     <span
-      className={`relative w-11 h-6 rounded-full transition-colors ${checked ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-600'}`}
+      className={`relative w-11 h-6 rounded-full transition-colors ${checked ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'}`}
     >
       <span
         className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-5' : ''}`}
@@ -54,14 +55,6 @@ const Toggle: React.FC<{
     </span>
   </button>
 );
-
-const formatThousand = (raw: string): string => {
-  const digits = raw.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
-  if (!digits) return '';
-  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-};
-
-const parseThousand = (txt: string): string => txt.replace(/\D/g, '');
 
 const NumField: React.FC<{
   label: string;
@@ -73,23 +66,22 @@ const NumField: React.FC<{
   disabled?: boolean;
 }> = ({ label, value, onChange, placeholder, prefix, money = true, disabled }) => {
   const ref = useRef<HTMLInputElement>(null);
-  const caretDigits = useRef(0);
+  const caretChars = useRef(0);
 
-  const display = money ? formatThousand(value) : value;
+  const display = money ? fmtRupiahTyping(value) : value;
 
   useEffect(() => {
     const el = ref.current;
     if (el && document.activeElement === el) {
-      const formatted = formatThousand(value.slice(0, caretDigits.current));
+      const formatted = fmtRupiahTyping(value.slice(0, caretChars.current));
       el.setSelectionRange(formatted.length, formatted.length);
     }
   }, [display]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (money) {
-      const digitsBefore = parseThousand(e.target.value.slice(0, e.target.selectionStart ?? 0));
-      caretDigits.current = digitsBefore.length;
-      onChange(parseThousand(e.target.value));
+      caretChars.current = e.target.selectionStart ?? 0;
+      onChange(fmtRupiahTyping(e.target.value));
     } else {
       onChange(e.target.value);
     }
@@ -105,7 +97,7 @@ const NumField: React.FC<{
         <input
           ref={ref}
           type="text"
-          inputMode="numeric"
+          inputMode="decimal"
           value={display}
           onChange={handleChange}
           disabled={disabled}
@@ -212,20 +204,20 @@ export const JenisTabunganModal: React.FC<JenisTabunganModalProps> = ({
 
   if (!isOpen) return null;
 
-  const potonganAktif = potongan && Number(potonganNilai) > 0;
+  const potonganAktif = potongan && parseRupiah(potonganNilai) > 0;
 
   const buildPayload = () => ({
-    min_nominal: minNominal ? Number(minNominal) : null,
-    max_nominal: maxNominal ? Number(maxNominal) : null,
-    kelipatan: kelipatan ? Number(kelipatan) : null,
+    min_nominal: minNominal ? parseRupiah(minNominal) : null,
+    max_nominal: maxNominal ? parseRupiah(maxNominal) : null,
+    kelipatan: kelipatan ? parseRupiah(kelipatan) : null,
     goal_wajib: goalWajib,
     goal_boleh_ubah: goalBolehUbah,
     cair_setelah_goal: cairSetelahGoal,
     potongan: potonganAktif,
     potongan_tipe: potonganAktif ? potonganTipe : null,
-    potongan_nilai: potonganAktif ? Number(potonganNilai || 0) : null,
-    biaya_admin: biayaAdmin ? Number(biayaAdmin) : null,
-    min_saldo: minSaldo ? Number(minSaldo) : null,
+    potongan_nilai: potonganAktif ? parseRupiah(potonganNilai || 0) : null,
+    biaya_admin: biayaAdmin ? parseRupiah(biayaAdmin) : null,
+    min_saldo: minSaldo ? parseRupiah(minSaldo) : null,
     refund,
     batal,
     overpayment,
@@ -264,10 +256,10 @@ export const JenisTabunganModal: React.FC<JenisTabunganModalProps> = ({
         common.target_nominal = null;
         common.target_unit = null;
       } else if (goalJenis === 'unit') {
-        common.target_unit = Number(goalNilai);
+        common.target_unit = parseRupiah(goalNilai);
         common.target_nominal = null;
       } else {
-        common.target_nominal = Number(goalNilai);
+        common.target_nominal = parseRupiah(goalNilai);
         common.target_unit = null;
       }
     } else {
@@ -320,7 +312,7 @@ export const JenisTabunganModal: React.FC<JenisTabunganModalProps> = ({
                   onClick={() => setStep(s.id)}
                   className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition-colors cursor-pointer ${
                     active
-                      ? 'bg-emerald-600 text-white'
+                      ? 'bg-blue-600 text-white'
                       : done
                       ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30'
                       : 'text-slate-400 hover:text-slate-600'
@@ -334,7 +326,7 @@ export const JenisTabunganModal: React.FC<JenisTabunganModalProps> = ({
           </div>
           <div className="mt-3 h-1 w-full bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
             <div
-              className="h-full bg-emerald-600 transition-all duration-300"
+              className="h-full bg-blue-600 transition-all duration-300"
               style={{ width: `${(step / 6) * 100}%` }}
             />
           </div>
@@ -533,7 +525,7 @@ export const JenisTabunganModal: React.FC<JenisTabunganModalProps> = ({
               <button
                 type="button"
                 onClick={() => setStep(step + 1)}
-                className="py-2.5 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow-md shadow-emerald-600/25 cursor-pointer flex items-center gap-1.5"
+                className="py-2.5 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold shadow-md shadow-blue-600/25 cursor-pointer flex items-center gap-1.5"
               >
                 Lanjut
                 <ChevronRight className="w-4 h-4" />
@@ -541,7 +533,7 @@ export const JenisTabunganModal: React.FC<JenisTabunganModalProps> = ({
             ) : (
               <button
                 type="submit"
-                className="py-2.5 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow-md shadow-emerald-600/25 cursor-pointer flex items-center gap-1.5"
+                className="py-2.5 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold shadow-md shadow-blue-600/25 cursor-pointer flex items-center gap-1.5"
               >
                 <Check className="w-4 h-4" />
                 {itemToEdit ? 'Simpan Perubahan' : 'Simpan Produk'}

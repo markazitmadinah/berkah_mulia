@@ -184,7 +184,7 @@ export const DaftarQurbanModal: React.FC<DaftarQurbanModalProps> = ({
             </button>
             <button
               type="submit"
-              className="py-2.5 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-extrabold shadow-md shadow-emerald-600/25 transition-all cursor-pointer"
+              className="py-2.5 px-6 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-extrabold shadow-md shadow-blue-600/25 transition-all cursor-pointer"
             >
               Konfirmasi Pendaftaran
             </button>

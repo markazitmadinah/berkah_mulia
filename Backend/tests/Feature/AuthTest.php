@@ -3,75 +3,23 @@
 namespace Tests\Feature;
 
 use App\Enums\UserStatus;
-use App\Models\AuditLog;
 use App\Models\User;
 use Illuminate\Support\Facades\Storage;
 use Tests\ApiTestCase;
 
 class AuthTest extends ApiTestCase
 {
-    public function test_register_membuat_akun_pending_dan_menulis_audit_log(): void
+    public function test_registrasi_self_service_tidak_tersedia(): void
     {
         $this->seedBase();
 
-        $response = $this->postJson('/api/v1/auth/register', [
+        $this->postJson('/api/v1/auth/register', [
             'name' => 'Budi Santoso',
             'email' => 'budi@example.com',
             'phone' => '081234567890',
             'password' => 'password123',
             'password_confirmation' => 'password123',
-        ]);
-
-        $response->assertStatus(201)
-            ->assertJsonPath('success', true)
-            ->assertJsonPath('data.email', 'budi@example.com')
-            ->assertJsonPath('data.status', 'pending');
-
-        $this->assertDatabaseHas('users', ['email' => 'budi@example.com', 'status' => 'pending']);
-        $this->assertDatabaseHas('audit_logs', ['action' => 'register', 'model_type' => User::class]);
-    }
-
-    public function test_register_validasi_regex_password(): void
-    {
-        $this->seedBase();
-
-        $this->postJson('/api/v1/auth/register', [
-            'name' => 'Budi',
-            'email' => 'budi@example.com',
-            'phone' => '081234567890',
-            'password' => 'abcdefgh',
-            'password_confirmation' => 'abcdefgh',
-        ])->assertStatus(422);
-    }
-
-    public function test_register_email_duplikat_ditolak(): void
-    {
-        $this->seedBase();
-        $this->createUser(['email' => 'dupe@example.com']);
-
-        $this->postJson('/api/v1/auth/register', [
-            'name' => 'Budi',
-            'email' => 'dupe@example.com',
-            'phone' => '081234567890',
-            'password' => 'password123',
-            'password_confirmation' => 'password123',
-        ])->assertStatus(422);
-    }
-
-    public function test_login_akun_pending_tidak_membocorkan_status(): void
-    {
-        $this->seedBase();
-        $this->createUser(['email' => 'pending@example.com', 'status' => UserStatus::Pending, 'password' => 'password123']);
-
-        $response = $this->postJson('/api/v1/auth/login', [
-            'email' => 'pending@example.com',
-            'password' => 'password123',
-        ]);
-
-        // Anti-enumeration: uniform 401 INVALID_CREDENTIALS (same as wrong password).
-        $response->assertStatus(401)
-            ->assertJsonPath('success', false)
-            ->assertJsonPath('error_code', 'INVALID_CREDENTIALS');
+        ])->assertStatus(404);
     }
 
     public function test_login_akun_rejected_tidak_membocorkan_status(): void
@@ -193,16 +141,11 @@ class AuthTest extends ApiTestCase
         $this->assertDatabaseCount('personal_access_tokens', 0);
     }
 
-    public function test_pengguna_non_aktif_diblokir_di_endpoint_authenticated(): void
+    public function test_pengguna_suspended_diblokir_di_endpoint_authenticated(): void
     {
         $this->seedBase();
-        $this->actingAsUser(['status' => UserStatus::Pending]);
-
-        $this->getJson('/api/v1/auth/me')
-            ->assertStatus(403)
-            ->assertJsonPath('error_code', 'ACCOUNT_PENDING');
-
         $this->actingAsUser(['status' => UserStatus::Suspended]);
+
         $this->getJson('/api/v1/auth/me')->assertStatus(403)->assertJsonPath('error_code', 'ACCOUNT_SUSPENDED');
     }
 

@@ -16,7 +16,7 @@ import {
   Gem,
   X
 } from 'lucide-react';
-import { formatRupiah } from '../../utils/format';
+import { formatRupiah, parseRupiah, fmtRupiahTyping, fmtRupiahBlur } from '../../utils/format';
 import { Gadai, MetodePembayaran } from '../../types';
 
 export const STATUS_CFG: Record<string, { label: string; cls: string }> = {
@@ -26,7 +26,8 @@ export const STATUS_CFG: Record<string, { label: string; cls: string }> = {
   jatuh_tempo: { label: 'Jatuh Tempo', cls: 'bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800' },
   terlambat: { label: 'Terlambat', cls: 'bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800' },
   diperpanjang: { label: 'Diperpanjang', cls: 'bg-violet-50 dark:bg-violet-950 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800' },
-  lunas: { label: 'Lunas', cls: 'bg-emerald-600 text-white border-emerald-600' },
+  lunas: { label: 'Lunas', cls: 'bg-blue-600 text-white border-emerald-600' },
+  emas_dikembalikan: { label: 'Emas Dikembalikan', cls: 'bg-teal-600 text-white border-teal-600' },
   batal: { label: 'Batal', cls: 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700' }
 };
 
@@ -138,6 +139,11 @@ export const GadaiDetailModal: React.FC<{ gadai: Gadai; onClose: () => void }> =
             {g.status === 'batal' && (
               <p className="text-[11px] font-semibold mt-2 text-amber-700 dark:text-amber-300">
                 Emas dikembalikan · potongan 10% dari total yang dibayar
+              </p>
+            )}
+            {g.status === 'emas_dikembalikan' && (
+              <p className="text-[11px] font-semibold mt-2 text-teal-700 dark:text-teal-300">
+                Emas sudah diserahkan kembali ke peserta.
               </p>
             )}
           </div>
@@ -253,12 +259,13 @@ const tenorLabel = (t: string) => ({ harian: 'Harian', mingguan: 'Mingguan', bul
 const freqLabel = (f: string) => ({ harian: 'Harian', mingguan: 'Mingguan', bulanan: 'Bulanan' }[f] || f);
 
 export const AdminGadai: React.FC = () => {
-  const { gadai, users, hargaEmas, searchQuery, approveGadai, aktifkanGadai, lunasiGadai, batalGadai, tandaiTerlambatGadai, perpanjangGadai, deleteGadai, showToast } = useApp();
+  const { gadai, users, hargaEmas, searchQuery, approveGadai, aktifkanGadai, lunasiGadai, kembalikanEmasGadai, batalGadai, tandaiTerlambatGadai, perpanjangGadai, deleteGadai, showToast } = useApp();
 
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [showCreate, setShowCreate] = useState(false);
   const [detail, setDetail] = useState<Gadai | null>(null);
   const [bayarFor, setBayarFor] = useState<Gadai | null>(null);
+  const [lunasiFor, setLunasiFor] = useState<Gadai | null>(null);
   const [delayBatalId, setDelayBatalId] = useState<number | null>(null);
   const [delayHapusId, setDelayHapusId] = useState<number | null>(null);
 
@@ -316,7 +323,7 @@ export const AdminGadai: React.FC = () => {
         <SumCard label="Pengajuan Masuk" value={String(gadai.filter(g => g.status === 'diajukan').length)} accent="sky" />
         <SumCard label="Aktif Terbayar" value={formatRupiah(sumActive('besaran_gadai'))} accent="emerald" />
         <SumCard label="Piutang Tersisa" value={formatRupiah(sumActive('sisa_pokok'))} accent="amber" />
-        <SumCard label="Lunas" value={String(gadai.filter(g => g.status === 'lunas').length)} accent="violet" />
+        <SumCard label="Lunas" value={String(gadai.filter(g => g.status === 'lunas' || g.status === 'emas_dikembalikan').length)} accent="violet" />
       </div>
 
       {/* Filter */}
@@ -372,7 +379,7 @@ export const AdminGadai: React.FC = () => {
                 <ActionBtn
                   show={g.status === 'diajukan'}
                   icon={<CheckCircle2 className="w-3.5 h-3.5" />}
-                  label="Setujui"
+                  label="Setujui & Salurkan"
                   cls="bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100"
                   onClick={() => approveGadai(g.id)}
                 />
@@ -395,7 +402,14 @@ export const AdminGadai: React.FC = () => {
                   icon={<CheckCircle2 className="w-3.5 h-3.5" />}
                   label="Lunasi"
                   cls="bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100"
-                  onClick={() => lunasiGadai(g.id)}
+                  onClick={() => setLunasiFor(g)}
+                />
+                <ActionBtn
+                  show={g.status === 'lunas'}
+                  icon={<Gem className="w-3.5 h-3.5" />}
+                  label="Kembalikan Emas"
+                  cls="bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800 hover:bg-teal-100"
+                  onClick={() => kembalikanEmasGadai(g.id)}
                 />
                 <ActionBtn
                   show={['aktif', 'jatuh_tempo', 'diperpanjang'].includes(g.status)}
@@ -411,14 +425,16 @@ export const AdminGadai: React.FC = () => {
                   cls="bg-violet-50 dark:bg-violet-950 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800 hover:bg-violet-100"
                   onClick={() => perpanjangGadai(g.id)}
                 />
-                <button
-                  onClick={() => duaLangkah(delayBatalId === g.id, v => { if (v) setDelayBatalId(null); else setDelayBatalId(g.id); }, () => batalGadai(g.id))}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border text-[11px] font-bold transition-all cursor-pointer bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-300 border-rose-200 dark:border-rose-800 hover:bg-rose-100"
-                >
-                  <Undo2 className="w-3.5 h-3.5" />
-                  {delayBatalId === g.id ? 'Yakin batalkan?' : 'Batalkan'}
-                </button>
-                {g.status === 'diajukan' && (
+                {!['lunas', 'emas_dikembalikan', 'batal'].includes(g.status) && (
+                  <button
+                    onClick={() => duaLangkah(delayBatalId === g.id, v => { if (v) setDelayBatalId(null); else setDelayBatalId(g.id); }, () => batalGadai(g.id))}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border text-[11px] font-bold transition-all cursor-pointer bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-300 border-rose-200 dark:border-rose-800 hover:bg-rose-100"
+                  >
+                    <Undo2 className="w-3.5 h-3.5" />
+                    {delayBatalId === g.id ? 'Yakin batalkan?' : 'Batalkan'}
+                  </button>
+                )}
+                {['diajukan', 'batal'].includes(g.status) && (
                   <button
                     onClick={() => duaLangkah(delayHapusId === g.id, v => { if (v) setDelayHapusId(null); else setDelayHapusId(g.id); }, () => deleteGadai(g.id))}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border text-[11px] font-bold transition-all cursor-pointer bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-100"
@@ -443,6 +459,12 @@ export const AdminGadai: React.FC = () => {
         <GadaiBayarModal
           gadai={bayarFor}
           onClose={() => setBayarFor(null)}
+        />
+      )}
+      {lunasiFor && (
+        <GadaiLunasiModal
+          gadai={lunasiFor}
+          onClose={() => setLunasiFor(null)}
         />
       )}
       {detail && (
@@ -502,7 +524,7 @@ const GadaiCreateModal: React.FC<{ hargaAcuanDefault: number; onClose: () => voi
 
   const berat = parseFloat(berat_gram) || 0;
   const kadarN = parseFloat(kadar) || 0;
-  const hargaN = parseFloat(harga_acuan) || 0;
+  const hargaN = parseRupiah(harga_acuan);
   const persenN = parseFloat(persen_gadai) || 0;
   const beratBersih = berat * kadarN / 1000;
   const taksiran = beratBersih * hargaN;
@@ -515,7 +537,7 @@ const GadaiCreateModal: React.FC<{ hargaAcuanDefault: number; onClose: () => voi
     if (kadarN <= 0 || kadarN > 1000) return showToast('Kadar harus antara 1–1000 (per-mille).', 'error');
     if (hargaN <= 0) return showToast('Harga acuan lebih dari 0.', 'error');
     if (persenN <= 0 || persenN > 100) return showToast('Persen gadai antara 1–100.', 'error');
-    if (parseFloat(nominal_angkuran) <= 0) return showToast('Nominal angkuran lebih dari 0.', 'error');
+    if (parseRupiah(nominal_angkuran) <= 0) return showToast('Nominal angkuran lebih dari 0.', 'error');
     createGadai({
       user_id,
       jenis_emas: jenis_emas.trim(),
@@ -526,7 +548,7 @@ const GadaiCreateModal: React.FC<{ hargaAcuanDefault: number; onClose: () => voi
       tenor_satuan,
       toleransi_hari: Math.max(0, parseInt(toleransi_hari) || 0),
       frekuensi_bayar: frekuensi_bayar as 'harian' | 'mingguan' | 'bulanan',
-      nominal_angkuran: parseFloat(nominal_angkuran),
+      nominal_angkuran: parseRupiah(nominal_angkuran),
       catatan: catatan || undefined
     });
     onClose();
@@ -581,7 +603,7 @@ const GadaiCreateModal: React.FC<{ hargaAcuanDefault: number; onClose: () => voi
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={labelCls}>Harga Acuan / gram</label>
-                <input type="number" inputMode="numeric" value={harga_acuan} onChange={e => setHargaAcuan(e.target.value)} className={inputCls} />
+                <input type="text" inputMode="decimal" value={fmtRupiahTyping(harga_acuan)} onChange={e => setHargaAcuan(fmtRupiahTyping(e.target.value))} onBlur={() => setHargaAcuan(fmtRupiahBlur(harga_acuan))} placeholder="cth: 1.215.000,50" className={inputCls} />
               </div>
               <div>
                 <label className={labelCls}>Persen Gadai (%)</label>
@@ -622,7 +644,7 @@ const GadaiCreateModal: React.FC<{ hargaAcuanDefault: number; onClose: () => voi
               </div>
               <div>
                 <label className={labelCls}>Nominal Angkuran (per periode)</label>
-                <input type="number" inputMode="numeric" value={nominal_angkuran} onChange={e => setNominalAngkuran(e.target.value)} className={inputCls} />
+                <input type="text" inputMode="decimal" value={fmtRupiahTyping(nominal_angkuran)} onChange={e => setNominalAngkuran(fmtRupiahTyping(e.target.value))} onBlur={() => setNominalAngkuran(fmtRupiahBlur(nominal_angkuran))} placeholder="cth: 150.000,50" className={inputCls} />
               </div>
             </div>
 
@@ -653,7 +675,7 @@ const GadaiBayarModal: React.FC<{ gadai: Gadai; onClose: () => void }> = ({ gada
   const [metode, setMetode] = useState<MetodePembayaran>('cash');
   const [catatan, setCatatan] = useState('');
 
-  const n = parseFloat(nominal) || 0;
+  const n = parseRupiah(nominal);
   const sisa = Number(gadai.sisa_pokok || 0);
 
   const submit = () => {
@@ -687,7 +709,7 @@ const GadaiBayarModal: React.FC<{ gadai: Gadai; onClose: () => void }> = ({ gada
           <div className="space-y-3">
             <div>
               <label className={labelCls}>Nominal Dibayar</label>
-              <input type="number" inputMode="numeric" value={nominal} onChange={e => setNominal(e.target.value)} className={inputCls} />
+              <input type="text" inputMode="decimal" value={fmtRupiahTyping(nominal)} onChange={e => setNominal(fmtRupiahTyping(e.target.value))} onBlur={() => setNominal(fmtRupiahBlur(nominal))} placeholder="cth: 150.000,50" className={inputCls} />
             </div>
             <div>
               <label className={labelCls}>Tanggal Bayar</label>
@@ -712,6 +734,64 @@ const GadaiBayarModal: React.FC<{ gadai: Gadai; onClose: () => void }> = ({ gada
             </button>
             <button onClick={submit} className="px-4 py-2 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-md shadow-amber-500/25 cursor-pointer">
               Simpan Pembayaran
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const GadaiLunasiModal: React.FC<{ gadai: Gadai; onClose: () => void }> = ({ gadai, onClose }) => {
+  const { lunasiGadai, showToast } = useApp();
+  const sisa = Number(gadai.sisa_pokok || 0);
+  const [nominal, setNominal] = useState(String(sisa || ''));
+
+  const n = parseRupiah(nominal);
+
+  const submit = () => {
+    if (n <= 0) return showToast('Masukkan nominal yang dilunasi peserta.', 'error');
+    if (n < sisa - 1) return showToast(`Nominal kurang dari sisa pokok (${formatRupiah(sisa)}).`, 'error');
+    lunasiGadai(gadai.id, Math.min(n, sisa));
+    onClose();
+  };
+
+  const inputCls = 'w-full py-2 px-3 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-400/50';
+  const labelCls = 'block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-sm">
+      <div className="w-full max-w-sm rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl">
+        <div className="p-5 sm:p-6">
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <div>
+              <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-500" /> Pelunasan Gadai
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                {gadai.nomor_gadai} · Sisa pokok <b className="text-amber-600 dark:text-amber-400">{formatRupiah(sisa)}</b>
+              </p>
+            </div>
+            <button onClick={onClose} className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 cursor-pointer">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl px-3 py-2.5">
+            Pelunasan penuh sisa pokok. Setelah disimpan, emas langsung dikembalikan dan peserta diberi tahu untuk mengambil emasnya.
+          </p>
+
+          <div>
+            <label className={labelCls}>Nominal yang Dilunasi Peserta</label>
+            <input type="text" inputMode="decimal" value={fmtRupiahTyping(nominal)} onChange={e => setNominal(fmtRupiahTyping(e.target.value))} onBlur={() => setNominal(fmtRupiahBlur(nominal))} className={inputCls} />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 mt-5">
+            <button onClick={onClose} className="px-4 py-2 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold cursor-pointer">
+              Batal
+            </button>
+            <button onClick={submit} className="px-4 py-2 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold shadow-md shadow-emerald-500/25 cursor-pointer">
+              Lunasi &amp; Kembalikan Emas
             </button>
           </div>
         </div>

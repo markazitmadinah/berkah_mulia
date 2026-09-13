@@ -216,7 +216,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                 }
                 onOpenSetorEmas();
               }}
-              className="py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
+              className="py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-md shadow-blue-600/20 transition-all cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Setor Emas</span>
@@ -338,7 +338,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               onClick={onOpenSetorPribadi}
               className="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 border border-emerald-200/60 dark:border-emerald-800/40 flex flex-col items-center justify-center gap-1.5 transition-all group cursor-pointer"
             >
-              <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs group-hover:scale-110 transition-transform">
+              <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs group-hover:scale-110 transition-transform">
                 <ArrowDownLeft className="w-4 h-4" />
               </div>
               <span className="text-[11px] font-bold text-emerald-900 dark:text-emerald-200">

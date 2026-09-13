@@ -7,11 +7,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { HargaEmasHarian } from '../../types';
-
-const fmtNominal = (v: string): string =>
-  v.replace(/\D/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-
-const parseNominal = (v: string): number => Number(v.replace(/\D/g, '')) || 0;
+import { parseRupiah, fmtRupiahTyping, fmtRupiahBlur } from '../../utils/format';
 
 interface HargaEmasModalProps {
   isOpen: boolean;
@@ -34,8 +30,8 @@ export const HargaEmasModal: React.FC<HargaEmasModalProps> = ({
   useEffect(() => {
     if (hargaToEdit) {
       setTanggal(new Date().toISOString().slice(0, 10));
-      setHargaPerGram(fmtNominal(String(hargaToEdit.harga_per_gram)));
-      setTagihanHarian(fmtNominal(String(hargaToEdit.tagihan_harian_default || 50000)));
+      setHargaPerGram(fmtRupiahTyping(String(hargaToEdit.harga_per_gram)));
+      setTagihanHarian(fmtRupiahTyping(String(hargaToEdit.tagihan_harian_default || 50000)));
       setCatatan(`Update penyesuaian dari versi tanggal ${hargaToEdit.tanggal}`);
     }
   }, [hargaToEdit, isOpen]);
@@ -44,7 +40,7 @@ export const HargaEmasModal: React.FC<HargaEmasModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const hargaPerGramNum = parseNominal(hargaPerGram);
+    const hargaPerGramNum = parseRupiah(hargaPerGram);
     if (hargaPerGramNum <= 0) {
       showToast('Harga per gram harus lebih dari 0', 'error');
       return;
@@ -53,7 +49,7 @@ export const HargaEmasModal: React.FC<HargaEmasModalProps> = ({
     inputHargaEmas({
       tanggal,
       harga_per_gram: hargaPerGramNum,
-      tagihan_harian_default: parseNominal(tagihanHarian),
+      tagihan_harian_default: parseRupiah(tagihanHarian),
       catatan
     });
 
@@ -105,8 +101,9 @@ export const HargaEmasModal: React.FC<HargaEmasModalProps> = ({
                 type="text"
                 inputMode="decimal"
                 required
-                value={fmtNominal(hargaPerGram)}
-                onChange={(e) => setHargaPerGram(fmtNominal(e.target.value))}
+                value={fmtRupiahTyping(hargaPerGram)}
+                onChange={(e) => setHargaPerGram(fmtRupiahTyping(e.target.value))}
+                onBlur={() => setHargaPerGram(fmtRupiahBlur(hargaPerGram))}
                 placeholder="Contoh: 1.215.000,00"
                 className="w-full pl-11 pr-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-extrabold text-base text-slate-900 dark:text-white"
               />
@@ -120,8 +117,9 @@ export const HargaEmasModal: React.FC<HargaEmasModalProps> = ({
             <input
               type="text"
               inputMode="decimal"
-              value={fmtNominal(tagihanHarian)}
-              onChange={(e) => setTagihanHarian(fmtNominal(e.target.value))}
+              value={fmtRupiahTyping(tagihanHarian)}
+              onChange={(e) => setTagihanHarian(fmtRupiahTyping(e.target.value))}
+              onBlur={() => setTagihanHarian(fmtRupiahBlur(tagihanHarian))}
               placeholder="Contoh: 50.000,00"
               className="w-full py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white"
             />
@@ -149,7 +147,7 @@ export const HargaEmasModal: React.FC<HargaEmasModalProps> = ({
             </button>
             <button
               type="submit"
-              className="py-2.5 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow-md cursor-pointer"
+              className="py-2.5 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold shadow-md cursor-pointer"
             >
               Simpan Versi Baru
             </button>

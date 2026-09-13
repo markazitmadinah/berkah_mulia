@@ -72,7 +72,7 @@ class ProdukNasabahTest extends ApiTestCase
             ->assertJsonCount(2, 'data.produk.tabungan')
             ->assertJsonCount(2, 'data.transaksi');
 
-        $tabEmas = collect($response->json('data.produk.tabungan'))->firstWhere('progress.kode', 'emas-harian');
+        $tabEmas = collect($response->json('data.produk.tabungan'))->firstWhere('progress.kode', 'EMAS');
         $this->assertNotNull($tabEmas['konfigurasi']);
         $this->assertEquals(3000.0, $tabEmas['progress']['saldo_dana']);
         $this->assertEquals(0.012, $tabEmas['progress']['total_unit']);

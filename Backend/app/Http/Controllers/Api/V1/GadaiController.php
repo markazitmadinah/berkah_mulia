@@ -4,12 +4,13 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\StatusGadai;
 use App\Enums\StatusVerifikasi;
+use App\Enums\TipeNotifikasi;
 use App\Http\Controllers\Controller;
 use App\Models\AngsuranGadai;
 use App\Models\AuditLog;
 use App\Models\Gadai;
-use App\Services\EmasConversionService;
 use App\Services\GadaiService;
+use App\Services\NotifikasiService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -21,67 +22,8 @@ class GadaiController extends Controller
 
     public function __construct(
         private GadaiService $gadaiService,
-        private EmasConversionService $emasService,
+        private NotifikasiService $notif,
     ) {}
-
-    /**
-     * POST /gadai-saya — nasabah mengajukan gadai sendiri (status DIAJUKAN).
-     */
-    public function store(Request $request): JsonResponse
-    {
-        $data = $request->validate([
-            'jenis_emas' => 'required|string|max:100',
-            'berat_gram' => 'required|numeric|min:0.01|max:10000',
-            'kadar' => 'required|numeric|min:1|max:1000',
-            'tenor_satuan' => 'required|in:harian,mingguan,bulanan',
-            'frekuensi_bayar' => 'required|in:harian,mingguan,bulanan',
-            'nominal_angkuran' => 'required|numeric|min:1',
-            'catatan' => 'nullable|string|max:1000',
-        ]);
-
-        $harga = $this->emasService->getHargaTerkini();
-        if (! $harga) {
-            return $this->errorResponse('Harga emas acuan belum diinput oleh admin. Coba lagi nanti.', 400, 'HARGA_TIDAK_ADA');
-        }
-
-        $berat = round((float) $data['berat_gram'], 4);
-        $kadar = round((float) $data['kadar'], 2);
-        $beratBersih = $this->gadaiService->hitungBeratBersih($berat, $kadar);
-        $taksiran = $this->gadaiService->hitungNilaiTaksiran($beratBersih, (float) $harga->harga_per_gram);
-        $besaran = $this->gadaiService->hitungBesaran($taksiran, 80);
-
-        $gadai = Gadai::create([
-            'nomor_gadai' => $this->gadaiService->buatNomorGadai(),
-            'user_id' => $request->user()->id,
-            'jenis_emas' => $data['jenis_emas'],
-            'berat_gram' => $berat,
-            'kadar' => $kadar,
-            'berat_bersih_gram' => $beratBersih,
-            'harga_acuan' => round((float) $harga->harga_per_gram, 2),
-            'nilai_taksiran' => $taksiran,
-            'persen_gadai' => 80,
-            'besaran_gadai' => $besaran,
-            'tanggal_aju' => now()->toDateString(),
-            'tenor_satuan' => $data['tenor_satuan'],
-            'toleransi_hari' => 0,
-            'frekuensi_bayar' => $data['frekuensi_bayar'],
-            'nominal_angkuran' => round((float) $data['nominal_angkuran'], 2),
-            'status' => StatusGadai::Diajukan,
-            'catatan' => $data['catatan'] ?? null,
-            'created_by' => $request->user()->id,
-        ]);
-
-        AuditLog::record('gadai.store', $gadai, null, ['nomor_gadai' => $gadai->nomor_gadai, 'besaran_gadai' => $besaran]);
-
-        return $this->createdResponse([
-            'id' => $gadai->id,
-            'nomor_gadai' => $gadai->nomor_gadai,
-            'nilai_taksiran' => $taksiran,
-            'besaran_gadai' => $besaran,
-            'persen_gadai' => 80,
-            'status' => $gadai->status->value,
-        ], 'Pengajuan gadai berhasil dikirim. Tunggu persetujuan admin.');
-    }
 
     /**
      * POST /gadai-saya/{gadai}/bayar — nasabah mengirim pembayaran angsuran.
@@ -102,24 +44,42 @@ class GadaiController extends Controller
             return $this->errorResponse('Gadai tidak dalam masa pembayaran aktif.', 422, 'STATUS_TIDAK_VALID');
         }
 
-        $request->validate([
-            'nominal' => 'required|numeric|min:1',
-            'metode_pembayaran' => 'required|in:cash,transfer',
-            'bukti_transfer' => 'nullable|image|max:5120',
-            'catatan' => 'nullable|string|max:500',
-        ]);
-
-        $nominal = round((float) $request->nominal, 2);
-        $sisa = $gadai->sisaPokok();
+        $nominal = round((float) ($request->nominal ?? 0), 2);
+        $sisa = round($gadai->sisaPokok(), 2);
 
         // Account for pending (unverified) angsuran already submitted
         $pendingNominal = AngsuranGadai::where('gadai_id', $gadai->id)
             ->where('status_verifikasi', StatusVerifikasi::MenungguVerifikasi->value)
             ->sum('nominal');
         $sisaEfektif = round($sisa - (float) $pendingNominal, 2);
+        $pelunasan = abs($nominal - $sisaEfektif) <= 0.01;
 
-        if ($nominal > $sisaEfektif && abs($nominal - $sisaEfektif) > 1) {
+        if ($pelunasan && ! $request->hasFile('bukti_transfer')) {
+            return $this->errorResponse('Pelunasan gadai wajib melampirkan bukti transfer.', 422, 'BUKTI_WAJIB');
+        }
+
+        $request->validate([
+            'nominal' => 'required|numeric|min:1',
+            'metode_pembayaran' => 'required|in:cash,transfer',
+            'bukti_transfer' => ($pelunasan ? 'required' : 'nullable') . '|file|mimes:jpg,jpeg,png,pdf|max:5120',
+            'catatan' => 'nullable|string|max:500',
+        ]);
+
+        $angkuran = round((float) $gadai->nominal_angkuran, 2);
+
+        if ($nominal > $sisaEfektif && abs($nominal - $sisaEfektif) > 0.01) {
             return $this->errorResponse('Nominal melebihi sisa pokok yang belum dibayar (Rp ' . number_format($sisaEfektif, 0, ',', '.') . ').', 422, 'MELEBIHI_SISA');
+        }
+
+        // User hanya boleh angsur sesuai angkuran yang diset admin, atau melunasi sisa pokok.
+        $sesuai = $pelunasan || ($angkuran > 0 && abs($nominal - $angkuran) <= 0.01);
+        if (! $sesuai) {
+            $pilihan = 'sisa pokok (Rp ' . number_format($sisaEfektif, 0, ',', '.') . ')';
+            if ($angkuran > 0) {
+                $pilihan = 'angsuran per periode (Rp ' . number_format($angkuran, 0, ',', '.') . ') atau ' . $pilihan;
+            }
+
+            return $this->errorResponse('Nominal harus sesuai ketentuan admin: ' . $pilihan . '.', 422, 'NOMINAL_HARUS_SESUAI_ATURAN');
         }
 
         $buktiPath = null;
@@ -144,12 +104,24 @@ class GadaiController extends Controller
             'nominal' => $nominal,
         ]);
 
+        $this->notif->kirimKeSemuaAdmin(
+            'Pembayaran Angsuran Gadai',
+            $request->user()->name . ' mengirim pembayaran angsuran gadai ' . $gadai->nomor_gadai
+                . ' sebesar Rp ' . number_format($nominal, 0, ',', '.')
+                . ($pelunasan ? ' (pelunasan). Emas dapat dikembalikan setelah diverifikasi.' : '.')
+                . ' Silakan verifikasi.',
+            TipeNotifikasi::Verifikasi,
+            ['gadai_id' => $gadai->id, 'angsuran_id' => $angsuran->id]
+        );
+
         return $this->createdResponse([
             'id' => $angsuran->id,
             'tanggal_bayar' => $angsuran->tanggal_bayar->toDateString(),
             'nominal' => $nominal,
             'status_verifikasi' => $angsuran->status_verifikasi->value,
-        ], 'Pembayaran angsuran berhasil dikirim. Tunggu verifikasi admin.');
+        ], $pelunasan
+            ? 'Pembayaran pelunasan berhasil dikirim. Tunggu verifikasi admin.'
+            : 'Pembayaran angsuran berhasil dikirim. Tunggu verifikasi admin.');
     }
 
     /**

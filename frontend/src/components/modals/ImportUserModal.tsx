@@ -105,7 +105,7 @@ export const ImportUserModal: React.FC<ImportUserModalProps> = ({
             <button
               type="submit"
               disabled={submitting}
-              className="py-2 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow-md cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+              className="py-2 px-5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold shadow-md cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {submitting ? 'Mengirim...' : 'Mulai Import Data'}
             </button>

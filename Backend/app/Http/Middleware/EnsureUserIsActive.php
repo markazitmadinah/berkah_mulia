@@ -11,7 +11,7 @@ class EnsureUserIsActive
 {
     /**
      * Handle an incoming request.
-     * Block API access for users with status pending, rejected, or suspended.
+     * Block API access for users with status rejected or suspended.
      */
     public function handle(Request $request, Closure $next): Response
     {
@@ -27,12 +27,6 @@ class EnsureUserIsActive
 
         return match ($user->status) {
             UserStatus::Active => $next($request),
-
-            UserStatus::Pending => response()->json([
-                'success' => false,
-                'message' => 'Akun Anda masih menunggu persetujuan admin. Silakan tunggu konfirmasi via email.',
-                'error_code' => 'ACCOUNT_PENDING',
-            ], 403),
 
             UserStatus::Rejected => response()->json([
                 'success' => false,

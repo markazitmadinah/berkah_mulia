@@ -7,10 +7,8 @@ use App\Enums\UserStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\ChangePasswordRequest;
 use App\Http\Requests\Auth\LoginRequest;
-use App\Http\Requests\Auth\RegisterRequest;
 use App\Http\Requests\Auth\UpdateProfileRequest;
 use App\Http\Resources\UserResource;
-use App\Models\AuditLog;
 use App\Models\User;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -26,35 +24,8 @@ class AuthController extends Controller
     use ApiResponse;
 
     /**
-     * POST /auth/register
-     * Self-register → status pending, no token issued.
-     */
-    public function register(RegisterRequest $request): JsonResponse
-    {
-        $user = new User([
-            'name' => $request->name,
-            'email' => $request->email,
-            'phone' => $request->phone,
-            'password' => $request->password, // auto-hashed via cast
-            'address' => $request->address,
-        ]);
-        $user->role = UserRole::User;
-        $user->status = UserStatus::Pending;
-        $user->save();
-
-        AuditLog::record('register', $user);
-
-        // TODO: Dispatch SendNewRegistrationAdminNotification job
-
-        return $this->createdResponse(
-            new UserResource($user),
-            'Registrasi berhasil. Akun Anda menunggu persetujuan admin.'
-        );
-    }
-
-    /**
      * POST /auth/login
-     * Reject login for pending/rejected/suspended users with specific messages.
+     * Reject login for rejected/suspended users with specific messages.
      */
     public function login(LoginRequest $request): JsonResponse
     {

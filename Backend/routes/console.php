@@ -43,11 +43,11 @@ Schedule::call(function () {
 })->daily()->name('bersihkan-notifikasi-lama')
     ->description('Hapus otomatis notifikasi yang berusia lebih dari 1 bulan');
 
-// Scheduled: Pengingat setoran tabungan emas — harian di 10:00, mingguan & bulanan sesuai tanggal_mulai
+// Scheduled: Pengingat setoran — Tabungan Emas & Tabungan Berjangka, harian di 10:00, mingguan & bulanan sesuai tanggal_mulai
 Schedule::command('pengingat:setoran')->dailyAt('10:00')
     ->withoutOverlapping()
     ->name('kirim-pengingat-setoran')
-    ->description('Kirim notifikasi pengingat bayar setoran emas (harian/mingguan/bulanan) setiap jam 10 pagi');
+    ->description('Kirim notifikasi pengingat bayar setoran (harian/mingguan/bulanan) setiap jam 10 pagi');
 
 // Scheduled: Cek jatuh tempo gadai — AKTIF/DIPERPANJANG lewat jatuh tempo menjadi JATUH_TEMPO,
 // JATUH_TEMPO melewati tenggat + toleransi menjadi TERLAMBAT (setiap pagi pukul 08:00)
@@ -55,3 +55,9 @@ Schedule::command('gadai:cek-jatuh-tempo')->dailyAt('08:00')
     ->withoutOverlapping()
     ->name('cek-jatuh-tempo-gadai')
     ->description('Auto update status gadai saat jatuh tempo terlewati');
+
+// Scheduled: Pengingat gadai — H-1 jatuh tempo & hari H (setiap pagi pukul 08:30)
+Schedule::command('pengingat:gadai')->dailyAt('08:30')
+    ->withoutOverlapping()
+    ->name('kirim-pengingat-gadai')
+    ->description('Kirim notifikasi pengingat jatuh tempo gadai (H-1 dan di hari jatuh tempo)');

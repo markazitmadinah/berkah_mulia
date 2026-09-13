@@ -26,8 +26,8 @@ import {
   HariRayaStatus,
   ProfilNasabah,
   PembayaranHarianResponse,
+  TunggakanSetoranResponse,
   Gadai,
-  AjukanGadaiPayload,
   GadaiPayload,
   GadaiBayarPayload,
   TabunganBerjangka,
@@ -142,11 +142,11 @@ interface AppContextType {
   fetchGadaiDetail: (id: number) => void;
   clearGadaiDetail: () => void;
   createGadai: (data: GadaiPayload) => void;
-  ajukanGadai: (data: AjukanGadaiPayload) => void;
   approveGadai: (id: number) => void;
   aktifkanGadai: (id: number) => void;
   bayarGadai: (id: number, data: GadaiBayarPayload) => void;
-  lunasiGadai: (id: number) => void;
+  lunasiGadai: (id: number, nominal?: number) => void;
+  kembalikanEmasGadai: (id: number) => void;
   batalGadai: (id: number) => void;
   tandaiTerlambatGadai: (id: number) => void;
   perpanjangGadai: (id: number) => void;
@@ -162,14 +162,18 @@ interface AppContextType {
   batalTabunganBerjangka: (id: number) => void;
   approveTabunganBerjangka: (id: number) => void;
   tolakTabunganBerjangka: (id: number) => void;
+  verifikasiPembatalanBerjangka: (id: number) => void;
   setoranBerkala: SetoranBerkalaResponse | null;
   profilNasabah: ProfilNasabah | null;
   profilNasabahError: string | null;
   fetchProfilNasabah: (userId: number) => void;
   clearProfilNasabah: () => void;
   pembayaranHarian: PembayaranHarianResponse | null;
+  tunggakanSetoran: TunggakanSetoranResponse | null;
   fetchPembayaranHarian: (tanggal?: string) => void;
   clearPembayaranHarian: () => void;
+  fetchTunggakanSetoran: () => void;
+  clearTunggakanSetoran: () => void;
 
   activeHargaEmas: HargaEmasHarian;
   userTransaksi: Transaksi[];
@@ -188,8 +192,6 @@ interface AppContextType {
   updateProfile: (data: ProfileInput) => void;
   changePassword: (oldPass: string, newPass: string) => boolean;
 
-  approveUser: (userId: number) => void;
-  rejectUser: (userId: number, reason: string) => void;
   suspendUser: (userId: number) => void;
   activateUser: (userId: number) => void;
   createUser: (userData: Record<string, unknown>) => void;
@@ -478,6 +480,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [profilNasabah, setProfilNasabah] = useState<ProfilNasabah | null>(null);
   const [profilNasabahError, setProfilNasabahError] = useState<string | null>(null);
   const [pembayaranHarian, setPembayaranHarian] = useState<PembayaranHarianResponse | null>(null);
+  const [tunggakanSetoran, setTunggakanSetoran] = useState<TunggakanSetoranResponse | null>(null);
   const [periodeQurban, setPeriodeQurban] = useState<PeriodeQurban[]>([]);
   const [hewanQurban, setHewanQurban] = useState<HewanQurban[]>([]);
   const [pendaftaranQurban, setPendaftaranQurban] = useState<PendaftaranQurban[]>([]);
@@ -855,10 +858,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const clearPembayaranHarian = () => setPembayaranHarian(null);
 
-  const approveUser = (userId: number) =>
-    withRefresh(() => api.post(`/admin/users/${userId}/approve`), 'Akun berhasil disetujui.');
-  const rejectUser = (userId: number, reason: string) =>
-    withRefresh(() => api.post(`/admin/users/${userId}/reject`, { rejected_reason: reason }), 'Akun berhasil ditolak.');
+  const fetchTunggakanSetoran = () => {
+    setLoading(true);
+    api
+      .get<TunggakanSetoranResponse>('/admin/pembayaran-harian/tunggakan')
+      .then((res) => setTunggakanSetoran(res.data))
+      .catch((e: { message?: string }) => showToast(e?.message || 'Gagal memuat tunggakan setoran.', 'error'))
+      .finally(() => setLoading(false));
+  };
+
+  const clearTunggakanSetoran = () => setTunggakanSetoran(null);
+
   const suspendUser = (userId: number) =>
     withRefresh(() => api.post(`/admin/users/${userId}/suspend`), 'Akun berhasil dibekukan.');
   const activateUser = (userId: number) =>
@@ -1254,11 +1264,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const createGadai = (data: GadaiPayload) =>
     withRefresh(() => api.post('/admin/gadai', data), 'Pengajuan gadai berhasil dibuat (status DIAJUKAN).');
 
-  const ajukanGadai = (data: AjukanGadaiPayload) =>
-    withRefresh(() => api.post('/gadai-saya', data), 'Pengajuan gadai berhasil dikirim. Tunggu persetujuan admin.');
-
   const approveGadai = (id: number) =>
-    withRefresh(() => api.post(`/admin/gadai/${id}/approve`), 'Pengajuan gadai disetujui.');
+    withRefresh(() => api.post(`/admin/gadai/${id}/approve`), 'Pengajuan gadai disetujui & pembiayaan disalurkan.');
 
   const aktifkanGadai = (id: number) =>
     withRefresh(() => api.post(`/admin/gadai/${id}/aktifkan`), 'Pembiayaan disalurkan. Jatuh tempo dihitung.');
@@ -1266,8 +1273,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const bayarGadai = (id: number, data: GadaiBayarPayload) =>
     withRefresh(() => api.post(`/admin/gadai/${id}/bayar`, data), 'Pembayaran angsuran gadai tercatat.');
 
-  const lunasiGadai = (id: number) =>
-    withRefresh(() => api.post(`/admin/gadai/${id}/lunasi`), 'Gadai LUNAS. Emas dikembalikan ke peserta.');
+  const lunasiGadai = (id: number, nominal?: number) =>
+    withRefresh(() => api.post(`/admin/gadai/${id}/lunasi`, nominal ? { nominal } : {}), 'Gadai LUNAS. Silakan ambil emas Anda kembali.');
+
+  const kembalikanEmasGadai = (id: number) =>
+    withRefresh(() => api.post(`/admin/gadai/${id}/kembalikan-emas`), 'Emas dikembalikan kepada peserta.');
 
   const batalGadai = (id: number) =>
     withRefresh(() => api.post(`/admin/gadai/${id}/batal`), 'Gadai dibatalkan (potongan 10%). Emas dikembalikan.');
@@ -1279,7 +1289,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     withRefresh(() => api.post(`/admin/gadai/${id}/perpanjang`), 'Tenor gadai diperpanjang satu periode.');
 
   const deleteGadai = (id: number) =>
-    withRefresh(() => api.del(`/admin/gadai/${id}`), 'Pengajuan gadai dihapus.');
+    withRefresh(() => api.del(`/admin/gadai/${id}`), 'Rekaman gadai dihapus.');
 
   const bayarGadaiUser = (gadaiId: number, formData: FormData) =>
     withRefresh(
@@ -1333,6 +1343,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const tolakTabunganBerjangka = (id: number) =>
     withRefresh(() => api.post(`/admin/tabungan-berjangka/${id}/tolak`), 'Tabungan berjangka ditolak.');
 
+  const verifikasiPembatalanBerjangka = (id: number) =>
+    withRefresh(() => api.post(`/admin/tabungan-berjangka/${id}/verifikasi-pembatalan`), 'Pembatalan diverifikasi. Dana dikembalikan utuh ke nasabah.');
+
   // ─── Notifikasi ───────────────────────────────────────────
   const markNotifikasiRead = (id: number) => {
     setNotifikasi(prev => prev.map(n => (n.id === id ? { ...n, dibaca_pada: new Date().toISOString() } : n)));
@@ -1382,11 +1395,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     fetchGadaiDetail,
     clearGadaiDetail,
     createGadai,
-    ajukanGadai,
     approveGadai,
     aktifkanGadai,
     bayarGadai,
     lunasiGadai,
+    kembalikanEmasGadai,
     batalGadai,
     tandaiTerlambatGadai,
     perpanjangGadai,
@@ -1397,8 +1410,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     fetchProfilNasabah,
     clearProfilNasabah,
     pembayaranHarian,
+    tunggakanSetoran,
     fetchPembayaranHarian,
     clearPembayaranHarian,
+    fetchTunggakanSetoran,
+    clearTunggakanSetoran,
     activeHargaEmas,
     userTransaksi,
     userPendaftaranQurban,
@@ -1414,8 +1430,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     unreadNotifikasiCount,
     updateProfile,
     changePassword,
-    approveUser,
-    rejectUser,
     suspendUser,
     activateUser,
     createUser,
@@ -1476,6 +1490,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     batalTabunganBerjangka,
     approveTabunganBerjangka,
     tolakTabunganBerjangka,
+    verifikasiPembatalanBerjangka,
     toastMessage,
     showToast
   };

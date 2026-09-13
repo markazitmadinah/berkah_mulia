@@ -198,7 +198,7 @@ export const PeriodeQurbanModal: React.FC<PeriodeQurbanModalProps> = ({
             </button>
             <button
               type="submit"
-              className="py-2.5 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow-md cursor-pointer"
+              className="py-2.5 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold shadow-md cursor-pointer"
             >
               {periodeToEdit ? 'Simpan Periode' : 'Buat Periode'}
             </button>

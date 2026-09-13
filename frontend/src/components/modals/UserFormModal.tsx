@@ -6,8 +6,7 @@ import {
   Building2,
   Mail,
   Phone,
-  MapPin,
-  Shield
+  MapPin
 } from 'lucide-react';
 import { User } from '../../types';
 
@@ -30,7 +29,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   const [nomorAnggota, setNomorAnggota] = useState<string>('');
   const [tanggalBergabung, setTanggalBergabung] = useState<string>(new Date().toISOString().slice(0, 10));
   const [role, setRole] = useState<'admin' | 'user'>('user');
-  const [status, setStatus] = useState<'active' | 'pending' | 'suspended' | 'rejected'>('active');
+  const [status, setStatus] = useState<'active' | 'suspended' | 'rejected'>('active');
   const [address, setAddress] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [passwordConfirm, setPasswordConfirm] = useState<string>('');
@@ -238,21 +237,23 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                Peran (Role)
-              </label>
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value as 'admin' | 'user')}
-                className="w-full py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-200 cursor-pointer"
-              >
-                <option value="user">Nasabah (User)</option>
-                <option value="admin">Pengurus / Admin</option>
-              </select>
-            </div>
+            {userToEdit && (
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  Peran (Role)
+                </label>
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value as 'admin' | 'user')}
+                  className="w-full py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-200 cursor-pointer"
+                >
+                  <option value="user">Nasabah (User)</option>
+                  <option value="admin">Pengurus / Admin</option>
+                </select>
+              </div>
+            )}
 
-            <div>
+            <div className={userToEdit ? '' : 'sm:col-span-2'}>
               <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                 Status Akun
               </label>
@@ -262,7 +263,6 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                 className="w-full py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-200 cursor-pointer"
               >
                 <option value="active">Aktif (Active)</option>
-                <option value="pending">Menunggu Persetujuan (Pending)</option>
                 {userToEdit && (
                   <>
                     <option value="suspended">Ditangguhkan (Suspended)</option>
@@ -327,7 +327,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
             </button>
             <button
               type="submit"
-              className="py-2.5 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow-md shadow-emerald-600/25 cursor-pointer"
+              className="py-2.5 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold shadow-md shadow-blue-600/25 cursor-pointer"
             >
               {userToEdit ? 'Simpan Perubahan' : 'Tambah User'}
             </button>

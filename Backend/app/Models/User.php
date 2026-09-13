@@ -98,9 +98,4 @@ class User extends Authenticatable
     {
         return $this->status === UserStatus::Active;
     }
-
-    public function isPending(): bool
-    {
-        return $this->status === UserStatus::Pending;
-    }
 }

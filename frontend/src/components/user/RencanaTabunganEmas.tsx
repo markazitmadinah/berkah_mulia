@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { formatRupiah } from '../../utils/format';
+import { formatRupiah, parseRupiah, fmtRupiahTyping, fmtRupiahBlur } from '../../utils/format';
 import {
+  AlertTriangle,
   Banknote,
   CalendarClock,
   Coins,
@@ -22,12 +23,9 @@ const FREK_LABEL: Record<FrekuensiSetoran, string> = {
   bulanan: 'per bulan'
 };
 
-const toNominal = (s: string) => Number(s.replace(/[^\d]/g, '')) || 0;
+const toNominal = (s: string) => parseRupiah(s);
 
-const formatNominalInput = (s: string) => {
-  const n = toNominal(s);
-  return n ? n.toLocaleString('id-ID') : '';
-};
+const formatNominalInput = (s: string) => fmtRupiahTyping(s);
 
 const tambahPeriode = (tgl: Date, count: number, frek: FrekuensiSetoran): string => {
   const d = new Date(tgl);
@@ -89,7 +87,7 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
   const nominalVal = toNominal(kNominal);
   const durasiVal = Number(kDurasi) || 0;
   const gramPerPeriode = durasiVal > 0 && goalTotal > 0 ? goalTotal / durasiVal : 0;
-  const biayaPeriode = activeHarga > 0 && gramPerPeriode > 0 ? gramPerPeriode * activeHarga : 0;
+  const biayaPeriode = activeHarga > 0 && gramPerPeriode > 0 ? Math.ceil(gramPerPeriode * activeHarga) : 0;
   const tanggalSelesai = durasiVal > 0 && goalTotal > 0
     ? tambahPeriode(new Date(), Math.max(0, durasiVal - 1), kFrek)
     : '';
@@ -98,7 +96,7 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
   const durasiDariNominal = (goal: number, nom: number): number =>
     goal > 0 && nom > 0 && activeHarga > 0 ? Math.ceil((goal * activeHarga) / nom) : 0;
   const nominalDariDurasi = (goal: number, dur: number): number =>
-    goal > 0 && dur > 0 && activeHarga > 0 ? Math.ceil((goal * activeHarga) / dur / 1000) * 1000 : 0;
+    goal > 0 && dur > 0 && activeHarga > 0 ? Math.ceil((goal * activeHarga) / dur) : 0;
 
   const onChangeGoal = (raw: string) => {
     setKGoal(raw);
@@ -222,6 +220,7 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
           {items.map((it, idx) => {
             const k = it.konfigurasi;
             const p = it.progress;
+            const refundPending = !!it.refund_diajukan;
             const nominalPlan = k.nominal_per_periode ?? 0;
             const targetTotal = p?.target_gram_total ?? null;
             const gram = p?.rekap.gram_terkumpul ?? 0;
@@ -245,15 +244,67 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
                       {p?.sisa_periode != null ? `Sisa ${p.sisa_periode}× • ${k.jadwal_label || k.frekuensi_setor_label}` : k.jadwal_label || k.frekuensi_setor_label}
                     </p>
                   </div>
+
                   <button
                     type="button"
+                    disabled={refundPending}
                     onClick={() => handleSetor(nominalPlan, k.id)}
-                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 active:scale-95 text-white text-xs font-extrabold shadow-md shadow-emerald-600/25 transition-all cursor-pointer"
+                    className={`inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-2xl text-xs font-extrabold transition-all cursor-pointer ${
+                      refundPending
+                        ? 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 active:scale-95 text-white shadow-md shadow-blue-600/25'
+                    }`}
                   >
                     <Plus className="w-4 h-4" />
                     Setor Rp {formatRupiah(nominalPlan)}
                   </button>
                 </div>
+
+                {refundPending && (
+                  <div className="mt-3 rounded-2xl border border-amber-200/70 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-950/30 p-3.5">
+                    <p className="text-[11px] font-extrabold text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      Pengajuan batal &amp; refund menunggu verifikasi admin
+                    </p>
+                    <p className="text-[10px] text-amber-700/80 dark:text-amber-300/70 mt-0.5">
+                      Rencana dikunci sementara. Setelah admin memverifikasi, rencana ini resmi dibatalkan.
+                    </p>
+                  </div>
+                )}
+
+                {/* Tagihan: periode jatuh tempo yang belum dibayar — biar tak kelupaan */}
+                {(() => {
+                  const tertunggak = p?.tertunggak?.jumlah_periode ?? 0;
+                  const nominalTagihan = p?.tertunggak?.nominal ?? 0;
+                  if (tertunggak <= 0) return null;
+                  const satuan =
+                    k.frekuensi_setor === 'harian' ? 'hari'
+                    : k.frekuensi_setor === 'mingguan' ? 'minggu' : 'bulan';
+                  return (
+                    <div className="mt-3 rounded-2xl border border-rose-200/70 dark:border-rose-800/50 bg-rose-50 dark:bg-rose-950/30 p-3.5">
+                      <p className="text-[11px] font-extrabold text-rose-700 dark:text-rose-300 flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        Tagihan Anda {tertunggak.toLocaleString('id-ID')} {satuan} ({formatRupiah(nominalTagihan)})
+                      </p>
+                      <p className="text-[10px] text-rose-600/80 dark:text-rose-300/70 mt-0.5">
+                        Periode belum dibayar: {tertunggak.toLocaleString('id-ID')} × Rp {formatRupiah(nominalPlan)} — segera setor agar tidak menumpuk.
+                      </p>
+                      <button
+                        type="button"
+                        disabled={refundPending}
+                        onClick={() => handleSetor(nominalPlan, k.id)}
+                        className={`mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-extrabold cursor-pointer ${
+                          refundPending
+                            ? 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed'
+                            : 'bg-rose-600 hover:bg-rose-700 text-white shadow-sm shadow-rose-600/25'
+                        }`}
+                        title="Setor 1 periode; tagihan berkurang otomatis setiap setoran terverifikasi"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Setor Sekarang ({formatRupiah(nominalPlan)}/periode)
+                      </button>
+                    </div>
+                  );
+                })()}
 
                 {/* Progress: satu (gram) menuju target rencana ini */}
                 <div className="mt-3">
@@ -273,24 +324,30 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
                 </div>
 
                 {/* Batal & refund PER rencana — tidak menyentuh rencana lain */}
-                <div className="mt-2 pt-2 border-t border-rose-100 dark:border-rose-900/50 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      resetKeluar();
-                      setBatalPlan({
-                        id: k.id,
-                        label: items.length > 1 ? `Rencana Pembayaran #${idx + 1}` : 'Rencana Pembayaran',
-                        nominal: nominalPlan,
-                        gram,
-                        dana: p?.rekap.saldo_dana_rencana ?? 0
-                      });
-                    }}
-                    className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-500 dark:text-rose-400 hover:text-rose-600 hover:underline cursor-pointer"
-                  >
-                    <Banknote className="w-3 h-3" /> Batal & Refund (potongan 10%)
-                  </button>
-                </div>
+                {refundPending ? (
+                  <p className="text-[10px] font-bold text-amber-600 dark:text-amber-300 mt-2 pt-2 border-t border-amber-100 dark:border-amber-900/50 text-right">
+                    Menunggu verifikasi refund oleh admin…
+                  </p>
+                ) : (
+                  <div className="mt-2 pt-2 border-t border-rose-100 dark:border-rose-900/50 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetKeluar();
+                        setBatalPlan({
+                          id: k.id,
+                          label: items.length > 1 ? `Rencana Pembayaran #${idx + 1}` : 'Rencana Pembayaran',
+                          nominal: nominalPlan,
+                          gram,
+                          dana: p?.rekap.saldo_dana_rencana ?? 0
+                        });
+                      }}
+                      className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-500 dark:text-rose-400 hover:text-rose-600 hover:underline cursor-pointer"
+                    >
+                      <Banknote className="w-3 h-3" /> Batal & Refund (potongan 10%)
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -343,10 +400,11 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
           <div>
             <label className={labelCls}>Nominal pembayaran</label>
             <input
-              type="text" inputMode="numeric"
+              type="text" inputMode="decimal"
               value={kNominal}
               onChange={(e) => onChangeNominal(e.target.value)}
-              placeholder="Contoh: 15.000"
+              onBlur={() => setKNominal(fmtRupiahBlur(kNominal))}
+              placeholder="Contoh: 15.000,50"
               className={inputCls}
             />
           </div>
@@ -494,8 +552,8 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className={labelCls}>Nomor Rekening</label>
-                  <input type="text" inputMode="numeric" maxLength={16} value={rekNo}
-                    onChange={(e) => setRekNo(e.target.value.replace(/[^\d]/g, '').slice(0, 16))} required
+                  <input type="text" inputMode="numeric" maxLength={20} value={rekNo}
+                    onChange={(e) => setRekNo(e.target.value.replace(/[^\d]/g, '').slice(0, 20))} required
                     placeholder="Contoh: 1234567890" className={inputCls} />
                 </div>
                 <div>
@@ -580,8 +638,8 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className={labelCls}>Nomor Rekening</label>
-                        <input type="text" inputMode="numeric" maxLength={16} value={rekNo}
-                          onChange={(e) => setRekNo(e.target.value.replace(/[^\d]/g, '').slice(0, 16))} required
+                        <input type="text" inputMode="numeric" maxLength={20} value={rekNo}
+                          onChange={(e) => setRekNo(e.target.value.replace(/[^\d]/g, '').slice(0, 20))} required
                           placeholder="Contoh: 1234567890" className={inputCls} />
                       </div>
                       <div>

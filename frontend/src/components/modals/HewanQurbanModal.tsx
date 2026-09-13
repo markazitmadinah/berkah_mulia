@@ -5,11 +5,7 @@ import {
   Layers
 } from 'lucide-react';
 import { HewanQurban } from '../../types';
-
-const fmtNominal = (v: string): string =>
-  v.replace(/\D/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-
-const parseNominal = (v: string): number => Number(v.replace(/\D/g, '')) || 0;
+import { parseRupiah, fmtRupiahTyping, fmtRupiahBlur } from '../../utils/format';
 
 interface HewanQurbanModalProps {
   isOpen: boolean;
@@ -35,7 +31,7 @@ export const HewanQurbanModal: React.FC<HewanQurbanModalProps> = ({
     if (hewanToEdit) {
       setPeriodeId(hewanToEdit.periode_qurban_id);
       setJenisHewan(hewanToEdit.jenis_hewan);
-      setHargaInput(fmtNominal(String(Math.round(Number(hewanToEdit.harga_per_unit) || 0))));
+      setHargaInput(fmtRupiahTyping(String(Number(hewanToEdit.harga_per_unit) || 0)));
       setBeratRataRata(hewanToEdit.berat_rata_rata || '');
       setDeskripsi(hewanToEdit.deskripsi || '');
       setStatusAktif(hewanToEdit.status_aktif);
@@ -53,7 +49,7 @@ export const HewanQurbanModal: React.FC<HewanQurbanModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const hargaPerUnit = parseNominal(hargaInput);
+    const hargaPerUnit = parseRupiah(hargaInput);
     if (!jenisHewan.trim() || !(hargaPerUnit > 0)) {
       showToast('Jenis hewan dan harga per unit wajib diisi', 'error');
       return;
@@ -139,9 +135,9 @@ export const HewanQurbanModal: React.FC<HewanQurbanModalProps> = ({
                 type="text"
                 inputMode="decimal"
                 required
-                value={fmtNominal(hargaInput)}
-                onChange={(e) => setHargaInput(fmtNominal(e.target.value))}
-                onBlur={() => setHargaInput(fmtNominal(hargaInput))}
+                value={fmtRupiahTyping(hargaInput)}
+                onChange={(e) => setHargaInput(fmtRupiahTyping(e.target.value))}
+                onBlur={() => setHargaInput(fmtRupiahBlur(hargaInput))}
                 placeholder="Contoh: 3.000.000,00"
                 className="w-full py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-extrabold text-xs text-emerald-600 dark:text-emerald-400"
               />
@@ -196,7 +192,7 @@ export const HewanQurbanModal: React.FC<HewanQurbanModalProps> = ({
             </button>
             <button
               type="submit"
-              className="py-2.5 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow-md cursor-pointer"
+              className="py-2.5 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold shadow-md cursor-pointer"
             >
               {hewanToEdit ? 'Simpan Perubahan' : 'Tambah Hewan'}
             </button>

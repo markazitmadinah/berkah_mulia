@@ -39,7 +39,20 @@ class TabunganPribadiTest extends ApiTestCase
     public function test_tarik_pribadi_berhasil(): void
     {
         $this->seedBase();
-        $this->actingAsUser();
+        $admin = $this->createAdmin();
+        $user = $this->actingAsUser();
+
+        $setor = Transaksi::create([
+            'nomor_referensi' => 'TRX-PR-' . strtoupper(uniqid()),
+            'user_id' => $user->id,
+            'jenis_tabungan_id' => $this->pribadiJenis()->id,
+            'jenis_transaksi' => 'setor',
+            'nominal' => 100000,
+            'metode_pembayaran' => 'cash',
+            'status_verifikasi' => StatusVerifikasi::Terverifikasi,
+            'diverifikasi_oleh' => $admin->id,
+            'tanggal_transaksi' => now()->toDateString(),
+        ]);
 
         $this->postJson('/api/v1/tabungan-pribadi/tarik', ['nominal' => 50000])
             ->assertStatus(201)

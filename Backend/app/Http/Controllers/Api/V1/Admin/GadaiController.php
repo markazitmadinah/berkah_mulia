@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Enums\StatusGadai;
 use App\Enums\StatusVerifikasi;
+use App\Enums\TipeNotifikasi;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Models\AngsuranGadai;
@@ -13,6 +14,7 @@ use App\Models\Transaksi;
 use App\Models\User;
 use App\Services\EmasConversionService;
 use App\Services\GadaiService;
+use App\Services\NotifikasiService;
 use App\Traits\ApiResponse;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -34,6 +36,7 @@ class GadaiController extends Controller
     public function __construct(
         private GadaiService $gadaiService,
         private EmasConversionService $emasService,
+        private NotifikasiService $notif,
     ) {}
 
     /**
@@ -124,6 +127,14 @@ class GadaiController extends Controller
 
         AuditLog::record('gadai.store', $gadai, null, $this->gadaiArray($gadai));
 
+        $this->notif->kirimKeSemuaAdmin(
+            'Pengajuan Gadai Baru',
+            $peserta->name . ' mengajukan gadai emas ' . $berat . ' gr (' . $kadar . '%) senilai Rp '
+                . number_format($besaran, 0, ',', '.') . '. Silakan verifikasi.',
+            TipeNotifikasi::Verifikasi,
+            ['gadai_id' => $gadai->id]
+        );
+
         return $this->createdResponse($this->gadaiArray($gadai->load('user:id,name,phone,nomor_anggota')),
             'Pengajuan gadai emas berhasil dibuat. Tunggu persetujuan admin.');
     }
@@ -152,7 +163,8 @@ class GadaiController extends Controller
     }
 
     /**
-     * POST /admin/gadai/{gadai}/approve — DIAJUKAN → DISETUJUI.
+     * POST /admin/gadai/{gadai}/approve — DIAJUKAN → AKTIF sekaligus
+     * (setujui + salurkan dalam satu langkah).
      */
     public function approve(Request $request, Gadai $gadai): JsonResponse
     {
@@ -160,24 +172,42 @@ class GadaiController extends Controller
             return $this->errorResponse('Hanya pengajuan berstatus DIAJUKAN yang bisa disetujui.', 422, 'STATUS_TIDAK_VALID');
         }
 
+        $tanggalAktif = now();
+        $jatuhTempo = $this->gadaiService->hitungJatuhTempo($tanggalAktif, $gadai->tenor_satuan);
+
         AuditLog::record(
             'gadai.approve',
             $gadai,
             ['status' => $gadai->status->value],
-            ['status' => StatusGadai::Disetujui->value],
+            ['status' => StatusGadai::Aktif->value, 'tanggal_aktif' => $tanggalAktif->toDateString(), 'tanggal_jatuh_tempo' => $jatuhTempo->toDateString()],
         );
 
-        $gadai->update(['status' => StatusGadai::Disetujui]);
+        $gadai->update([
+            'status' => StatusGadai::Aktif,
+            'tanggal_aktif' => $tanggalAktif->toDateString(),
+            'tanggal_jatuh_tempo' => $jatuhTempo->toDateString(),
+        ]);
+
+        $this->notif->kirim(
+            $gadai->user,
+            'Gadai Disetujui & Dana Disalurkan',
+            'Pengajuan gadai ' . $gadai->nomor_gadai . ' Anda disetujui. Pembiayaan Rp '
+                . number_format((float) $gadai->besaran_gadai, 0, ',', '.')
+                . ' telah disalurkan. Jatuh tempo ' . $jatuhTempo->translatedFormat('d M Y') . '.',
+            TipeNotifikasi::Info,
+            ['gadai_id' => $gadai->id]
+        );
 
         return $this->successResponse(
             $this->gadaiArray($gadai->fresh(['user'])),
-            'Gadai disetujui. Klik "Salurkan Pembiayaan" untuk mencairkan besaran gadai.'
+            "Gadai disetujui & pembiayaan disalurkan. Jatuh tempo {$jatuhTempo->translatedFormat('d M Y')}."
         );
     }
 
     /**
      * POST /admin/gadai/{gadai}/aktifkan — DISETUJUI → AKTIF (pembiayaan cair).
-     * Menghitung tanggal jatuh tempo dari tanggal_aktif + tenor.
+     * Path legacy untuk rekaman yang masih berstatus DISETUJUI; alur baru
+     * menyatukannya ke endpoint /approve.
      */
     public function aktifkan(Request $request, Gadai $gadai): JsonResponse
     {
@@ -200,6 +230,16 @@ class GadaiController extends Controller
             'tanggal_aktif' => $tanggalAktif->toDateString(),
             'tanggal_jatuh_tempo' => $jatuhTempo->toDateString(),
         ]);
+
+        $this->notif->kirim(
+            $gadai->user,
+            'Pembiayaan Gadai Disalurkan',
+            'Pembiayaan gadai ' . $gadai->nomor_gadai . ' sebesar Rp '
+                . number_format((float) $gadai->besaran_gadai, 0, ',', '.')
+                . ' telah disalurkan. Jatuh tempo ' . $jatuhTempo->translatedFormat('d M Y') . '.',
+            TipeNotifikasi::Info,
+            ['gadai_id' => $gadai->id]
+        );
 
         return $this->successResponse(
             $this->gadaiArray($gadai->fresh(['user'])),
@@ -287,8 +327,20 @@ class GadaiController extends Controller
         });
 
         $message = $lunas
-            ? 'Pembayaran diterima — gadai LUNAS. Emas dikembalikan ke peserta.'
+            ? 'Pembayaran diterima — gadai LUNAS. Tekan "Kembalikan Emas" untuk menyerahkan emas ke peserta.'
             : 'Pembayaran angsuran tercatat. Sisa pokok: Rp ' . number_format(round($sisa - $nominal, 2), 0, ',', '.') . '.';
+
+        $this->notif->kirim(
+            $gadai->user,
+            $lunas ? 'Gadai Lunas' : 'Angsuran Gadai Tercatat',
+            $lunas
+                ? 'Selamat! Gadai ' . $gadai->nomor_gadai . ' Anda telah LUNAS. Emas siap dikembalikan; tunggu konfirmasi pengambilan di toko.'
+                : 'Pembayaran angsuran gadai ' . $gadai->nomor_gadai . ' sebesar Rp '
+                    . number_format($nominal, 0, ',', '.') . ' telah tercatat. Sisa pokok Rp '
+                    . number_format(round($sisa - $nominal, 2), 0, ',', '.') . '.',
+            TipeNotifikasi::Info,
+            ['gadai_id' => $gadai->id, 'angsuran_id' => $angsuran->id]
+        );
 
         return $this->successResponse([
             'angsuran' => [
@@ -301,7 +353,8 @@ class GadaiController extends Controller
     }
 
     /**
-     * POST /admin/gadai/{gadai}/lunasi — pelunasan penuh sisa pokok, emas dikembalikan.
+     * POST /admin/gadai/{gadai}/lunasi — pelunasan penuh sisa pokok (admin mencatat nominal
+     * yang dilunasi user). Emas langsung dikembalikan: status EMAS_DIKEMBALIKAN, notif ke user.
      */
     public function lunasi(Request $request, Gadai $gadai): JsonResponse
     {
@@ -314,7 +367,15 @@ class GadaiController extends Controller
             return $this->errorResponse('Gadai tidak dalam masa pembayaran aktif.', 422, 'STATUS_TIDAK_VALID');
         }
 
+        $request->validate([
+            'nominal' => 'nullable|numeric|min:1',
+        ]);
+
         $sisa = $gadai->sisaPokok();
+
+        if ($request->filled('nominal') && round((float) $request->nominal, 2) < round($sisa, 2)) {
+            return $this->errorResponse('Nominal kurang dari sisa pokok (Rp ' . number_format($sisa, 0, ',', '.') . ').', 422, 'NOMINAL_KURANG');
+        }
 
         DB::transaction(function () use ($gadai, $sisa, $request) {
             if ($sisa > 0) {
@@ -347,19 +408,62 @@ class GadaiController extends Controller
                 'gadai.lunasi',
                 $gadai,
                 ['status' => $gadai->status->value, 'sisa_pokok' => $sisa],
-                ['status' => StatusGadai::Lunas->value, 'tanggal_lunas' => now()->toDateString()],
+                ['status' => StatusGadai::EmasDikembalikan->value, 'tanggal_lunas' => now()->toDateString()],
             );
 
             $gadai->update([
-                'status' => StatusGadai::Lunas,
+                'status' => StatusGadai::EmasDikembalikan,
                 'total_dibayar' => (float) $gadai->besaran_gadai,
                 'tanggal_lunas' => now()->toDateString(),
             ]);
         });
 
+        $this->notif->kirim(
+            $gadai->user,
+            'Silakan Ambil Emas Anda Kembali',
+            'Selamat! Gadai ' . $gadai->nomor_gadai . ' Anda telah LUNAS dan emas sudah dikembalikan. '
+                . 'Silakan ambil emas fisik Anda kembali di toko.',
+            TipeNotifikasi::Info,
+            ['gadai_id' => $gadai->id, 'status' => StatusGadai::EmasDikembalikan->value]
+        );
+
         return $this->successResponse(
             $this->gadaiArray($gadai->fresh(['user'])),
-            'Gadai LUNAS. Emas dikembalikan kepada peserta.'
+            'Gadai LUNAS, emas dikembalikan kepada peserta.'
+        );
+    }
+
+    /**
+     * POST /admin/gadai/{gadai}/kembalikan-emas — serah terima emas ke user
+     * setelah angsuran selesai (status LUNAS). Notif hanya ke user.
+     */
+    public function kembalikanEmas(Request $request, Gadai $gadai): JsonResponse
+    {
+        if ($gadai->status !== StatusGadai::Lunas) {
+            return $this->errorResponse('Hanya gadai berstatus LUNAS yang bisa mengembalikan emas.', 422, 'STATUS_TIDAK_VALID');
+        }
+
+        AuditLog::record(
+            'gadai.kembalikan_emas',
+            $gadai,
+            ['status' => $gadai->status->value],
+            ['status' => StatusGadai::EmasDikembalikan->value],
+        );
+
+        $gadai->update(['status' => StatusGadai::EmasDikembalikan]);
+
+        $this->notif->kirim(
+            $gadai->user,
+            'Silakan Ambil Emas Anda Kembali',
+            'Emas gadai ' . $gadai->nomor_gadai . ' Anda sudah dikembalikan. '
+                . 'Silakan ambil emas fisik Anda kembali di toko.',
+            TipeNotifikasi::Info,
+            ['gadai_id' => $gadai->id, 'status' => StatusGadai::EmasDikembalikan->value]
+        );
+
+        return $this->successResponse(
+            $this->gadaiArray($gadai->fresh(['user'])),
+            'Emas dikembalikan kepada peserta.'
         );
     }
 
@@ -391,6 +495,16 @@ class GadaiController extends Controller
             . '), refund Rp ' . number_format($rincian['refund'], 0, ',', '.') . '.';
 
         $gadai->update(['status' => StatusGadai::Batal, 'catatan' => $catatan]);
+
+        $this->notif->kirim(
+            $gadai->user,
+            'Gadai Dibuat Batal',
+            'Gadai ' . $gadai->nomor_gadai . ' Anda dibatalkan. Emas dikembalikan 100%; potongan 10% Rp '
+                . number_format($rincian['potongan'], 0, ',', '.') . ' dari pembayaran, refund Rp '
+                . number_format($rincian['refund'], 0, ',', '.') . '.',
+            TipeNotifikasi::Info,
+            ['gadai_id' => $gadai->id]
+        );
 
         return $this->successResponse([
             'gadai' => $this->gadaiArray($gadai->fresh(['user'])),
@@ -505,8 +619,19 @@ class GadaiController extends Controller
         });
 
         $message = $lunas
-            ? 'Angsuran diverifikasi — gadai LUNAS. Emas dikembalikan ke peserta.'
+            ? 'Angsuran diverifikasi — gadai LUNAS. Tekan "Kembalikan Emas" untuk menyerahkan emas ke peserta.'
             : 'Angsuran diverifikasi. Sisa pokok: Rp ' . number_format(round($gadai->sisaPokok() - $nominal, 2), 0, ',', '.') . '.';
+
+        $this->notif->kirim(
+            $gadai->user,
+            $lunas ? 'Gadai Lunas' : 'Angsuran Gadai Diverifikasi',
+            $lunas
+                ? 'Selamat! Angsuran terakhir Anda terverifikasi dan gadai ' . $gadai->nomor_gadai . ' LUNAS. Emas siap dikembalikan; tunggu konfirmasi pengambilan di toko.'
+                : 'Pembayaran angsuran gadai ' . $gadai->nomor_gadai . ' sebesar Rp '
+                    . number_format($nominal, 0, ',', '.') . ' telah diverifikasi.',
+            TipeNotifikasi::Info,
+            ['gadai_id' => $gadai->id, 'angsuran_id' => $angsuran->id]
+        );
 
         return $this->successResponse($this->gadaiArray($gadai->fresh(['user'])), $message);
     }
@@ -533,16 +658,26 @@ class GadaiController extends Controller
 
         AuditLog::record('gadai.tolak_angsuran', $angsuran);
 
+        $this->notif->kirim(
+            $angsuran->gadai->user,
+            'Angsuran Gadai Ditolak',
+            'Pembayaran angsuran gadai ' . $angsuran->gadai->nomor_gadai . ' sebesar Rp '
+                . number_format((float) $angsuran->nominal, 0, ',', '.')
+                . ' ditolak. Alasan: ' . $request->catatan_admin,
+            TipeNotifikasi::Verifikasi,
+            ['gadai_id' => $angsuran->gadai_id, 'angsuran_id' => $angsuran->id]
+        );
+
         return $this->successResponse(null, 'Angsuran ditolak.');
     }
 
     /**
-     * DELETE /admin/gadai/{gadai} — hapus hanya pengajuan yang belum berjalan.
+     * DELETE /admin/gadai/{gadai} — hapus pengajuan yang belum berjalan, atau arsip BATAL.
      */
     public function destroy(Request $request, Gadai $gadai): JsonResponse
     {
-        if (! in_array($gadai->status, [StatusGadai::Diajukan, StatusGadai::Disetujui], true)) {
-            return $this->errorResponse('Hanya gadai DIAJUKAN / DISETUJUI yang bisa dihapus. Untuk yang sudah berjalan gunakan menu Batal/Pelunasan.', 422, 'STATUS_TIDAK_VALID');
+        if (! in_array($gadai->status, [StatusGadai::Diajukan, StatusGadai::Disetujui, StatusGadai::Batal], true)) {
+            return $this->errorResponse('Hanya gadai DIAJUKAN / DISETUJUI / BATAL yang bisa dihapus. Untuk yang masih berjalan gunakan menu Batal/Pelunasan.', 422, 'STATUS_TIDAK_VALID');
         }
 
         AuditLog::record('gadai.delete', $gadai, $this->gadaiArray($gadai), null);

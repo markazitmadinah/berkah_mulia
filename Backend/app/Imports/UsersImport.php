@@ -375,7 +375,6 @@ class UsersImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithCalcul
         $value = Str::lower(trim($value));
         return match ($value) {
             'aktif', 'active' => UserStatus::Active->value,
-            'menunggu persetujuan', 'pending' => UserStatus::Pending->value,
             'ditolak', 'rejected' => UserStatus::Rejected->value,
             'dibekukan', 'suspended' => UserStatus::Suspended->value,
             default => UserStatus::Active->value,

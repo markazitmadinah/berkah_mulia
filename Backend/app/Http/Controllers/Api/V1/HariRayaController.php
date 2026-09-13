@@ -98,12 +98,12 @@ class HariRayaController extends Controller
         }
 
         $request->validate([
-            'target_nominal' => 'required|integer|min:10000|max:100000000000',
+            'target_nominal' => 'required|numeric|min:10000|max:100000000000',
         ]);
 
         UserTabunganTarget::updateOrCreate(
             ['user_id' => $request->user()->id, 'jenis_tabungan_id' => $jenis->id],
-            ['target_nominal' => (int) $request->target_nominal]
+            ['target_nominal' => (float) $request->target_nominal]
         );
 
         return $this->successResponse($this->statusPayload($jenis, $request->user(), $this->saldo($request->user(), $jenis)), 'Target tabungan hari raya berhasil disimpan.');

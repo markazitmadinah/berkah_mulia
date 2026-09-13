@@ -18,7 +18,7 @@ return new class extends Migration
             $table->string('phone')->unique();
             $table->string('password');
             $table->string('role')->default('user'); // enum via PHP: UserRole
-            $table->string('status')->default('pending'); // enum via PHP: UserStatus
+            $table->string('status')->default('active'); // enum via PHP: UserStatus
             $table->text('address')->nullable();
             $table->string('avatar_path')->nullable();
             $table->timestamp('email_verified_at')->nullable();

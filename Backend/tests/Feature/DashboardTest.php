@@ -42,7 +42,7 @@ class DashboardTest extends ApiTestCase
         $this->seedBase();
         $admin = $this->createAdmin();
         $user = $this->createUser();
-        $jenis = JenisTabungan::where('kode', 'emas-harian')->first();
+        $jenis = JenisTabungan::where('kode', 'EMAS')->first();
 
         $trx = Transaksi::create([
             'nomor_referensi' => 'TRX-D3', 'user_id' => $user->id, 'jenis_tabungan_id' => $jenis->id,
@@ -71,7 +71,6 @@ class DashboardTest extends ApiTestCase
 
         $this->getJson('/api/v1/admin/dashboard')
             ->assertOk()
-            ->assertJsonPath('data.total_nasabah_aktif', 1)
-            ->assertJsonPath('data.total_nasabah_pending', 0);
+            ->assertJsonPath('data.total_nasabah_aktif', 1);
     }
 }

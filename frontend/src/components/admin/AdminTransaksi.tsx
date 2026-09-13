@@ -73,7 +73,7 @@ export const AdminTransaksi: React.FC<AdminTransaksiProps> = ({
         <div className="flex items-center gap-2">
           <button
             onClick={onOpenCashModal}
-            className="py-2.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all cursor-pointer flex-shrink-0"
+            className="py-2.5 px-4 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-blue-600/20 transition-all cursor-pointer flex-shrink-0"
           >
             <Plus className="w-4 h-4" />
             <span>Input Transaksi Cash</span>
@@ -234,7 +234,7 @@ export const AdminTransaksi: React.FC<AdminTransaksiProps> = ({
                           <>
                             <button
                               onClick={() => verifikasiTransaksi(trx.id)}
-                              className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors cursor-pointer"
+                              className="p-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors cursor-pointer"
                               title="Verifikasi Transaksi"
                             >
                               <Check className="w-3.5 h-3.5" />

@@ -13,9 +13,9 @@ use App\Http\Resources\PeriodeQurbanResource;
 use App\Http\Resources\TransaksiResource;
 use App\Models\HewanQurban;
 use App\Models\JenisTabungan;
-use App\Models\Notifikasi;
 use App\Models\PendaftaranQurban;
 use App\Models\PeriodeQurban;
+use App\Services\NotifikasiService;
 use App\Services\QurbanTargetService;
 use App\Services\TransaksiService;
 use App\Traits\ApiResponse;
@@ -30,6 +30,7 @@ class QurbanController extends Controller
     public function __construct(
         private QurbanTargetService $qurbanService,
         private TransaksiService $transaksiService,
+        private NotifikasiService $notif,
     ) {}
 
     public function periodeAktif(): JsonResponse
@@ -83,6 +84,14 @@ class QurbanController extends Controller
         ]);
 
         $pendaftaran->load(['hewanQurban', 'periodeQurban']);
+
+        $this->notif->kirimKeSemuaAdmin(
+            'Pendaftaran Qurban Baru',
+            $request->user()->name . ' mendaftar qurban ' . $hewan->jenis_hewan . ' ' . $request->jumlah_hewan
+                . ' ekor, target dana Rp ' . number_format($targetDana, 0, ',', '.') . '.',
+            TipeNotifikasi::Info,
+            ['pendaftaran_qurban_id' => $pendaftaran->id]
+        );
 
         return $this->createdResponse(
             new PendaftaranQurbanResource($pendaftaran),
@@ -183,17 +192,15 @@ class QurbanController extends Controller
         $pendaftaran->update(['status' => StatusPendaftaranQurban::MenungguVerifikasi]);
 
         // Kirim notifikasi ke semua admin untuk memverifikasi pelunasan qurban.
-        $admins = \App\Models\User::where('role', \App\Enums\UserRole::Admin)->get();
-        foreach ($admins as $admin) {
-            Notifikasi::create([
-                'user_id' => $admin->id,
-                'judul' => 'Verifikasi Pelunasan Qurban',
-                'pesan' => $request->user()->name . ' mengajukan pelunasan qurban (' . ($pendaftaran->hewanQurban->jenis_hewan ?? 'hewan') . '). Silakan verifikasi.',
-                'tipe' => TipeNotifikasi::Verifikasi,
-                'channel' => \App\Enums\ChannelNotifikasi::InApp,
-                'data' => ['pendaftaran_qurban_id' => $pendaftaran->id],
-            ]);
-        }
+        $this->notif->kirimKeSemuaAdmin(
+            'Verifikasi Pelunasan Qurban',
+            $request->user()->name
+                . ' mengajukan pelunasan qurban ('
+                . ($pendaftaran->hewanQurban->jenis_hewan ?? 'hewan')
+                . '). Silakan verifikasi.',
+            TipeNotifikasi::Verifikasi,
+            ['pendaftaran_qurban_id' => $pendaftaran->id]
+        );
 
         return $this->successResponse(
             new PendaftaranQurbanResource($pendaftaran->fresh()->load(['user', 'hewanQurban'])),

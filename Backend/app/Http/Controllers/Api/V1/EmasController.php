@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\JenisTransaksi;
 use App\Enums\MetodePembayaran;
-use App\Enums\TipeNotifikasi;
 use App\Enums\ChannelNotifikasi;
+use App\Enums\TipeNotifikasi;
 use App\Enums\TipeTabungan;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\HargaEmasHarianResource;
@@ -13,9 +13,9 @@ use App\Http\Resources\TransaksiResource;
 use App\Models\HargaEmasHarian;
 use App\Models\JenisTabungan;
 use App\Models\KonfigurasiSetoranEmas;
-use App\Models\Notifikasi;
 use App\Models\Transaksi;
 use App\Services\EmasConversionService;
+use App\Services\NotifikasiService;
 use App\Services\ProgressCalculatorService;
 use App\Services\SaldoEmasService;
 use App\Services\TransaksiService;
@@ -33,6 +33,7 @@ class EmasController extends Controller
         private TransaksiService $transaksiService,
         private ProgressCalculatorService $progressService,
         private SaldoEmasService $saldoEmasService,
+        private NotifikasiService $notif,
     ) {}
 
     /**
@@ -126,6 +127,10 @@ class EmasController extends Controller
             $konfigurasi = $this->saldoEmasService->getAktif($request->user(), $jenisTabungan);
         }
 
+        if ($konfigurasi && $this->saldoEmasService->refundTerkunci($request->user(), $konfigurasi)) {
+            return $this->errorResponse('Rencana ini sedang menunggu verifikasi pengajuan batal & refund. Setoran tidak dapat dilakukan.', 422, 'REFUND_PENDING');
+        }
+
         // Goal global boleh null untuk user lama/manual — adopsi target rencana aktif terbaru.
         if ($request->user()->target_emas_gram === null) {
             if ($konfigurasi?->target_gram_total !== null) {
@@ -191,7 +196,7 @@ class EmasController extends Controller
     {
         $request->validate([
             'bank_tujuan' => 'required|string|max:100',
-            'no_rekening' => 'required|numeric|digits_between:10,16',
+            'no_rekening' => 'required|numeric|digits_between:6,20',
             'atas_nama' => 'required|string|max:100',
             'catatan_user' => 'nullable|string|max:500',
         ]);
@@ -312,27 +317,26 @@ class EmasController extends Controller
         $request->user()->update(['target_emas_gram' => null]);
 
         // Notif ke user: silakan ambil emas di toko.
-        Notifikasi::create([
-            'user_id' => $request->user()->id,
-            'judul' => 'Silakan Ambil Emas di Toko',
-            'pesan' => 'Selamat! Anda sudah mencapai target tabungan emas. Silakan ambil emas fisik Anda di toko sebesar ' . number_format($saldoGram, 4, ',', '.') . ' gram dengan menunjukkan bukti penukaran.',
-            'tipe' => TipeNotifikasi::Info,
-            'channel' => ChannelNotifikasi::InApp,
-            'data' => ['jenis_tabungan' => 'emas'],
-        ]);
+        $this->notif->kirim(
+            $request->user(),
+            'Silakan Ambil Emas di Toko',
+            'Selamat! Anda sudah mencapai target tabungan emas. Silakan ambil emas fisik Anda di toko sebesar '
+                . number_format($saldoGram, 4, ',', '.')
+                . ' gram dengan menunjukkan bukti penukaran.',
+            TipeNotifikasi::Info,
+            ['jenis_tabungan' => 'emas']
+        );
 
         // Notif ke semua admin: user sudah mencapai target.
-        $admins = \App\Models\User::where('role', \App\Enums\UserRole::Admin)->get();
-        foreach ($admins as $admin) {
-            Notifikasi::create([
-                'user_id' => $admin->id,
-                'judul' => 'User Mencapai Target Emas',
-                'pesan' => $request->user()->name . ' sudah mencapai target tabungan emas dan menukar ' . number_format($saldoGram, 4, ',', '.') . ' gram di toko.',
-                'tipe' => TipeNotifikasi::Verifikasi,
-                'channel' => ChannelNotifikasi::InApp,
-                'data' => ['jenis_tabungan' => 'emas'],
-            ]);
-        }
+        $this->notif->kirimKeSemuaAdmin(
+            'User Mencapai Target Emas',
+            $request->user()->name
+                . ' sudah mencapai target tabungan emas dan menukar '
+                . number_format($saldoGram, 4, ',', '.')
+                . ' gram di toko.',
+            TipeNotifikasi::Verifikasi,
+            ['jenis_tabungan' => 'emas']
+        );
 
         return $this->successResponse(
             new TransaksiResource($transaksi->load(['jenisTabungan'])),
@@ -349,7 +353,7 @@ class EmasController extends Controller
     {
         $request->validate([
             'bank_tujuan' => 'required|string|max:100',
-            'no_rekening' => 'required|numeric|digits_between:10,16',
+            'no_rekening' => 'required|numeric|digits_between:6,20',
             'atas_nama' => 'required|string|max:100',
             'catatan_user' => 'nullable|string|max:500',
         ]);

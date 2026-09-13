@@ -50,7 +50,7 @@ class JenisTabungan extends Model
             'deadline' => 'date',
             'mode_perhitungan' => ModePerhitungan::class,
             'aturan_pencairan' => AturanPencairan::class,
-            'target_nominal' => 'integer',
+            'target_nominal' => 'decimal:2',
             'target_unit' => 'decimal:4',
             'tanggal_mulai' => 'date',
             'tanggal_selesai' => 'date',

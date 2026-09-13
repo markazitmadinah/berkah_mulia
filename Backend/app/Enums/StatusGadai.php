@@ -4,8 +4,8 @@ namespace App\Enums;
 
 /**
  * Status siklus gadai emas:
- * DIAJUKAN → DISETUJUI → AKTIF → JATUH_TEMPO → LUNAS / TERLAMBAT → DIPERPANJANG
- * BAAL untuk pembatalan (emas dikembalikan, potongan 10%).
+ * DIAJUKAN → DISETUJUI → AKTIF → JATUH_TEMPO → LUNAS → EMAS_DIKEMBALIKAN
+ * TERLAMBAT → DIPERPANJANG; BATAL untuk pembatalan (emas dikembalikan, potongan 10%).
  */
 enum StatusGadai: string
 {
@@ -16,6 +16,7 @@ enum StatusGadai: string
     case Terlambat = 'terlambat';
     case Diperpanjang = 'diperpanjang';
     case Lunas = 'lunas';
+    case EmasDikembalikan = 'emas_dikembalikan';
     case Batal = 'batal';
 
     public function label(): string
@@ -28,6 +29,7 @@ enum StatusGadai: string
             self::Terlambat => 'Terlambat',
             self::Diperpanjang => 'Diperpanjang',
             self::Lunas => 'Lunas',
+            self::EmasDikembalikan => 'Emas Dikembalikan',
             self::Batal => 'Batal',
         };
     }

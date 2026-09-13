@@ -66,48 +66,14 @@ class AdminUserTest extends ApiTestCase
         $this->assertDatabaseHas('audit_logs', ['action' => 'delete', 'model_id' => $user->id]);
     }
 
-    public function test_approve_pending_ke_active(): void
-    {
-        $this->seedBase();
-        $this->actingAsAdmin();
-        $user = $this->createUser(['status' => UserStatus::Pending]);
-
-        $this->postJson("/api/v1/admin/users/{$user->id}/approve")
-            ->assertOk()->assertJsonPath('data.status', 'active');
-
-        $this->assertDatabaseHas('users', ['id' => $user->id, 'status' => 'active', 'approved_at' => now()]);
-        $this->assertDatabaseHas('audit_logs', ['action' => 'approve', 'model_id' => $user->id]);
-    }
-
-    public function test_approve_akun_bukan_pending_409(): void
+    public function test_approve_reject_user_endpoint_tidak_tersedia(): void
     {
         $this->seedBase();
         $this->actingAsAdmin();
         $user = $this->createUser();
 
-        $this->postJson("/api/v1/admin/users/{$user->id}/approve")
-            ->assertStatus(409)->assertJsonPath('error_code', 'CONFLICT');
-    }
-
-    public function test_reject_wajib_reason(): void
-    {
-        $this->seedBase();
-        $this->actingAsAdmin();
-        $user = $this->createUser(['status' => UserStatus::Pending]);
-
-        $this->postJson("/api/v1/admin/users/{$user->id}/reject", ['rejected_reason' => 'Dokumen tidak valid'])
-            ->assertOk()->assertJsonPath('data.status', 'rejected');
-
-        $this->assertDatabaseHas('users', ['id' => $user->id, 'status' => 'rejected', 'rejected_reason' => 'Dokumen tidak valid']);
-    }
-
-    public function test_reject_tanpa_reason_422(): void
-    {
-        $this->seedBase();
-        $this->actingAsAdmin();
-        $user = $this->createUser(['status' => UserStatus::Pending]);
-
-        $this->postJson("/api/v1/admin/users/{$user->id}/reject", [])->assertStatus(422);
+        $this->postJson("/api/v1/admin/users/{$user->id}/approve")->assertStatus(404);
+        $this->postJson("/api/v1/admin/users/{$user->id}/reject", ['rejected_reason' => 'x'])->assertStatus(404);
     }
 
     public function test_suspend_menghapus_token(): void
@@ -144,14 +110,14 @@ class AdminUserTest extends ApiTestCase
             ->assertStatus(409)->assertJsonPath('error_code', 'CONFLICT');
     }
 
-    public function test_index_filter_status(): void
+    public function test_index_filter_status_suspended(): void
     {
         $this->seedBase();
         $this->actingAsAdmin();
-        $this->createUser(['status' => UserStatus::Pending]);
-        $this->createUser(['status' => UserStatus::Active]);
+        $this->createUser();
+        $this->createUser(['status' => UserStatus::Suspended]);
 
-        $this->getJson('/api/v1/admin/users?status=pending')
+        $this->getJson('/api/v1/admin/users?status=suspended')
             ->assertOk()
             ->assertJsonPath('meta.total', 1);
     }

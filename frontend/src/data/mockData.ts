@@ -61,7 +61,7 @@ export const INITIAL_USERS: User[] = [
     email: 'budi.santoso@yahoo.com',
     phone: '081387654321',
     role: 'user',
-    status: 'pending',
+    status: 'active',
     address: 'Jl. Pahlawan No. 22, Surabaya',
     avatar_path: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
     account_number: 'BM-Pending-004',
@@ -88,7 +88,7 @@ export const INITIAL_USERS: User[] = [
     email: 'nurul.hidayah@gmail.com',
     phone: '082199887766',
     role: 'user',
-    status: 'pending',
+    status: 'active',
     address: 'Jl. Teratai No. 4, Semarang',
     avatar_path: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
     account_number: 'BM-Pending-006',
@@ -99,7 +99,7 @@ export const INITIAL_USERS: User[] = [
 export const INITIAL_JENIS_TABUNGAN: JenisTabungan[] = [
   {
     id: 1,
-    kode: 'emas-harian',
+    kode: 'EMAS',
     nama: 'Tabungan Emas Syariah',
     deskripsi: 'Setor rupiah berapapun (min Rp 10.000), langsung dikonversi otomatis ke gram fisik emas Antam 99.99% berdasarkan harga acuan harian.',
     tipe: 'emas',

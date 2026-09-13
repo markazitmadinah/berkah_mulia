@@ -57,9 +57,9 @@ class JenisTabunganTest extends ApiTestCase
     {
         $this->seedBase();
         $this->actingAsAdmin();
-        $this->assertNotNull(JenisTabungan::where('kode', 'emas-harian')->first());
+        $this->assertNotNull(JenisTabungan::where('kode', 'EMAS')->first());
 
-        $this->postJson('/api/v1/admin/jenis-tabungan', $this->payload(['kode' => 'emas-harian']))
+        $this->postJson('/api/v1/admin/jenis-tabungan', $this->payload(['kode' => 'EMAS']))
             ->assertStatus(422);
     }
 
@@ -118,7 +118,7 @@ class JenisTabunganTest extends ApiTestCase
         $this->seedBase();
         $this->actingAsAdmin();
 
-        foreach (['emas-harian', 'tabungan-pribadi', 'tabungan-qurban', 'tabungan-hari-raya', 'tabungan-berjangka'] as $kode) {
+        foreach (['EMAS', 'tabungan-pribadi', 'tabungan-qurban', 'tabungan-hari-raya', 'tabungan-berjangka'] as $kode) {
             $jenis = JenisTabungan::where('kode', $kode)->first();
             $this->deleteJson("/api/v1/admin/jenis-tabungan/{$jenis->id}")
                 ->assertStatus(422)->assertJsonPath('error_code', 'DEFAULT_LOCKED');

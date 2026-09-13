@@ -4,6 +4,7 @@ import { UserAvatar } from '../ui/UserAvatar';
 import { QurbanIcon } from '../QurbanIcon';
 import logo from '../../logo.png';
 import { JenisTabungan } from '../../types';
+import { LogoutConfirmModal } from '../modals/LogoutConfirmModal';
 import {
   LayoutDashboard,
   Users,
@@ -50,6 +51,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const pendingTrxCount = transaksi.filter(t => t.status_verifikasi === 'menunggu_verifikasi').length;
 
+  const [showLogout, setShowLogout] = useState(false);
+
   type MenuItemIcon = React.ComponentType<{ className?: string }>;
   interface MenuItem {
     id: string;
@@ -57,6 +60,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     icon: MenuItemIcon;
     badge?: string;
     submenu?: boolean;
+    section?: string;
   }
 
   const isPribadiTab = (tab: string): boolean =>
@@ -70,27 +74,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
     .filter((j): j is JenisTabungan => Boolean(j));
 
   const adminMenuItems: MenuItem[] = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'users', label: 'Manajemen User', icon: Users },
-    { id: 'jenis-tabungan', label: 'Jenis Tabungan', icon: Layers },
-    { id: 'harga-emas', label: 'Harga Emas Harian', icon: Coins },
-    { id: 'qurban', label: 'Tabungan Qurban', icon: QurbanIcon },
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, section: 'Beranda' },
+    // ── Data & Konfigurasi ──
+    { id: 'users', label: 'Manajemen User', icon: Users, section: 'Data & Konfigurasi' },
+    { id: 'jenis-tabungan', label: 'Jenis Tabungan', icon: Layers, section: 'Data & Konfigurasi' },
+    { id: 'harga-emas', label: 'Harga Emas Harian', icon: Coins, section: 'Data & Konfigurasi' },
+    { id: 'rekening-bank', label: 'Rekening Bank', icon: Building2, section: 'Data & Konfigurasi' },
+    // ── Operasional Harian ──
     { 
       id: 'transaksi', 
       label: 'Transaksi & Verifikasi', 
       icon: ReceiptText,
-      badge: pendingTrxCount > 0 ? `${pendingTrxCount}` : undefined
+      badge: pendingTrxCount > 0 ? `${pendingTrxCount}` : undefined,
+      section: 'Operasional Harian'
     },
-    { id: 'pembayaran-harian', label: 'Pembayaran Harian', icon: CalendarCheck },
-    { id: 'gadai', label: 'Gadai Emas', icon: Landmark },
-    { id: 'rekening-bank', label: 'Rekening Bank', icon: Building2 },
+    { id: 'pembayaran-harian', label: 'Pembayaran Harian', icon: CalendarCheck, section: 'Operasional Harian' },
+    { id: 'gadai', label: 'Gadai Emas', icon: Landmark, section: 'Operasional Harian' },
+    { id: 'qurban', label: 'Tabungan Qurban', icon: QurbanIcon, section: 'Operasional Harian' },
+    // ── Sistem ──
     { 
       id: 'notifikasi', 
       label: 'Notifikasi', 
       icon: Bell,
-      badge: unreadNotifikasiCount > 0 ? `${unreadNotifikasiCount}` : undefined
+      badge: unreadNotifikasiCount > 0 ? `${unreadNotifikasiCount}` : undefined,
+      section: 'Sistem'
     },
-    { id: 'audit-log', label: 'Audit Log', icon: FileSpreadsheet },
+    { id: 'audit-log', label: 'Audit Log', icon: FileSpreadsheet, section: 'Sistem' },
   ];
 
   const userMenuItems: MenuItem[] = [
@@ -164,24 +173,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* Navigation Menu */}
           <nav className="flex flex-col gap-1 px-1">
             <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-3 mb-1">
-              {currentUser.role === 'admin' ? 'Menu Administrator (11)' : `Menu Nasabah (${userMenuItems.length})`}
+              {currentUser.role === 'admin' ? 'Menu Administrator' : `Menu Nasabah (${userMenuItems.length})`}
             </div>
-            {menuItems.map((item) => {
+            {menuItems.map((item, idx) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id || 
                 (item.id === 'emas' && (activeTab === 'emas' || activeTab === 'tabungan-emas')) ||
                 (item.id === 'transaksi-saya' && activeTab === 'riwayat-transaksi') ||
                 (item.id === 'rekening-bank-koperasi' && activeTab === 'rekening-bank');
 
+              const showSectionHeader = item.section && (idx === 0 || menuItems[idx - 1]?.section !== item.section);
+
               if (item.submenu) {
                 const activeParent = isPribadiTab(activeTab);
                 return (
-                  <div key={item.id}>
+                  <>
+                    {showSectionHeader && (
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-3.5 pt-3 -mb-1 first:pt-0">
+                        {item.section}
+                      </div>
+                    )}
+                    <div key={item.id}>
                     <button
                       onClick={() => setPribadiOpen(v => !v)}
                       className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-all duration-200 cursor-pointer text-left ${
                         activeParent
-                          ? 'bg-emerald-600 text-white font-bold shadow-md shadow-emerald-600/25'
+                          ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-600/25'
                           : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                       }`}
                     >
@@ -209,7 +226,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               }}
                               className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium transition-all duration-200 text-left ${
                                 subActive
-                                  ? 'bg-emerald-600 text-white font-bold shadow-md shadow-emerald-600/25'
+                                  ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-600/25'
                                   : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                               }`}
                             >
@@ -226,16 +243,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       </div>
                     )}
                   </div>
+                  </>
                 );
               }
 
               return (
-                <button
+                <>
+                  {showSectionHeader && (
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-3.5 pt-3 -mb-1">
+                      {item.section}
+                    </div>
+                  )}
+                  <button
                   key={item.id}
                   onClick={() => handleItemClick(item.id)}
                   className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-all duration-200 cursor-pointer text-left ${
                     isActive
-                      ? 'bg-emerald-600 text-white font-bold shadow-md shadow-emerald-600/25'
+                      ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-600/25'
                       : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
@@ -255,6 +279,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     </span>
                   )}
                 </button>
+                </>
               );
             })}
           </nav>
@@ -263,7 +288,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Bottom Profile & Logout */}
         <div className="flex flex-col gap-3 pt-3 border-t border-slate-200/80 dark:border-slate-800 px-1 mt-2">
           <button
-            onClick={logout}
+            onClick={() => setShowLogout(true)}
             className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-2xl text-xs font-bold text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800/60 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-all cursor-pointer"
           >
             <LogOut className="w-4 h-4" />
@@ -298,6 +323,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
       </aside>
+
+      <LogoutConfirmModal
+        isOpen={showLogout}
+        onClose={() => setShowLogout(false)}
+        onConfirm={logout}
+      />
     </>
   );
 };

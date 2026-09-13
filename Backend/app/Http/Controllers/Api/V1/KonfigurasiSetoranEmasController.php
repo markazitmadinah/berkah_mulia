@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Enums\JenisTransaksi;
 use App\Enums\MetodePembayaran;
 use App\Enums\StatusKonfigurasiSetoran;
+use App\Enums\TipeNotifikasi;
 use App\Enums\TipeTabungan;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\KonfigurasiSetoranEmasResource;
@@ -13,6 +14,7 @@ use App\Models\JenisTabungan;
 use App\Models\KonfigurasiSetoranEmas;
 use App\Models\Transaksi;
 use App\Services\EmasConversionService;
+use App\Services\NotifikasiService;
 use App\Services\SaldoEmasService;
 use App\Services\TransaksiService;
 use App\Traits\ApiResponse;
@@ -29,6 +31,7 @@ class KonfigurasiSetoranEmasController extends Controller
         private EmasConversionService $emasService,
         private SaldoEmasService $saldoEmasService,
         private TransaksiService $transaksiService,
+        private NotifikasiService $notif,
     ) {}
 
     /**
@@ -51,6 +54,7 @@ class KonfigurasiSetoranEmasController extends Controller
             'items' => $aktifList->map(fn (KonfigurasiSetoranEmas $k) => [
                 'konfigurasi' => new KonfigurasiSetoranEmasResource($k),
                 'progress' => $this->saldoEmasService->getProgress($user, $k),
+                'refund_diajukan' => $this->saldoEmasService->refundTerkunci($user, $k),
             ])->values(),
         ]);
     }
@@ -163,6 +167,11 @@ class KonfigurasiSetoranEmasController extends Controller
         }
 
         $user = $request->user();
+
+        if ($this->saldoEmasService->refundTerkunci($user, $konfigurasi)) {
+            return $this->errorResponse('Rencana ini masih punya pengajuan batal & refund yang menunggu verifikasi admin.', 422, 'REFUND_PENDING');
+        }
+
         $rekap = $this->saldoEmasService->getSaldoRencana($user, $konfigurasi);
         $gram = (float) $rekap['gram'];
         $danaRencana = (float) $rekap['dana'];
@@ -185,7 +194,7 @@ class KonfigurasiSetoranEmasController extends Controller
         if ($refund > 0) {
             $request->validate([
                 'bank_tujuan' => 'required|string|max:100',
-                'no_rekening' => 'required|numeric|digits_between:10,16',
+                'no_rekening' => 'required|numeric|digits_between:6,20',
                 'atas_nama' => 'required|string|max:100',
                 'catatan_user' => 'nullable|string|max:500',
             ]);
@@ -212,7 +221,23 @@ class KonfigurasiSetoranEmasController extends Controller
             });
         }
 
-        $konfigurasi->update(['status' => StatusKonfigurasiSetoran::Batal]);
+        // Rencana TIDAK langsung dibatalkan jika ada refund: transaksi menunggu verifikasi admin,
+        // rencana baru resmi BATAL setelah transaksi tersebut diverifikasi
+        // (lihat TransaksiController::verifikasi). Rencana kosong (refund 0) dibatalkan langsung.
+        if ($refund <= 0) {
+            $konfigurasi->update(['status' => StatusKonfigurasiSetoran::Batal]);
+        }
+
+        if ($refund > 0) {
+            $this->notif->kirimKeSemuaAdmin(
+                'Pengajuan Batal & Refund Rencana',
+                $user->name . ' mengajukan pembatalan rencana setoran berkala. Refund Rp '
+                    . number_format($refund, 0, ',', '.')
+                    . ' menunggu verifikasi admin.',
+                TipeNotifikasi::Verifikasi,
+                ['konfigurasi_setoran_id' => $konfigurasi->id, 'transaksi_id' => $transaksi->id]
+            );
+        }
 
         return $this->successResponse([
             'rencana' => new KonfigurasiSetoranEmasResource($konfigurasi->fresh()),
@@ -225,8 +250,8 @@ class KonfigurasiSetoranEmasController extends Controller
                 'transaksi_refund_id' => $transaksi?->id,
             ],
         ], $refund > 0
-            ? 'Rencana dibatalkan. Pengajuan refund (setelah potongan 10%) diajukan — menunggu verifikasi admin.'
-            : 'Rencana setoran dibatalkan. Tidak ada saldo yang perlu direfund.');
+            ? 'Pengajuan batal & refund diajukan. Rencana dikunci sampai refund diverifikasi admin.'
+            : 'Pengajuan batal diajukan. Rencana dikunci sampai diverifikasi admin.');
     }
 
     /**
@@ -239,7 +264,7 @@ class KonfigurasiSetoranEmasController extends Controller
         $request->validate([
             'nominal' => 'nullable|numeric|min:10000',
             'bank_tujuan' => 'required|string|max:100',
-            'no_rekening' => 'required|numeric|digits_between:10,16',
+            'no_rekening' => 'required|numeric|digits_between:6,20',
             'atas_nama' => 'required|string|max:100',
             'catatan_user' => 'nullable|string|max:500',
         ]);

@@ -141,7 +141,7 @@ class JenisTabunganController extends Controller
 
     public function destroy(JenisTabungan $jenisTabungan): JsonResponse
     {
-        $defaultKodes = ['emas-harian', 'EMAS', 'tabungan-pribadi', 'tabungan-qurban', 'tabungan-hari-raya', 'tabungan-berjangka'];
+        $defaultKodes = ['EMAS', 'tabungan-pribadi', 'tabungan-qurban', 'tabungan-hari-raya', 'tabungan-berjangka'];
 
         if (in_array($jenisTabungan->kode, $defaultKodes, true)) {
             return $this->errorResponse('Tabungan bawaan tidak bisa dihapus.', 422, 'DEFAULT_LOCKED');

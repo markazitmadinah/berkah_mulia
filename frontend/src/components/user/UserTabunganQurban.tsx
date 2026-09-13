@@ -60,7 +60,7 @@ export const UserTabunganQurban: React.FC<UserTabunganQurbanProps> = ({
 
         <button
           onClick={onOpenDaftarQurban}
-          className="py-3.5 px-6 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 active:scale-95 transition-all cursor-pointer flex-shrink-0"
+          className="py-3.5 px-6 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-600/25 active:scale-95 transition-all cursor-pointer flex-shrink-0"
         >
           <span>Daftar Qurban Baru</span>
         </button>
@@ -72,7 +72,7 @@ export const UserTabunganQurban: React.FC<UserTabunganQurbanProps> = ({
           onClick={() => setUserSubTab('periode-aktif')}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
             userSubTab === 'periode-aktif'
-              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/25'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-600/25'
               : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
           }`}
         >
@@ -84,7 +84,7 @@ export const UserTabunganQurban: React.FC<UserTabunganQurbanProps> = ({
           onClick={() => setUserSubTab('pendaftaran-saya')}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
             userSubTab === 'pendaftaran-saya'
-              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/25'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-600/25'
               : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
           }`}
         >
@@ -164,7 +164,7 @@ export const UserTabunganQurban: React.FC<UserTabunganQurbanProps> = ({
 
                   <button
                     onClick={onOpenDaftarQurban}
-                    className="mt-5 w-full py-2.5 px-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-600 hover:text-white text-emerald-700 dark:text-emerald-300 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                    className="mt-5 w-full py-2.5 px-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 hover:bg-blue-600 hover:text-white text-emerald-700 dark:text-emerald-300 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                   >
                     <span>Pilih Hewan Ini</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -188,7 +188,7 @@ export const UserTabunganQurban: React.FC<UserTabunganQurbanProps> = ({
               </p>
               <button
                 onClick={() => setUserSubTab('periode-aktif')}
-                className="py-2.5 px-5 rounded-2xl bg-emerald-600 text-white text-xs font-bold shadow-md cursor-pointer"
+                className="py-2.5 px-5 rounded-2xl bg-blue-600 text-white text-xs font-bold shadow-md cursor-pointer"
               >
                 Lihat Hewan Qurban Tersedia
               </button>
@@ -213,7 +213,7 @@ export const UserTabunganQurban: React.FC<UserTabunganQurbanProps> = ({
                         pend.status === 'sudah_dicairkan'
                           ? 'bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300'
                           : pend.status === 'sudah_lunas'
-                          ? 'bg-emerald-600 text-white'
+                          ? 'bg-blue-600 text-white'
                           : pend.status === 'menunggu_verifikasi'
                           ? 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300'
                           : pend.status === 'siap_dicairkan'
@@ -269,7 +269,7 @@ export const UserTabunganQurban: React.FC<UserTabunganQurbanProps> = ({
                     {pend.status === 'menabung' && (
                       <button
                         onClick={() => onOpenSetorQurban(pend.id)}
-                        className="py-3 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 transition-all cursor-pointer"
+                        className="py-3 px-6 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-600/25 transition-all cursor-pointer"
                       >
                         <Plus className="w-4 h-4" />
                         <span>Setor Cicilan Qurban</span>
@@ -279,7 +279,7 @@ export const UserTabunganQurban: React.FC<UserTabunganQurbanProps> = ({
                     {pend.status === 'target_tercapai' && (
                       <button
                         onClick={() => lunasQurban(pend.id)}
-                        className="py-3 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 transition-all cursor-pointer"
+                        className="py-3 px-6 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-600/25 transition-all cursor-pointer"
                       >
                         <CheckCircle2 className="w-4 h-4" />
                         <span>Lunas</span>

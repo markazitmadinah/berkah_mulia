@@ -5,12 +5,14 @@ namespace App\Http\Controllers\Api\V1;
 use App\Enums\JenisTransaksi;
 use App\Enums\StatusVerifikasi;
 use App\Enums\SubJenisTabungan;
+use App\Enums\TipeNotifikasi;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\TransaksiResource;
 use App\Models\AuditLog;
 use App\Models\JenisTabungan;
 use App\Models\TabunganBerjangka;
 use App\Models\Transaksi;
+use App\Services\NotifikasiService;
 use App\Services\TransaksiService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -25,6 +27,7 @@ class TabunganBerjangkaController extends Controller
 
     public function __construct(
         private TransaksiService $transaksiService,
+        private NotifikasiService $notif,
     ) {}
 
     /**
@@ -34,6 +37,7 @@ class TabunganBerjangkaController extends Controller
     {
         $userId = $request->user()->id;
         $items = TabunganBerjangka::milikUser($userId)
+            ->where('status', '!=', 'batal')
             ->latest()
             ->get();
 
@@ -62,6 +66,7 @@ class TabunganBerjangkaController extends Controller
                 'is_goal_reached' => $isGoalReached,
                 'can_withdraw' => $canWithdraw,
                 'sisa_target' => round($sisaTarget, 2),
+                'tertunggak' => $tb->tertunggak(),
                 'created_at' => $tb->created_at?->toISOString(),
             ];
         });
@@ -76,7 +81,7 @@ class TabunganBerjangkaController extends Controller
     }
 
     /**
-     * POST /tabungan-berjangka — user membuat tabungan berjangka baru (menunggu approval).
+     * POST /tabungan-berjangka — user membuat tabungan berjangka baru (langsung aktif, maks 5).
      */
     public function store(Request $request): JsonResponse
     {
@@ -114,7 +119,7 @@ class TabunganBerjangkaController extends Controller
             'bulanan' => $durasi,
         };
 
-        $nominalPerPeriode = $totalPeriode > 0 ? ceil($target / $totalPeriode / 1000) * 1000 : $target;
+        $nominalPerPeriode = $totalPeriode > 0 ? ceil($target / $totalPeriode * 100) / 100 : $target;
 
         $tb = TabunganBerjangka::create([
             'user_id' => $userId,
@@ -123,7 +128,11 @@ class TabunganBerjangkaController extends Controller
             'durasi_bulan' => $durasi,
             'frekuensi_setor' => $frekuensi,
             'nominal_per_periode' => $nominalPerPeriode,
-            'status' => 'menunggu_approval',
+            'tanggal_mulai' => now()->toDateString(),
+            'tanggal_jatuh_tempo' => now()->addMonths($durasi)->toDateString(),
+            'status' => 'aktif',
+            'approved_by' => $userId,
+            'approved_at' => now(),
             'catatan' => $data['catatan'] ?? null,
             'created_by' => $userId,
         ]);
@@ -139,8 +148,10 @@ class TabunganBerjangkaController extends Controller
             'target_nominal' => (float) $tb->target_nominal,
             'durasi_bulan' => $tb->durasi_bulan,
             'nominal_per_periode' => (float) $tb->nominal_per_periode,
+            'tanggal_mulai' => $tb->tanggal_mulai?->toDateString(),
+            'tanggal_jatuh_tempo' => $tb->tanggal_jatuh_tempo?->toDateString(),
             'status' => $tb->status,
-        ], 'Tabungan berjangka berhasil diajukan. Tunggu persetujuan admin.');
+        ], 'Tabungan berjangka berhasil dibuat dan langsung aktif. Setoran dapat dimulai sekarang.');
     }
 
     /**
@@ -161,7 +172,7 @@ class TabunganBerjangkaController extends Controller
         }
 
         $request->validate([
-            'nominal' => 'required|numeric|min:10000',
+            'nominal' => 'required|numeric|min:1',
             'rekening_bank_id' => 'required|exists:rekening_bank,id',
             'bukti_transfer' => 'required|file|mimes:jpg,jpeg,png,pdf|max:2048',
             'catatan_user' => 'nullable|string|max:500',
@@ -282,6 +293,8 @@ class TabunganBerjangkaController extends Controller
 
     /**
      * POST /tabungan-berjangka/{id}/batal — user membatalkan tabungan berjangka.
+     * Tanpa saldo → langsung batal (hilang dari riwayat).
+     * Ada saldo → ajukan pembatalan, admin verifikasi lalu dana dikembalikan utuh.
      */
     public function batal(Request $request, TabunganBerjangka $tabunganBerjangka): JsonResponse
     {
@@ -293,11 +306,36 @@ class TabunganBerjangkaController extends Controller
             return $this->errorResponse('Tabungan berjangka tidak dapat dibatalkan.', 422, 'STATUS_TIDAK_VALID');
         }
 
-        $tabunganBerjangka->update(['status' => 'batal']);
+        $saldo = $tabunganBerjangka->terkumpulNominal();
 
-        AuditLog::record('tabungan_berjangka.batal', $tabunganBerjangka);
+        // Tanpa saldo → langsung batal, hilang dari riwayat.
+        if ($tabunganBerjangka->status === 'menunggu_approval' || $saldo <= 0) {
+            $tabunganBerjangka->update(['status' => 'batal']);
 
-        return $this->successResponse(null, 'Tabungan berjangka berhasil dibatalkan.');
+            AuditLog::record('tabungan_berjangka.batal', $tabunganBerjangka);
+
+            return $this->successResponse(null, 'Tabungan berjangka berhasil dibatalkan.');
+        }
+
+        // Ada saldo → ajukan pembatalan, menunggu verifikasi admin (dana dikembalikan utuh).
+        $tabunganBerjangka->update(['status' => 'pembatalan_diajukan']);
+
+        AuditLog::record('tabungan_berjangka.pembatalan_diajukan', $tabunganBerjangka, null, [
+            'saldo' => $saldo,
+        ]);
+
+        $this->notif->kirimKeSemuaAdmin(
+            'Verifikasi Pembatalan Tabungan Berjangka',
+            'Nasabah ' . ($tabunganBerjangka->user->name ?? '') . ' mengajukan pembatalan tabungan berjangka #' . $tabunganBerjangka->id
+                . ' dengan saldo Rp ' . number_format($saldo, 0, ',', '.') . '. Verifikasi untuk pengembalian dana utuh.',
+            TipeNotifikasi::Verifikasi,
+            ['tabungan_berjangka_id' => $tabunganBerjangka->id]
+        );
+
+        return $this->successResponse(
+            null,
+            'Pembatalan diajukan. Saldo Rp ' . number_format($saldo, 0, ',', '.') . ' akan dikembalikan utuh setelah diverifikasi admin.'
+        );
     }
 }
 
