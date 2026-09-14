@@ -223,6 +223,8 @@ class UserController extends Controller
             'address' => 'nullable|string|max:500',
             'role' => 'sometimes|string|in:admin,user',
             'created_at' => 'sometimes|date',
+            'password' => 'sometimes|nullable|string|min:8',
+            'password_confirmation' => 'sometimes|string',
         ]);
 
         $fillableFields = ['name', 'email', 'phone', 'nomor_anggota', 'address', 'created_at'];
@@ -233,6 +235,14 @@ class UserController extends Controller
 
         if ($request->filled('role')) {
             $user->role = $request->input('role');
+        }
+
+        // Update password hanya jika admin mengirimkan field password
+        if ($request->filled('password')) {
+            if ($request->input('password') !== $request->input('password_confirmation')) {
+                return $this->errorResponse('Konfirmasi password tidak cocok.', 422);
+            }
+            $user->password = $request->input('password'); // akan di-hash via Cast
         }
 
         $user->save();

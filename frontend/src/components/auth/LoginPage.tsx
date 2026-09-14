@@ -140,13 +140,6 @@ export const LoginPage: React.FC = () => {
               <span>{submitting ? 'Memverifikasi...' : 'Masuk ke Aplikasi'}</span>
             </button>
           </form>
-
-          <div className="mt-8 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 text-[11px] text-slate-500 dark:text-slate-400">
-            <span className="font-bold text-slate-600 dark:text-slate-300 block mb-1">Data demo (untuk uji coba):</span>
-            Admin: <code className="font-mono text-emerald-700 dark:text-blue-300">admin@berkahmulia.com</code> / <code className="font-mono text-emerald-700 dark:text-blue-300">password123</code>
-            <br />
-            Nasabah: <code className="font-mono text-emerald-700 dark:text-blue-300">client@gmail.com</code> / <code className="font-mono text-emerald-700 dark:text-blue-300">password123</code>
-          </div>
         </div>
       </div>
     </div>

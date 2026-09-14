@@ -195,7 +195,7 @@ interface AppContextType {
   suspendUser: (userId: number) => void;
   activateUser: (userId: number) => void;
   createUser: (userData: Record<string, unknown>) => void;
-  updateUser: (userId: number, userData: Partial<User>) => void;
+  updateUser: (userId: number, userData: Record<string, unknown>) => void;
   deleteUser: (userId: number) => void;
   importUsers: (file: File) => Promise<void>;
   downloadUserTemplate: () => Promise<void>;
@@ -879,7 +879,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     withRefresh(() => api.post(`/admin/users/${userId}/activate`), 'Akun berhasil diaktifkan kembali.');
   const createUser = (data: Record<string, unknown>) =>
     withRefresh(() => api.post('/admin/users', data), 'Pengguna berhasil ditambahkan.');
-  const updateUser = (userId: number, data: Partial<User>) =>
+  const updateUser = (userId: number, data: Record<string, unknown>) =>
     withRefresh(() => api.put(`/admin/users/${userId}`, data), 'Data pengguna berhasil diperbarui.');
   const deleteUser = (userId: number) =>
     withRefresh(() => api.del(`/admin/users/${userId}`), 'Pengguna berhasil dihapus.');

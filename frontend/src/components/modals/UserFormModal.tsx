@@ -33,6 +33,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   const [address, setAddress] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [passwordConfirm, setPasswordConfirm] = useState<string>('');
+  const [showPasswordSection, setShowPasswordSection] = useState(false);
 
   const hariIni = () => new Date().toISOString().slice(0, 10);
 
@@ -46,6 +47,9 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       setRole(userToEdit.role);
       setStatus(userToEdit.status);
       setAddress(userToEdit.address || '');
+      setPassword('');
+      setPasswordConfirm('');
+      setShowPasswordSection(false);
     } else {
       setName('');
       setEmail('');
@@ -57,6 +61,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       setAddress('');
       setPassword('');
       setPasswordConfirm('');
+      setShowPasswordSection(false);
     }
   }, [userToEdit, isOpen]);
 
@@ -85,6 +90,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       return;
     }
 
+    // Validasi password untuk akun baru (wajib)
     if (!userToEdit) {
       if (!password) {
         showToast('Password wajib diisi untuk akun baru', 'error');
@@ -104,6 +110,22 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       }
     }
 
+    // Validasi password jika admin ingin mengubah password user yang sudah ada
+    if (userToEdit && showPasswordSection && password) {
+      if (password.length < 8) {
+        showToast('Password baru minimal 8 karakter', 'error');
+        return;
+      }
+      if (!/[a-zA-Z]/.test(password) || !/\d/.test(password)) {
+        showToast('Password harus mengandung huruf dan angka', 'error');
+        return;
+      }
+      if (password !== passwordConfirm) {
+        showToast('Konfirmasi password baru tidak cocok', 'error');
+        return;
+      }
+    }
+
     if (userToEdit) {
       updateUser(userToEdit.id, {
         name,
@@ -113,7 +135,9 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
         role,
         status,
         address,
-        created_at: tanggalBergabung
+        created_at: tanggalBergabung,
+        // Kirim password hanya jika diisi
+        ...(showPasswordSection && password ? { password, password_confirmation: passwordConfirm } : {})
       });
     } else {
       createUser({
@@ -286,6 +310,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
             />
           </div>
 
+          {/* Password Section - hanya saat buat user baru */}
           {!userToEdit && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
@@ -314,6 +339,53 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                   className="w-full py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none"
                 />
               </div>
+            </div>
+          )}
+
+          {/* Password Section - saat edit user (opsional) */}
+          {userToEdit && (
+            <div className="border border-dashed border-orange-200 dark:border-orange-800/60 rounded-2xl p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-orange-700 dark:text-orange-300">🔑 Ganti Password User</span>
+                <button
+                  type="button"
+                  onClick={() => { setShowPasswordSection(!showPasswordSection); setPassword(''); setPasswordConfirm(''); }}
+                  className={`px-3 py-1 rounded-xl text-[10px] font-bold cursor-pointer transition-colors ${
+                    showPasswordSection
+                      ? 'bg-orange-500 text-white'
+                      : 'bg-orange-50 dark:bg-orange-950/50 text-orange-700 dark:text-orange-300 hover:bg-orange-100'
+                  }`}
+                >
+                  {showPasswordSection ? 'Batalkan' : 'Ubah Password'}
+                </button>
+              </div>
+              {!showPasswordSection && (
+                <p className="text-[10px] text-slate-400">Klik "Ubah Password" untuk mengganti password akun ini. Kosongkan untuk tidak mengubah.</p>
+              )}
+              {showPasswordSection && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">Password Baru</label>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Min. 8 karakter, huruf & angka"
+                      className="w-full py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">Konfirmasi Password Baru</label>
+                    <input
+                      type="password"
+                      value={passwordConfirm}
+                      onChange={(e) => setPasswordConfirm(e.target.value)}
+                      placeholder="Ulangi password baru"
+                      className="w-full py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

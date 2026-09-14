@@ -239,18 +239,18 @@ return (
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto pt-2 sm:pt-3">
+      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto overflow-x-hidden pt-2 sm:pt-3">
         <Navbar
           onOpenProfile={() => setActiveTab('profil')}
           onOpenPasswordModal={() => setActiveTab('ganti-password')}
           onToggleMobileMenu={() => setIsMobileSidebarOpen(true)}
         />
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-x-hidden">
           {loading && transaksi.length === 0 && activeTab === 'dashboard' ? (
             <DashboardSkeleton />
           ) : (
-          <div className="max-w-5xl xl:max-w-7xl mx-auto pb-12">
+          <div className="max-w-5xl xl:max-w-7xl mx-auto pb-12 overflow-x-hidden w-full">
             {/* USER VIEWS */}
             {currentUser.role === 'user' && (
               <>

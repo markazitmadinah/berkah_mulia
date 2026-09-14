@@ -83,22 +83,26 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
 
   // --- Form buat rencana: nilai saat ini ---
   const goalVal = kGoal ? Number(kGoal) : 0;
-  const goalTotal = goalVal > 0 ? goalVal : (userEmasGoal ?? 0);
+  // goalTotal HANYA pakai goalVal (gram diisi user). Tidak fallback ke userEmasGoal
+  // karena userEmasGoal adalah akumulasi goal seluruh rencana (bisa campur satuan).
+  const goalTotal = goalVal > 0 ? goalVal : 0;
   const nominalVal = toNominal(kNominal);
   const durasiVal = Number(kDurasi) || 0;
 
-  // Dua arah: isi nominal => durasi sampai target; isi durasi => nominal per periode. Yang terakhir diedit = sumber.
+  // Dua arah: isi nominal => durasi sampai target; isi durasi => nominal per periode.
+  // Semua dalam satuan GRAM untuk goal, RUPIAH untuk nominal, PERIODE (hari/minggu/bulan) untuk durasi.
   const durasiDariNominal = (goal: number, nom: number): number =>
     goal > 0 && nom > 0 && activeHarga > 0 ? Math.ceil((goal * activeHarga) / nom) : 0;
   const nominalDariDurasi = (goal: number, dur: number): number =>
     goal > 0 && dur > 0 && activeHarga > 0 ? Math.ceil((goal * activeHarga) / dur) : 0;
 
-  // Sumber terakhir yang diedit menentukan pasangan yang dipakai. Hitung ulang
-  // di sini (bukan percaya state), supaya tampilan & submit selalu konsisten.
+  // Sumber terakhir yang diedit menentukan pasangan yang dipakai.
   const nominalDipakai = kSource === 'durasi' ? nominalDariDurasi(goalTotal, durasiVal) : nominalVal;
   const durasiDipakai = kSource === 'durasi' ? durasiVal : durasiDariNominal(goalTotal, nominalVal);
 
+  // gram per periode = goal (gram) / jumlah periode
   const gramPerPeriode = durasiDipakai > 0 && goalTotal > 0 ? goalTotal / durasiDipakai : 0;
+  // biaya riil per periode = gramPerPeriode * harga saat ini
   const biayaPeriode = activeHarga > 0 && gramPerPeriode > 0 ? Math.ceil(gramPerPeriode * activeHarga) : 0;
   const tanggalSelesai = durasiDipakai > 0 && goalTotal > 0
     ? tambahPeriode(new Date(), Math.max(0, durasiDipakai - 1), kFrek)
@@ -416,13 +420,18 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
           </div>
           <div>
             <label className={labelCls}>
-              Berapa lama ({goalTotal > 0 && durasiDipakai > 0 ? `${gramPerPeriode.toFixed(4)} gr/${kFrek === 'harian' ? 'hari' : kFrek === 'mingguan' ? 'minggu' : 'bulan'}` : ''})
+              Berapa lama (jumlah {kFrek === 'harian' ? 'hari' : kFrek === 'mingguan' ? 'minggu' : 'bulan'})
+              {goalTotal > 0 && durasiDipakai > 0 && (
+                <span className="ml-1.5 font-normal text-amber-600 dark:text-amber-400">
+                  ≈ {gramPerPeriode.toFixed(4)} gr/{kFrek === 'harian' ? 'hari' : kFrek === 'mingguan' ? 'minggu' : 'bulan'}
+                </span>
+              )}
             </label>
             <input
               type="number" min={1}
               value={kDurasi}
               onChange={(e) => onChangeDurasi(e.target.value)}
-              placeholder="Terisi otomatis"
+              placeholder="Terisi otomatis dari nominal"
               className={inputCls}
             />
           </div>
