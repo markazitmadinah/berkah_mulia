@@ -89,6 +89,7 @@ interface CashTransaksiPayload {
 interface HargaEmasInput {
   tanggal: string;
   harga_per_gram: number;
+  harga_beli?: number | null;
   tagihan_harian_default?: number;
   catatan?: string;
 }
@@ -210,6 +211,7 @@ interface AppContextType {
   inputHargaEmas: (data: HargaEmasInput) => void;
   syncHargaEmas: () => Promise<void>;
   deleteHargaEmas: (id: number) => ActionResult;
+  refreshHargaEmas: () => Promise<void>;
 
   createPeriodeQurban: (data: Record<string, unknown>) => void;
   updatePeriodeQurban: (id: number, data: Partial<PeriodeQurban>) => void;
@@ -984,6 +986,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true, message: 'Riwayat harga emas berhasil dihapus.' };
   };
 
+  // Ambil ulang harga terkini + riwayat tanpa reload penuh (dipakai tombol refresh di dashboard)
+  const refreshHargaEmas = async () => {
+    const isAdmin = currentUser.role === 'admin';
+    const p = isAdmin ? '/admin/emas/' : '/emas/';
+    const [terkini, riwayat] = await Promise.all([
+      api.get<HargaEmasHarian>(p + 'harga-terkini').catch(() => null),
+      api.get<HargaEmasHarian[]>(p + 'harga-riwayat?per_page=500').catch(() => null),
+    ]);
+    if (terkini) {
+      setHargaTerkini(terkini.data);
+      hargaTerkiniAtRef.current = Date.now();
+    }
+    if (riwayat) setHargaEmas(riwayat.data);
+    if (!terkini && !riwayat) throw new Error('Gagal memperbarui harga emas.');
+  };
+
   // ─── Admin: Qurban ────────────────────────────────────────
   const createPeriodeQurban = (data: Record<string, unknown>) =>
     withRefresh(() => api.post('/admin/qurban/periode', data), 'Periode qurban berhasil dibuat.');
@@ -1450,6 +1468,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     inputHargaEmas,
     syncHargaEmas,
     deleteHargaEmas,
+    refreshHargaEmas,
     createPeriodeQurban,
     updatePeriodeQurban,
     createHewanQurban,

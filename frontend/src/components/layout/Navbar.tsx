@@ -36,8 +36,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     logout,
     notifikasi,
     markNotifikasiRead,
-    markAllNotifikasiRead,
-    unreadNotifikasiCount
+    markAllNotifikasiRead
   } = useApp();
 
   const [showNotifications, setShowNotifications] = useState(false);
@@ -45,6 +44,17 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [showLogout, setShowLogout] = useState(false);
 
   const userNotifs = notifikasi.filter(n => n.user_id === currentUser.id);
+
+  // Notifikasi di navbar khusus untuk hari ini saja; besok ganti hari otomatis kosong.
+  const isToday = (iso: string): boolean => {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return false;
+    const now = new Date();
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  };
+
+  const todayNotifs = userNotifs.filter(n => isToday(n.created_at));
+  const todayUnread = todayNotifs.filter(n => !n.dibaca_pada).length;
 
   return (
     <>
@@ -105,9 +115,9 @@ export const Navbar: React.FC<NavbarProps> = ({
             className="p-2 sm:p-2.5 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-750 transition-all shadow-xs relative cursor-pointer"
           >
             <Bell className="w-4 h-4" />
-            {unreadNotifikasiCount > 0 && (
+            {todayUnread > 0 && (
               <span className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-rose-500 text-white text-[9px] sm:text-[10px] font-bold flex items-center justify-center shadow-xs animate-pulse">
-                {unreadNotifikasiCount}
+                {todayUnread}
               </span>
             )}
           </button>
@@ -119,10 +129,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <div className="flex items-center gap-2">
                   <h4 className="font-bold text-xs sm:text-sm text-slate-800 dark:text-white">Notifikasi Sistem</h4>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
-                    {unreadNotifikasiCount} Baru
+                    {todayUnread} Baru
                   </span>
                 </div>
-                {unreadNotifikasiCount > 0 && (
+                {todayUnread > 0 && (
                   <button
                     onClick={markAllNotifikasiRead}
                     className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold hover:underline flex items-center gap-1 cursor-pointer"
@@ -134,10 +144,10 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
 
               <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60 my-2">
-                {userNotifs.length === 0 ? (
-                  <p className="text-center py-6 text-xs text-slate-400">Belum ada notifikasi.</p>
+                {todayNotifs.length === 0 ? (
+                  <p className="text-center py-6 text-xs text-slate-400">Belum ada notifikasi hari ini.</p>
                 ) : (
-                  userNotifs.map((n) => (
+                  todayNotifs.map((n) => (
                     <div
                       key={n.id}
                       onClick={() => markNotifikasiRead(n.id)}

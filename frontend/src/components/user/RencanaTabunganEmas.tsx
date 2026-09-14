@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { formatRupiah, parseRupiah, fmtRupiahTyping, fmtRupiahBlur } from '../../utils/format';
+import { formatRupiah } from '../../utils/format';
 import {
   AlertTriangle,
   Banknote,
@@ -23,9 +23,18 @@ const FREK_LABEL: Record<FrekuensiSetoran, string> = {
   bulanan: 'per bulan'
 };
 
-const toNominal = (s: string) => parseRupiah(s);
+// Nominal setoran = rupiah utuh (tanpa desimal). Abaikan semua pemisah
+// (titik ribuan maupun koma) agar "170.000"/"170,000" selalu = 170000,
+// bukan 170 — sumber bug "durasi menabung puluhan ribu hari".
+const toNominal = (s: string | number): number => {
+  const n = Number(String(s).replace(/[^\d]/g, ''));
+  return Number.isFinite(n) ? n : 0;
+};
 
-const formatNominalInput = (s: string) => fmtRupiahTyping(s);
+const formatNominalInput = (s: string) => {
+  const n = toNominal(s);
+  return n > 0 ? n.toLocaleString('id-ID', { maximumFractionDigits: 0 }) : '';
+};
 
 const tambahPeriode = (tgl: Date, count: number, frek: FrekuensiSetoran): string => {
   const d = new Date(tgl);
@@ -413,7 +422,7 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
               type="text" inputMode="decimal"
               value={kNominal}
               onChange={(e) => onChangeNominal(e.target.value)}
-              onBlur={() => setKNominal(fmtRupiahBlur(kNominal))}
+              onBlur={() => setKNominal(formatNominalInput(kNominal))}
               placeholder="Contoh: 15.000,50"
               className={inputCls}
             />

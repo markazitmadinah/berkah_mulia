@@ -70,7 +70,7 @@ php artisan queue:work --queue=default
 
 ### 7. Sinkronisasi Harga Emas (sebelum fitur emas dipakai)
 
-Aplikasi **tidak menanam harga emas di seeder** (menghindari data basi). Setelah migrasi, ambil harga dari `harga-emas.org` atau input manual lewat menu admin:
+Aplikasi **tidak menanam harga emas di seeder** (menghindari data basi). Setelah migrasi, ambil harga dari `anekalogam.co.id/id/logam-mulia` atau input manual lewat menu admin:
 
 ```bash
 php artisan hargaemas:sync

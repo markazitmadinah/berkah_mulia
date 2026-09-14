@@ -13,9 +13,7 @@ class SyncHargaEmas extends Command
 
     protected $description = 'Ambil harga emas hari ini dari web resmi Logam Mulia dan simpan ke harga_emas_harian';
 
-    // logammulia.com diblokir Cloudflare untuk semua request non-browser (HTTP 403).
-    // Pakai harga-emas.org yang memuat tabel harga ANTAM resmi dan masih terbuka.
-    private const SUMBER = 'https://harga-emas.org/';
+    private const SUMBER = 'https://anekalogam.co.id/id/logam-mulia';
 
     public function handle(): int
     {
@@ -45,10 +43,10 @@ class SyncHargaEmas extends Command
                 $this->error('Gagal mengambil halaman Logam Mulia (HTTP '.$lastStatus.').');
                 return self::FAILURE;
             }
-            $harga = $this->parseHargaPerGram($html);
+            $prices = $this->parseHargaPerGram($html);
             $tanggal = $this->parseTanggal($html);
 
-            if (! $harga) {
+            if (! $prices) {
                 $this->error('Harga 1 gr tidak ditemukan di halaman Logam Mulia.');
                 return self::FAILURE;
             }
@@ -56,16 +54,19 @@ class SyncHargaEmas extends Command
                 $tanggal = now()->toDateString();
             }
 
+            $harga = $prices['harga_per_gram'];
+            $hargaBeli = $prices['harga_beli'];
             $row = HargaEmasHarian::whereDate('tanggal', $tanggal)->where('status_aktif', true)->first();
 
             if ($row) {
                 $old = (float) $row->harga_per_gram;
                 $row->update([
                     'harga_per_gram' => $harga,
+                    'harga_beli' => $hargaBeli,
                     'catatan' => 'Auto-sync Logam Mulia',
                 ]);
-                AuditLog::record('auto_update', $row, ['harga_per_gram' => $old], ['harga_per_gram' => $harga]);
-                $this->info("Harga emas {$tanggal} diperbarui: Rp {$harga} gr (sebelumnya Rp {$old}).");
+                AuditLog::record('auto_update', $row, ['harga_per_gram' => $old], ['harga_per_gram' => $harga, 'harga_beli' => $hargaBeli]);
+                $this->info("Harga emas {$tanggal} diperbarui: jual Rp {$harga}, beli Rp {$hargaBeli} gr (sebelumnya jual Rp {$old}).");
             } else {
                 // Hanya satu baris aktif pada satu waktu: nonaktifkan baris aktif lama
                 // agar hargaTerkini() tidak memakai harga hari lain.
@@ -73,12 +74,13 @@ class SyncHargaEmas extends Command
                 $row = HargaEmasHarian::create([
                     'tanggal' => $tanggal,
                     'harga_per_gram' => $harga,
+                    'harga_beli' => $hargaBeli,
                     'status_aktif' => true,
                     'catatan' => 'Auto-sync Logam Mulia',
                     'created_by' => null,
                 ]);
                 AuditLog::record('auto_create', $row);
-                $this->info("Harga emas {$tanggal} dibuat: Rp {$harga} gr.");
+                $this->info("Harga emas {$tanggal} dibuat: jual Rp {$harga}, beli Rp {$hargaBeli} gr.");
             }
 
             return self::SUCCESS;
@@ -88,11 +90,15 @@ class SyncHargaEmas extends Command
         }
     }
 
-    private function parseHargaPerGram(string $html): ?int
+    private function parseHargaPerGram(string $html): ?array
     {
-        // Baris "1 gr" pada tabel harga ANTAM → kolom pertama setelahnya adalah harga beli per gram.
-        if (preg_match('/<p>1<\/p><\/td><td[^>]*><div[^>]*><p>([\d.,]+)<\/p>/i', $html, $m)) {
-            return (int) preg_replace('/[^\d]/', '', $m[1]);
+        // Baris "1gram" pada tabel Aneka Logam → ambil dua harga: "We sell" & "We buy".
+        // preg_match berhenti di link emas-lm-1-gram pertama (baris 1gram, bukan edisi lama "-i").
+        if (preg_match('/popup-product\/emas-lm-1-gram.*?<span>([\d.]+)<\/span>[\s\S]*?<span>([\d.]+)<\/span>/is', $html, $m)) {
+            return [
+                'harga_per_gram' => (int) preg_replace('/[^\d]/', '', $m[1]),
+                'harga_beli' => (int) preg_replace('/[^\d]/', '', $m[2]),
+            ];
         }
 
         return null;
@@ -100,13 +106,8 @@ class SyncHargaEmas extends Command
 
     private function parseTanggal(string $html): ?string
     {
-        // harga-emas.org: "Harga Emas Hari Ini Pada 10 Sep 2026, 19.20 WIB"
-        if (preg_match('/Pada\s+(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{4})/i', $html, $m)) {
-            return $this->buildDate($m[1], $m[2], $m[3]);
-        }
-
-        // cadangan: format lama "Harga Emas Hari Ini, 10 Sep 2026"
-        if (preg_match('/Harga Emas Hari Ini,?\s*(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{4})/i', $html, $m)) {
+        // anekalogam.co.id: "Terakhir Diperbarui: ... 14 September 2026 ..."
+        if (preg_match('/Terakhir Diperbarui:.*?(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/i', $html, $m)) {
             return $this->buildDate($m[1], $m[2], $m[3]);
         }
 
@@ -116,10 +117,9 @@ class SyncHargaEmas extends Command
     private function buildDate(string $day, string $month, string $year): ?string
     {
         $bulan = [
-            'jan' => '01', 'feb' => '02', 'mar' => '03', 'apr' => '04',
-            'mei' => '05', 'may' => '05', 'jun' => '06', 'jul' => '07',
-            'agu' => '08', 'aug' => '08', 'sep' => '09', 'okt' => '10', 'oct' => '10',
-            'nov' => '11', 'des' => '12', 'dec' => '12',
+            'januari' => '01', 'februari' => '02', 'maret' => '03', 'april' => '04',
+            'mei' => '05', 'juni' => '06', 'juli' => '07', 'agustus' => '08',
+            'september' => '09', 'oktober' => '10', 'november' => '11', 'desember' => '12',
         ];
         $mBulan = strtolower($month);
         if (! isset($bulan[$mBulan])) {

@@ -86,6 +86,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         // Emas
         Route::get('/emas/harga-terkini', [EmasController::class, 'hargaTerkini']);
         Route::get('/emas/harga-riwayat', [EmasController::class, 'hargaRiwayat']);
+        Route::get('/emas/harga-hari-ini', [EmasController::class, 'hargaHariIni']);
         Route::post('/emas/setor', [EmasController::class, 'setor']);
         Route::post('/emas/tarik', [EmasController::class, 'tarik']);
         Route::post('/emas/tukar', [EmasController::class, 'tukar']);

@@ -22,6 +22,7 @@ use App\Services\TransaksiService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class EmasController extends Controller
@@ -394,7 +395,7 @@ class EmasController extends Controller
         $refundEmas = round($nilaiSaldo - $penalti, 2);
         $refundTotal = round($refundEmas + $saldoDana, 2);
 
-        $transaksi = DB::transaction(function () use ($request, $jenisTabungan, $saldoGram, $nilaiSaldo, $penalti, $refundEmas, $refundTotal, $saldoDana, $harga) {
+        $transaksi = DB::transaction(function () use ($request, $jenisTabungan, $saldoGram, $nilaiSaldo, $penalti, $refundEmas, $refundTotal, $saldoDana, $hargaPerGram, $harga) {
             return $this->transaksiService->buatTransaksi([
                 'user_id' => $request->user()->id,
                 'jenis_tabungan_id' => $jenisTabungan->id,
@@ -404,7 +405,7 @@ class EmasController extends Controller
                 'nominal_selisih' => -1 * $saldoDana,
                 'unit_didapat' => -1 * $saldoGram,
                 'harga_acuan_id' => $harga->id,
-                'harga_acuan_snapshot' => $harga->harga_per_gram,
+                'harga_acuan_snapshot' => $hargaPerGram,
                 'biaya_penalti' => $penalti,
                 'metode_pembayaran' => MetodePembayaran::Transfer,
                 'catatan_user' => $request->catatan_user
@@ -445,6 +446,106 @@ class EmasController extends Controller
                 ? 'Target tabungan emas berhasil disimpan.'
                 : 'Target tabungan emas dihapus.'
         );
+    }
+
+    /**
+     * GET /emas/harga-hari-ini
+     * Mengambil daftar harga emas hari ini (0.5 g – 25 g) dari anekalogam.co.id.
+     * Di-cache 30 menit agar tidak memukul situs eksternal di setiap request.
+     */
+    public function hargaHariIni(): JsonResponse
+    {
+        try {
+            $data = Cache::remember('harga_emas_hari_ini', 1800, fn () => $this->scrapeHargaHariIni());
+        } catch (\Throwable $e) {
+            return $this->errorResponse('Gagal mengambil harga emas dari sumber: '.$e->getMessage(), 502, 'UPSTREAM_ERROR');
+        }
+
+        if (! $data) {
+            return $this->errorResponse('Daftar harga emas tidak ditemukan.', 404, 'NOT_FOUND');
+        }
+
+        return $this->successResponse($data, 'Berhasil mengambil harga emas hari ini.');
+    }
+
+    private function scrapeHargaHariIni(): ?array
+    {
+        $client = new \GuzzleHttp\Client([
+            'timeout' => 40,
+            'http_errors' => false,
+            'headers' => [
+                'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language' => 'id,en-US;q=0.9,en;q=0.8',
+            ],
+        ]);
+
+        $html = null;
+        $lastStatus = 0;
+        for ($attempt = 1; $attempt <= 3; $attempt++) {
+            $res = $client->get('https://anekalogam.co.id/id/logam-mulia');
+            $lastStatus = $res->getStatusCode();
+            if ($lastStatus === 200) {
+                $html = $res->getBody()->getContents();
+                break;
+            }
+            usleep(500000);
+        }
+
+        if ($html === null) {
+            return null;
+        }
+
+        // Parse tanggal "Terakhir Diperbarui: 14 September 2026 ... 10.54"
+        $tanggal = now()->toDateString();
+        $waktu = '';
+        if (preg_match('/Terakhir Diperbarui:.*?<strong[^>]*>(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})[\s\S]*?<span[^>]*><\/span>\s*([\d.]+)/i', $html, $tm)) {
+            $bulan = [
+                'januari' => '01', 'februari' => '02', 'maret' => '03', 'april' => '04',
+                'mei' => '05', 'juni' => '06', 'juli' => '07', 'agustus' => '08',
+                'september' => '09', 'oktober' => '10', 'november' => '11', 'desember' => '12',
+            ];
+            $mLower = strtolower($tm[2]);
+            if (isset($bulan[$mLower])) {
+                $tanggal = sprintf('%04d-%s-%02d', (int) $tm[3], $bulan[$mLower], (int) $tm[1]);
+            }
+            $waktu = $tm[4];
+        }
+
+        // Parse semua baris harga dari tabel utama (0.5 gram s/d 25 gram).
+        // Pisahkan per <tr> → padding aman dari baris lain (mis. "1 kilogram", edisi "-i").
+        $rows = [];
+        if (preg_match_all(
+            '/<tr>[\s\S]*?class="view-product">([\d.,]+gram)<\/a>[\s\S]*?<span class="lm-price">[\s\S]*?<span>Rp<\/span>[\s\S]*?<span>([\d.,]+)<\/span>[\s\S]*?<\/span>[\s\S]*?<span class="lm-price">[\s\S]*?<span>Rp<\/span>[\s\S]*?<span>([\d.,]+)<\/span>[\s\S]*?<\/span>[\s\S]*?<\/tr>/i',
+            $html,
+            $matches,
+            PREG_SET_ORDER
+        )) {
+            foreach ($matches as $m) {
+                $num = str_replace('gram', '', $m[1]);
+                $berat = (float) str_replace(',', '.', $num);
+                if ($berat <= 0 || $berat > 25) {
+                    continue;
+                }
+                $rows[] = [
+                    'berat_gram' => $berat,
+                    'label' => $m[1],
+                    'harga_jual' => (int) preg_replace('/[^\d]/', '', $m[2]),
+                    'harga_beli' => (int) preg_replace('/[^\d]/', '', $m[3]),
+                ];
+            }
+        }
+
+        if (empty($rows)) {
+            return null;
+        }
+
+        return [
+            'tanggal' => $tanggal,
+            'waktu' => $waktu,
+            'sumber' => 'https://anekalogam.co.id/id/logam-mulia',
+            'items' => $rows,
+        ];
     }
 
     /**

@@ -13,6 +13,7 @@ class HargaEmasHarianResource extends JsonResource
             'id' => $this->id,
             'tanggal' => $this->tanggal->toDateString(),
             'harga_per_gram' => (float) $this->harga_per_gram,
+            'harga_beli' => $this->harga_beli !== null ? (float) $this->harga_beli : null,
             'tagihan_harian_default' => (float) $this->tagihan_harian_default,
             'status_aktif' => $this->status_aktif,
             'catatan' => $this->catatan,

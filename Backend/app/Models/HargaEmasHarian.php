@@ -16,6 +16,7 @@ class HargaEmasHarian extends Model
     protected $fillable = [
         'tanggal',
         'harga_per_gram',
+        'harga_beli',
         'tagihan_harian_default',
         'status_aktif',
         'catatan',
@@ -27,6 +28,7 @@ class HargaEmasHarian extends Model
         return [
             'tanggal' => 'date',
             'harga_per_gram' => 'decimal:2',
+            'harga_beli' => 'decimal:2',
             'tagihan_harian_default' => 'decimal:2',
             'status_aktif' => 'boolean',
         ];

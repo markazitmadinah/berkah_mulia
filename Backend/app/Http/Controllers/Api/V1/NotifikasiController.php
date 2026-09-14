@@ -15,7 +15,10 @@ class NotifikasiController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = Notifikasi::where('user_id', $request->user()->id);
+        // Notifikasi tampil maksimal 30 hari (window 1 bulan) di halaman
+        // pusat notifikasi; lebih lama dari itu otomatis tidak dikembalikan.
+        $query = Notifikasi::where('user_id', $request->user()->id)
+            ->where('created_at', '>=', now()->subDays(30));
 
         if ($request->filled('dibaca')) {
             if ($request->boolean('dibaca')) {
@@ -37,7 +40,10 @@ class NotifikasiController extends Controller
                 'per_page' => $items->perPage(),
                 'total' => $items->total(),
                 'last_page' => $items->lastPage(),
-                'unread_count' => Notifikasi::where('user_id', $request->user()->id)->belumDibaca()->count(),
+                'unread_count' => Notifikasi::where('user_id', $request->user()->id)
+                    ->where('created_at', '>=', now()->subDays(30))
+                    ->belumDibaca()
+                    ->count(),
             ],
         ]);
     }

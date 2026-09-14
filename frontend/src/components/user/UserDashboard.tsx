@@ -18,13 +18,15 @@ import {
   Clock,
   ChevronRight,
   Plus,
+  ArrowRight,
   ArrowRightLeft,
   Calendar,
   Layers,
   Landmark,
   CreditCard,
   Eye,
-  EyeOff
+  EyeOff,
+  RefreshCw
 } from 'lucide-react';
 
 interface UserDashboardProps {
@@ -61,12 +63,27 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     setActiveTab,
     setUserSubTab,
     showToast,
+    refreshHargaEmas,
     theme
   } = useApp();
 
   const [timeframe, setTimeframe] = useState<'1W' | '1M' | '1Y'>('1W');
   const [showNomorAnggota, setShowNomorAnggota] = useState(true);
+  const [refreshingHarga, setRefreshingHarga] = useState(false);
   const isDark = theme === 'dark';
+
+  const handleRefreshHarga = async () => {
+    if (refreshingHarga) return;
+    setRefreshingHarga(true);
+    try {
+      await refreshHargaEmas();
+      showToast('Harga emas diperbarui.');
+    } catch {
+      showToast('Gagal memperbarui harga emas.', 'error');
+    } finally {
+      setRefreshingHarga(false);
+    }
+  };
 
   const fmtNomorAnggota = (na: string) =>
     /^\d{16}$/.test(na) ? na.replace(/(\d{4})(?=\d)/g, '$1 ').trim() : na;
@@ -90,8 +107,10 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const recentTransactions = [...userTransaksi].slice(0, 4);
 
   // ─── Harga Emas riwayat → chart data (per timeframe) ────────
-  // ponytail: buyback = buy - tetap spread, backend tak simpan harga jual
+  // Harga jual (buyback) = harga_beli asli dari sync, fallback spread tetap bila belum tersedia
   const BUYBACK_SPREAD = 20000;
+  const buybackPrice = activeHargaEmas?.harga_beli
+    ?? (activeHargaEmas ? activeHargaEmas.harga_per_gram - BUYBACK_SPREAD : 1200000 - BUYBACK_SPREAD);
   const localToday = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   const fmtDate = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
   const fmtMonth = (k: string) => new Date(k + '-01T00:00:00').toLocaleDateString('id-ID', { month: 'short', year: 'numeric' });
@@ -384,21 +403,39 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               </p>
             </div>
 
-            {/* Timeframe Pills */}
-            <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-900 rounded-xl w-fit">
-              {(['1W', '1M', '1Y'] as const).map((tf) => (
-                <button
-                  key={tf}
-                  onClick={() => setTimeframe(tf)}
-                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                    timeframe === tf
-                      ? 'bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-400 shadow-xs'
-                      : 'text-slate-500 hover:text-slate-900 dark:text-slate-400'
-                  }`}
-                >
-                  {tf}
-                </button>
-              ))}
+            {/* Actions: refresh + harga lengkap */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleRefreshHarga}
+                title="Perbarui harga (harga bisa berubah setiap jam)"
+                className="p-2 rounded-xl bg-slate-100 dark:bg-slate-900 text-slate-500 hover:text-emerald-700 dark:hover:text-emerald-400 transition-all cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${refreshingHarga ? 'animate-spin' : ''}`} />
+              </button>
+              <button
+                onClick={() => setActiveTab('harga-hari-ini')}
+                title="Lihat daftar harga lengkap 0,5gr–25gr"
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-900 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-400 transition-all cursor-pointer"
+              >
+                Harga Lengkap <ArrowRight className="w-3 h-3" />
+              </button>
+
+              {/* Timeframe Pills */}
+              <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-900 rounded-xl w-fit">
+                {(['1W', '1M', '1Y'] as const).map((tf) => (
+                  <button
+                    key={tf}
+                    onClick={() => setTimeframe(tf)}
+                    className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                      timeframe === tf
+                        ? 'bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-400 shadow-xs'
+                        : 'text-slate-500 hover:text-slate-900 dark:text-slate-400'
+                    }`}
+                  >
+                    {tf}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -423,7 +460,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Harga Jual (Buyback)</p>
               <div className="flex items-baseline gap-1 sm:mt-1">
                 <span className="text-lg sm:text-xl lg:text-2xl font-extrabold text-slate-900 dark:text-white truncate">
-                  Rp <CountUp value={(activeHargaEmas ? activeHargaEmas.harga_per_gram : 1200000) - BUYBACK_SPREAD} />
+                  Rp <CountUp value={buybackPrice} />
                 </span>
                 <span className="text-xs text-slate-400 whitespace-nowrap">/g</span>
               </div>

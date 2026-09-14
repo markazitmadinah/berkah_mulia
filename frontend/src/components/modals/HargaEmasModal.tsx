@@ -24,6 +24,7 @@ export const HargaEmasModal: React.FC<HargaEmasModalProps> = ({
 
   const [tanggal, setTanggal] = useState<string>(new Date().toISOString().slice(0, 10));
   const [hargaPerGram, setHargaPerGram] = useState<string>('1.215.000');
+  const [hargaBeli, setHargaBeli] = useState<string>('');
   const [tagihanHarian, setTagihanHarian] = useState<string>('50.000');
   const [catatan, setCatatan] = useState<string>('Penyesuaian kurs emas LM Antam 99.99%');
 
@@ -31,6 +32,7 @@ export const HargaEmasModal: React.FC<HargaEmasModalProps> = ({
     if (hargaToEdit) {
       setTanggal(new Date().toISOString().slice(0, 10));
       setHargaPerGram(fmtRupiahTyping(String(hargaToEdit.harga_per_gram)));
+      setHargaBeli(hargaToEdit.harga_beli ? fmtRupiahTyping(String(hargaToEdit.harga_beli)) : '');
       setTagihanHarian(fmtRupiahTyping(String(hargaToEdit.tagihan_harian_default || 50000)));
       setCatatan(`Update penyesuaian dari versi tanggal ${hargaToEdit.tanggal}`);
     }
@@ -49,6 +51,7 @@ export const HargaEmasModal: React.FC<HargaEmasModalProps> = ({
     inputHargaEmas({
       tanggal,
       harga_per_gram: hargaPerGramNum,
+      harga_beli: parseRupiah(hargaBeli) || null,
       tagihan_harian_default: parseRupiah(tagihanHarian),
       catatan
     });
@@ -105,6 +108,26 @@ export const HargaEmasModal: React.FC<HargaEmasModalProps> = ({
                 onChange={(e) => setHargaPerGram(fmtRupiahTyping(e.target.value))}
                 onBlur={() => setHargaPerGram(fmtRupiahBlur(hargaPerGram))}
                 placeholder="Contoh: 1.215.000,00"
+                className="w-full pl-11 pr-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-extrabold text-base text-slate-900 dark:text-white"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+              Harga Beli / Buyback per Gram (Rp) <span className="font-semibold text-slate-400">(opsional)</span>
+            </label>
+            <div className="relative">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-extrabold text-sm text-slate-400">
+                Rp
+              </span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={fmtRupiahTyping(hargaBeli)}
+                onChange={(e) => setHargaBeli(fmtRupiahTyping(e.target.value))}
+                onBlur={() => setHargaBeli(fmtRupiahBlur(hargaBeli))}
+                placeholder="Contoh: 1.180.000,00 (kosongkan bila belum tersedia)"
                 className="w-full pl-11 pr-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-extrabold text-base text-slate-900 dark:text-white"
               />
             </div>

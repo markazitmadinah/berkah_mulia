@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useApp } from '../../context/AppContext';
 import { formatRupiah } from '../../utils/format';
 import {
   Coins,
   ShieldCheck,
-  History,
+  TrendingUp,
   Trophy
 } from 'lucide-react';
 import { RencanaTabunganEmas } from './RencanaTabunganEmas';
@@ -20,10 +20,9 @@ export const UserTabunganEmas: React.FC<UserTabunganEmasProps> = ({ onOpenSetorE
     userEmasRupiahTotal,
     userEmasGoal,
     activeHargaEmas,
-    hargaEmas
+    hargaEmas,
+    setActiveTab
   } = useApp();
-
-  const [showHistoryTable, setShowHistoryTable] = useState(false);
 
   const emasTransactions = userTransaksi.filter(t => t.tipe_tabungan === 'emas');
 
@@ -102,11 +101,11 @@ export const UserTabunganEmas: React.FC<UserTabunganEmasProps> = ({ onOpenSetorE
 
           <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
             <button
-              onClick={() => setShowHistoryTable(!showHistoryTable)}
+              onClick={() => setActiveTab('harga-hari-ini')}
               className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
             >
-              <History className="w-3.5 h-3.5" />
-              <span>{showHistoryTable ? 'Sembunyikan Riwayat Harga' : 'Lihat Riwayat Harga Emas'}</span>
+              <TrendingUp className="w-3.5 h-3.5" />
+              <span>Harga Emas Hari Ini</span>
             </button>
             <span className="text-[11px] text-slate-400">
               Min. Setor: Rp 10.000
@@ -117,52 +116,6 @@ export const UserTabunganEmas: React.FC<UserTabunganEmasProps> = ({ onOpenSetorE
 
       {/* Rencana Tabungan Emas (target + setoran berkala dalam satu kartu) */}
       <RencanaTabunganEmas onOpenSetor={onOpenSetorEmas} />
-
-      {/* Optional Gold Price History Table */}
-      {showHistoryTable && (
-        <div className="rounded-3xl p-6 bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 shadow-sm animate-in fade-in duration-200">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-            <h3 className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center gap-2">
-              <History className="w-4 h-4 text-emerald-600" />
-              Riwayat Harga Acuan Harian (Append-only)
-            </h3>
-            <span className="text-xs text-slate-400">{hargaEmas.length} Catatan Versi</span>
-          </div>
-
-          <div className="overflow-x-auto mt-3">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 uppercase text-[10px]">
-                  <th className="py-2.5 px-3">Tanggal</th>
-                  <th className="py-2.5 px-3">Harga / Gram</th>
-                  <th className="py-2.5 px-3">Catatan / Keterangan</th>
-                  <th className="py-2.5 px-3">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {[...hargaEmas].slice(-15).reverse().map((h) => (
-                  <tr key={h.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                    <td className="py-2.5 px-3 font-semibold text-slate-800 dark:text-slate-200">{h.tanggal}</td>
-                    <td className="py-2.5 px-3 font-bold text-slate-900 dark:text-white">
-                      Rp {formatRupiah(h.harga_per_gram)}
-                    </td>
-                    <td className="py-2.5 px-3 text-slate-500 dark:text-slate-400">{h.catatan}</td>
-                    <td className="py-2.5 px-3">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        h.status_aktif
-                          ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
-                          : 'bg-slate-100 dark:bg-slate-700 text-slate-500'
-                      }`}>
-                        {h.status_aktif ? 'Aktif Saat Ini' : 'Arsip'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       {/* Emas Transactions History */}
       <div className="rounded-3xl p-6 bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 shadow-sm">

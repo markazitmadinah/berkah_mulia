@@ -21,7 +21,8 @@ import {
   Moon,
   LogOut,
   ChevronDown,
-  CalendarCheck
+  CalendarCheck,
+  Headphones
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -115,6 +116,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: Bell,
       badge: unreadNotifikasiCount > 0 ? `${unreadNotifikasiCount}` : undefined
     },
+    { id: 'hubungi-kami', label: 'Hubungi Kami', icon: Headphones },
   ];
 
   const menuItems = currentUser.role === 'admin' ? adminMenuItems : userMenuItems;

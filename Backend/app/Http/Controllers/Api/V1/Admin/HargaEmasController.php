@@ -82,6 +82,7 @@ class HargaEmasController extends Controller
         $request->validate([
             'tanggal' => 'required|date',
             'harga_per_gram' => 'required|numeric|min:1',
+            'harga_beli' => 'nullable|numeric|min:1',
             'tagihan_harian_default' => 'nullable|numeric|min:0',
             'catatan' => 'nullable|string|max:500',
         ]);
@@ -95,6 +96,7 @@ class HargaEmasController extends Controller
             return HargaEmasHarian::create([
                 'tanggal' => $request->tanggal,
                 'harga_per_gram' => $request->harga_per_gram,
+                'harga_beli' => $request->harga_beli,
                 'tagihan_harian_default' => $request->tagihan_harian_default,
                 'status_aktif' => true,
                 'catatan' => $request->catatan,
@@ -115,6 +117,7 @@ class HargaEmasController extends Controller
     {
         $request->validate([
             'harga_per_gram' => 'required|numeric|min:1',
+            'harga_beli' => 'nullable|numeric|min:1',
             'tagihan_harian_default' => 'nullable|numeric|min:0',
             'catatan' => 'nullable|string|max:500',
         ]);
@@ -126,6 +129,7 @@ class HargaEmasController extends Controller
             return HargaEmasHarian::create([
                 'tanggal' => $hargaEmas->tanggal,
                 'harga_per_gram' => $request->harga_per_gram,
+                'harga_beli' => $request->harga_beli,
                 'tagihan_harian_default' => $request->tagihan_harian_default,
                 'status_aktif' => true,
                 'catatan' => $request->catatan ?? $hargaEmas->catatan,

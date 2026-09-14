@@ -68,11 +68,26 @@ export interface HargaEmasHarian {
   id: number;
   tanggal: string;
   harga_per_gram: number;
+  harga_beli?: number | null;
   tagihan_harian_default?: number;
   status_aktif: boolean;
   catatan?: string;
   created_by: number;
   created_at: string;
+}
+
+export interface HargaHariIniItem {
+  berat_gram: number;
+  label: string;
+  harga_jual: number;
+  harga_beli: number;
+}
+
+export interface HargaHariIniResponse {
+  tanggal: string;
+  waktu: string;
+  sumber: string;
+  items: HargaHariIniItem[];
 }
 
 export interface PeriodeQurban {

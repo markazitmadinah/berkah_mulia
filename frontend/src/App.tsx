@@ -10,6 +10,8 @@ import { UserDashboard } from './components/user/UserDashboard';
 import { UserTabunganEmas } from './components/user/UserTabunganEmas';
 import { UserTabunganPribadi } from './components/user/UserTabunganPribadi';
 import { UserTabunganQurban } from './components/user/UserTabunganQurban';
+import { UserHargaEmasHariIni } from './components/user/UserHargaEmasHariIni';
+import { UserHubungiKami } from './components/user/UserHubungiKami';
 import { UserRiwayatTransaksi } from './components/user/UserRiwayatTransaksi';
 import { UserRekeningBank } from './components/user/UserRekeningBank';
 import { UserNotifikasi } from './components/user/UserNotifikasi';
@@ -297,6 +299,8 @@ return (
                 )}
                 {activeTab === 'notifikasi' && <UserNotifikasi />}
                 {activeTab === 'gadai' && <UserGadai />}
+                {activeTab === 'harga-hari-ini' && <UserHargaEmasHariIni onBack={() => setActiveTab('emas')} />}
+                {activeTab === 'hubungi-kami' && <UserHubungiKami />}
                 {activeTab === 'setor' && (
                   <SetorPage
                     defaultTipe={setorDefaultTipe}
