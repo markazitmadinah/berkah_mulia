@@ -28,6 +28,7 @@ use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Maatwebsite\Excel\Facades\Excel;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
@@ -340,7 +341,7 @@ class UserController extends Controller
         $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
-            'phone' => 'required|string|max:20|unique:users,phone',
+            'phone' => 'nullable|string|max:20|unique:users,phone',
             'nomor_anggota' => 'required|string|regex:/^\d{10}$/|unique:users,nomor_anggota',
             'password' => 'required|string|min:8',
             'role' => 'sometimes|string|in:admin,user',
@@ -352,8 +353,12 @@ class UserController extends Controller
         $roleValue = $request->input('role', 'user');
         $statusValue = $request->input('status', 'active');
 
+        // Auto-generate username unik dari nama depan + 4 digit random
+        $username = $this->generateUniqueUsername($request->name);
+
         $user = new User([
             'name' => $request->name,
+            'username' => $username,
             'email' => $request->email,
             'phone' => $request->phone,
             'nomor_anggota' => $request->nomor_anggota,
@@ -375,6 +380,21 @@ class UserController extends Controller
         AuditLog::record('create', $user);
 
         return $this->createdResponse(new UserResource($user), 'Pengguna berhasil dibuat.');
+    }
+
+    /**
+     * Generate username unik: slug nama_depan + 4 digit random.
+     */
+    private function generateUniqueUsername(string $name): string
+    {
+        $base = preg_replace('/[^a-z0-9]/', '', strtolower(Str::slug(explode(' ', trim($name))[0], '')));
+        if (strlen($base) < 3) {
+            $base = 'user';
+        }
+        do {
+            $candidate = $base . rand(1000, 9999);
+        } while (User::where('username', $candidate)->exists());
+        return $candidate;
     }
 
     /**
@@ -572,5 +592,39 @@ class UserController extends Controller
             'detail_dilewati'    => $import->getSkippedDetail(),
             'tabungan'           => $tabungan,
         ], "Import selesai. {$import->getCreatedCount()} ditambahkan, {$import->getUpdatedCount()} diupdate, {$import->getSkippedCount()} dilewati.");
+    }
+
+    /**
+     * POST /admin/users/import-laporan
+     * Import dari format Laporan Harian koperasi (Excel).
+     * Auto-create user baru berdasarkan nama nasabah + catat transaksi historis.
+     */
+    public function importLaporan(Request $request): JsonResponse
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:xlsx,xls,csv|max:20480',
+        ]);
+
+        $import = new \App\Imports\LaporanHarianImport();
+        try {
+            DB::transaction(function () use ($import, $request) {
+                \Maatwebsite\Excel\Facades\Excel::import($import, $request->file('file'));
+            });
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Import laporan harian gagal: ' . $e->getMessage(), ['exception' => $e]);
+            return $this->errorResponse('Import gagal: ' . $e->getMessage(), 500);
+        }
+
+        AuditLog::record('import_laporan', $request->user(), [], [
+            'user_dibuat'       => $import->getUserDibuat(),
+            'transaksi_dibuat'  => $import->getTransaksiDibuat(),
+        ]);
+
+        return $this->successResponse([
+            'user_dibuat'       => $import->getUserDibuat(),
+            'transaksi_dibuat'  => $import->getTransaksiDibuat(),
+            'row_dilewati'      => $import->getRowDilewati(),
+            'detail_dilewati'   => $import->getSkippedDetail(),
+        ], "Import laporan selesai. {$import->getUserDibuat()} user baru, {$import->getTransaksiDibuat()} transaksi dicatat.");
     }
 }

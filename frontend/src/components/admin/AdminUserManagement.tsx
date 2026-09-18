@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { UserAvatar } from '../ui/UserAvatar';
+import { ImportLaporanModal } from '../modals/ImportLaporanModal';
 import {
   Users,
   FileSpreadsheet,
@@ -15,7 +16,8 @@ import {
   Shield,
   UserCheck,
   Plus,
-  UserRoundSearch
+  UserRoundSearch,
+  ClipboardList
 } from 'lucide-react';
 import { User } from '../../types';
 interface AdminUserManagementProps {
@@ -57,6 +59,8 @@ export const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
     downloadUserTemplate();
   };
 
+  const [showImportLaporan, setShowImportLaporan] = useState(false);
+
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Header & Actions */}
@@ -86,7 +90,16 @@ export const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
             className="py-2.5 px-3.5 rounded-2xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
           >
             <Upload className="w-3.5 h-3.5 text-blue-600" />
-            <span>Import</span>
+            <span>Import Nasabah</span>
+          </button>
+
+          <button
+            onClick={() => setShowImportLaporan(true)}
+            className="py-2.5 px-3.5 rounded-2xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+            title="Import data dari laporan harian Excel"
+          >
+            <ClipboardList className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Import Laporan</span>
           </button>
 
           <button
@@ -107,6 +120,12 @@ export const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Modal Import Laporan Harian */}
+      <ImportLaporanModal
+        isOpen={showImportLaporan}
+        onClose={() => setShowImportLaporan(false)}
+      />
 
       {/* Filter Row */}
       <div className="flex flex-wrap items-center gap-3">

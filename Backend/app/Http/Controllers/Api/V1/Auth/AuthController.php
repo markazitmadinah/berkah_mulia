@@ -29,10 +29,22 @@ class AuthController extends Controller
      */
     public function login(LoginRequest $request): JsonResponse
     {
-        $user = User::where('email', $request->email)->first();
+        $identifier = trim($request->username);
+
+        // Deteksi jenis identifier:
+        // 1. Format email → cari di kolom email (admin)
+        // 2. 10 digit angka → cari di nomor_anggota (nasabah)
+        // 3. Lainnya → cari di kolom username (nasabah)
+        if (filter_var($identifier, FILTER_VALIDATE_EMAIL)) {
+            $user = User::where('email', $identifier)->first();
+        } elseif (preg_match('/^\d{10}$/', $identifier)) {
+            $user = User::where('nomor_anggota', $identifier)->first();
+        } else {
+            $user = User::where('username', $identifier)->first();
+        }
 
         if (! $user || ! Hash::check($request->password, $user->password)) {
-            return $this->errorResponse('Email atau password salah.', 401, 'INVALID_CREDENTIALS');
+            return $this->errorResponse('Username/nomor anggota atau password salah.', 401, 'INVALID_CREDENTIALS');
         }
 
         // Anti-enumeration: a non-active account returns the SAME generic 401 as
@@ -40,8 +52,12 @@ class AuthController extends Controller
         // exact status. Legitimate users are still notified via their registration
         // email/notification; rejected reason stays internal.
         if ($user->status !== UserStatus::Active) {
-            return $this->errorResponse('Email atau password salah.', 401, 'INVALID_CREDENTIALS');
+            return $this->errorResponse('Username/nomor anggota atau password salah.', 401, 'INVALID_CREDENTIALS');
         }
+
+        // Flag onboarding: nasabah yang belum lengkap profil
+        $needsOnboarding = $user->role === UserRole::User
+            && (empty($user->phone) || empty($user->address));
 
         // Update last login
         $user->update(['last_login_at' => now()]);
@@ -53,6 +69,7 @@ class AuthController extends Controller
             'user' => new UserResource($user),
             'token' => $token,
             'token_type' => 'Bearer',
+            'needs_onboarding' => $needsOnboarding,
         ], 'Login berhasil.');
     }
 

@@ -120,7 +120,7 @@ interface AppContextType {
   toggleTheme: () => void;
   booted: boolean;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
   logout: () => void;
 
   currentUser: User;
@@ -204,6 +204,7 @@ interface AppContextType {
   updateUser: (userId: number, userData: Record<string, unknown>) => void;
   deleteUser: (userId: number) => void;
   importUsers: (file: File) => Promise<void>;
+  importLaporanHarian: (file: File) => Promise<void>;
   downloadUserTemplate: () => Promise<void>;
   exportUsers: () => Promise<void>;
   exportTransaksi: (filters?: TransaksiFilters) => Promise<void>;
@@ -681,8 +682,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
 
   // ─── Auth ─────────────────────────────────────────────────
-  const login = async (email: string, password: string) => {
-    const res = await api.post<{ user: User; token: string }>('/auth/login', { email, password });
+  const login = async (username: string, password: string) => {
+    const res = await api.post<{ user: User; token: string; needs_onboarding?: boolean }>('/auth/login', { username, password });
     const { user, token } = res.data;
     setToken(token);
     const u = normUser(user);
@@ -926,6 +927,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
       .catch((e: { message?: string }) => {
         showToast(e?.message || 'Gagal mengimpor file.', 'error');
+        throw e;
+      });
+  };
+
+  const importLaporanHarian = (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api
+      .postForm<any>('/admin/users/import-laporan', form)
+      .then((res) => {
+        const userDibuat = res?.data?.user_dibuat ?? 0;
+        const transaksiDibuat = res?.data?.transaksi_dibuat ?? 0;
+        const detail: string[] = (res?.data?.detail_dilewati || []) as string[];
+        let msg = res?.message || `Import selesai: ${userDibuat} user baru, ${transaksiDibuat} transaksi dicatat.`;
+        if (detail.length) msg += ' · ' + detail.slice(0, 3).join(' · ');
+        showToast(msg, 'success');
+        return refresh(currentUser);
+      })
+      .catch((e: { message?: string }) => {
+        showToast(e?.message || 'Gagal mengimpor laporan harian.', 'error');
         throw e;
       });
   };
@@ -1457,6 +1478,7 @@ setActiveTab,
     updateUser,
     deleteUser,
     importUsers,
+    importLaporanHarian,
     downloadUserTemplate,
     exportUsers,
     exportTransaksi,

@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Mail, Lock, LogIn, ShieldCheck, Loader2 } from 'lucide-react';
+import { UserCircle, Lock, LogIn, ShieldCheck, Loader2 } from 'lucide-react';
 import logo from '../../logo.png';
 
 export const LoginPage: React.FC = () => {
   const { login } = useApp();
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -15,9 +15,9 @@ export const LoginPage: React.FC = () => {
     setSubmitting(true);
     setError('');
     try {
-      await login(email.trim(), password);
+      await login(username.trim(), password);
     } catch (err) {
-      setError((err as { message?: string })?.message || 'Login gagal. Periksa email dan password Anda.');
+      setError((err as { message?: string })?.message || 'Login gagal. Periksa username dan password Anda.');
     } finally {
       setSubmitting(false);
     }
@@ -99,16 +99,17 @@ export const LoginPage: React.FC = () => {
 
             <div>
               <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                Alamat Email
+                Username / Nomor Anggota
               </label>
               <div className="relative">
-                <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <UserCircle className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
-                  type="email"
+                  type="text"
                   required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="nama@berkahmulia.com"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="username, nomor anggota, atau email admin"
+                  autoComplete="username"
                   className="w-full pl-10 pr-4 py-3 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/60"
                 />
               </div>

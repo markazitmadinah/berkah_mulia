@@ -143,6 +143,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::get('/users/export', [AdminUserController::class, 'export']);
         Route::get('/users/import/template', [AdminUserController::class, 'importTemplate']);
         Route::post('/users/import', [AdminUserController::class, 'import']);
+        Route::post('/users/import-laporan', [AdminUserController::class, 'importLaporan']);
         Route::get('/users/{user}', [AdminUserController::class, 'show']);
         Route::get('/users/{user}/produk', [AdminUserController::class, 'produk']);
         Route::post('/users', [AdminUserController::class, 'store']);

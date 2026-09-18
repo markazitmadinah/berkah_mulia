@@ -156,6 +156,7 @@ class UsersImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithCalcul
             // forceFill: role/status/approved_by/approved_at tidak fillable (mass-assignment).
             $user = (new User)->forceFill([
                 'name'             => trim((string) $row['nama_lengkap']),
+                'username'         => $this->generateUniqueUsername(trim((string) $row['nama_lengkap'])),
                 'email'            => $email,
                 'phone'            => $phone,
                 'nomor_anggota'    => $anggota,
@@ -383,5 +384,17 @@ class UsersImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithCalcul
             'dibekukan', 'suspended' => UserStatus::Suspended->value,
             default => UserStatus::Active->value,
         };
+    }
+
+    private function generateUniqueUsername(string $name): string
+    {
+        $base = preg_replace('/[^a-z0-9]/', '', strtolower(Str::slug(explode(' ', trim($name))[0], '')));
+        if (strlen($base) < 3) {
+            $base = 'user';
+        }
+        do {
+            $candidate = $base . rand(1000, 9999);
+        } while (User::where('username', $candidate)->exists());
+        return $candidate;
     }
 }

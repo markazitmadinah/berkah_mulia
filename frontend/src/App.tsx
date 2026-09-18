@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { LoginPage } from './components/auth/LoginPage';
+import { OnboardingPage } from './components/auth/OnboardingPage';
 import { Sidebar } from './components/layout/Sidebar';
 import { Navbar } from './components/layout/Navbar';
 import { LayoutSkeleton, DashboardSkeleton } from './components/ui/Skeleton';
@@ -569,13 +570,24 @@ const AuthGate: React.FC = () => {
     return <LayoutSkeleton />;
   }
 
-  return currentUser.id > 0 ? (
-    <ErrorBoundary key={currentUser.id}>
-      <MainLayout />
-    </ErrorBoundary>
-  ) : (
-    <LoginPage />
-  );
+  if (currentUser.id > 0) {
+    // Nasabah (role=user) wajib lengkapi HP & alamat sebelum masuk dashboard
+    const needsOnboarding =
+      currentUser.role === 'user' &&
+      (!currentUser.phone || !currentUser.address);
+
+    if (needsOnboarding) {
+      return <OnboardingPage />;
+    }
+
+    return (
+      <ErrorBoundary key={currentUser.id}>
+        <MainLayout />
+      </ErrorBoundary>
+    );
+  }
+
+  return <LoginPage />;
 };
 
 export default function App() {

@@ -788,8 +788,9 @@ const PlanModal: React.FC<PlanModalProps> = ({ jenis, planType, users, initialUs
   const { activeHargaEmas } = useApp();
   const [userId, setUserId] = useState<number>(initialUserId ?? users[0]?.id ?? 0);
   const [nominal, setNominal] = useState('');
-  const [durasi, setDurasi] = useState<string>('12');
-  const [frekuensi, setFrekuensi] = useState<FrekuensiSetoran>('bulanan');
+  // Default 100 hari untuk tabungan emas harian (bisa diubah user)
+  const [durasi, setDurasi] = useState<string>('100');
+  const [frekuensi, setFrekuensi] = useState<FrekuensiSetoran>('harian');
   const [gram, setGram] = useState('');
   const [err, setErr] = useState('');
   const [selisih, setSelisih] = useState('');

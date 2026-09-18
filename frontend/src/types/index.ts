@@ -20,6 +20,7 @@ export type StatusGadai = 'diajukan' | 'disetujui' | 'aktif' | 'jatuh_tempo' | '
 export interface User {
   id: number;
   name: string;
+  username: string;
   email: string;
   phone: string;
   nomor_anggota?: string;
@@ -35,6 +36,7 @@ export interface User {
   last_login_at?: string;
   created_at: string;
   account_number?: string;
+  needs_onboarding?: boolean;
 }
 
 export interface JenisTabungan {
