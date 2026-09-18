@@ -46,7 +46,11 @@ class UsersExport implements
 
     public function query()
     {
-        $query = User::query()->latest();
+        $query = User::with([
+            'transaksi',
+            'pendaftaranQurban',
+            'tabunganBerjangka',
+        ])->latest();
 
         if ($this->filters['status']) {
             $query->where('status', $this->filters['status']);
@@ -58,6 +62,7 @@ class UsersExport implements
             $search = $this->filters['search'];
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('username', 'like', "%{$search}%")
                     ->orWhere('email', 'like', "%{$search}%")
                     ->orWhere('nomor_anggota', 'like', "%{$search}%");
             });
@@ -70,13 +75,18 @@ class UsersExport implements
     {
         return [
             'No',
-            'Nama Lengkap',
             'No Anggota',
+            'Username',
+            'Nama Lengkap',
             'Email',
             'No. Handphone',
             'Alamat',
+            'Total Saldo Simpanan (Rp)',
+            'Total Tabungan Emas (g)',
+            'Program Aktif',
             'Peran',
-            'Status',
+            'Status Akun',
+            'Kelengkapan Profil',
             'Terdaftar',
         ];
     }
@@ -86,15 +96,52 @@ class UsersExport implements
         static $no = 0;
         $no++;
 
+        // Hitung akumulasi saldo setor - tarik terverifikasi (cash)
+        $saldoSimpanan = (float) $user->transaksi
+            ->filter(fn ($t) => ($t->status_verifikasi?->value ?? (string) $t->status_verifikasi) === 'terverifikasi' && empty($t->nominal_emas))
+            ->reduce(function ($carry, $t) {
+                $isSetor = ($t->jenis_transaksi?->value ?? (string) $t->jenis_transaksi) === 'setor';
+                $nominal = (float) ($t->nominal ?? 0);
+                return $carry + ($isSetor ? $nominal : -$nominal);
+            }, 0);
+
+        // Hitung total gram emas dari transaksi terverifikasi
+        $saldoGram = (float) $user->transaksi
+            ->filter(fn ($t) => ($t->status_verifikasi?->value ?? (string) $t->status_verifikasi) === 'terverifikasi' && !empty($t->unit_didapat))
+            ->reduce(function ($carry, $t) {
+                $isSetor = ($t->jenis_transaksi?->value ?? (string) $t->jenis_transaksi) === 'setor';
+                $gram = (float) ($t->unit_didapat ?? 0);
+                return $carry + ($isSetor ? $gram : -$gram);
+            }, 0);
+
+        // Program tabungan yang aktif
+        $programList = [];
+        $qurbanCount = $user->pendaftaranQurban->whereNotIn('status', ['batal', 'sudah_lunas', 'sudah_dicairkan'])->count();
+        if ($qurbanCount > 0) {
+            $programList[] = "Qurban ({$qurbanCount})";
+        }
+        $berjangkaCount = $user->tabunganBerjangka->whereIn('status', ['aktif', 'menunggu_approval'])->count();
+        if ($berjangkaCount > 0) {
+            $programList[] = "Berjangka ({$berjangkaCount})";
+        }
+        $programStr = !empty($programList) ? implode(', ', $programList) : 'Simpanan Reguler';
+
+        $isLengkap = !empty($user->phone) && !empty($user->address);
+
         return [
             $no,
-            $this->safeCell($user->name),
             $this->safeCell($user->nomor_anggota ?? '-'),
+            $this->safeCell($user->username ?? '-'),
+            $this->safeCell($user->name),
             $this->safeCell($user->email),
-            $this->safeCell($user->phone),
+            $this->safeCell($user->phone ?? '-'),
             $this->safeCell($user->address ?: '-'),
+            max(0, $saldoSimpanan),
+            max(0, $saldoGram),
+            $this->safeCell($programStr),
             $this->safeCell($user->role instanceof UserRole ? $user->role->label() : (string) $user->role),
             $this->safeCell($user->status instanceof UserStatus ? $user->status->label() : (string) $user->status),
+            $isLengkap ? 'Lengkap' : 'Belum Lengkap',
             $user->created_at?->format('d/m/Y'),
         ];
     }
@@ -111,7 +158,9 @@ class UsersExport implements
     public function columnFormats(): array
     {
         return [
-            'I' => NumberFormat::FORMAT_DATE_DDMMYYYY,
+            'H' => '#,##0',
+            'I' => '0.0000',
+            'N' => NumberFormat::FORMAT_DATE_DDMMYYYY,
         ];
     }
 

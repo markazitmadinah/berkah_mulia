@@ -53,7 +53,15 @@ class TransaksiExport implements
 
     public function query()
     {
-        $query = Transaksi::with(['user', 'jenisTabungan'])->latest();
+        $query = Transaksi::with([
+            'user',
+            'jenisTabungan',
+            'rekeningBank',
+            'diverifikasiOleh',
+            'pendaftaranQurban.hewanQurban',
+            'tabunganBerjangka',
+            'gadai',
+        ])->latest();
 
         if ($this->filters['status']) {
             $query->where('status_verifikasi', $this->filters['status']);
@@ -72,7 +80,7 @@ class TransaksiExport implements
             $search = $this->filters['search'];
             $query->where(function ($q) use ($search) {
                 $q->where('nomor_referensi', 'like', "%{$search}%")
-                    ->orWhereHas('user', fn ($uq) => $uq->where('name', 'like', "%{$search}%"));
+                    ->orWhereHas('user', fn ($uq) => $uq->where('name', 'like', "%{$search}%")->orWhere('nomor_anggota', 'like', "%{$search}%"));
             });
         }
         if ($this->filters['tanggalAwal']) {
@@ -90,14 +98,24 @@ class TransaksiExport implements
         return [
             'No',
             'No Referensi',
-            'Nasabah',
+            'No Anggota',
+            'Nama Nasabah',
+            'No. Handphone',
             'Produk Tabungan',
-            'Jenis Transaksi',
+            'Detail Program',
+            'Jenis Mutasi',
             'Nominal (Rp)',
             'Gram Emas (g)',
+            'Harga Emas Acuan (Rp)',
+            'Biaya Penalti (Rp)',
             'Metode Pembayaran',
+            'Rekening Tujuan / Kas',
             'Tanggal Transaksi',
-            'Status',
+            'Status Verifikasi',
+            'Diverifikasi Oleh',
+            'Waktu Verifikasi',
+            'Catatan Nasabah',
+            'Catatan Admin',
         ];
     }
 
@@ -106,17 +124,47 @@ class TransaksiExport implements
         static $no = 0;
         $no++;
 
+        $detailProgram = '-';
+        if ($row->pendaftaranQurban) {
+            $detailProgram = 'Qurban ' . ($row->pendaftaranQurban->hewanQurban?->jenis_hewan ?? 'Hewan') . ' (' . $row->pendaftaranQurban->jumlah_hewan . ' ekor)';
+        } elseif ($row->tabunganBerjangka) {
+            $detailProgram = 'Berjangka ' . $row->tabunganBerjangka->durasi_bulan . ' Bln (' . ($row->tabunganBerjangka->frekuensiLabel() ?: $row->tabunganBerjangka->frekuensi_setor) . ')';
+        } elseif ($row->gadai) {
+            $detailProgram = 'Gadai ' . ($row->gadai->nomor_gadai ?? '-');
+        } elseif ($row->konfigurasi_id) {
+            $detailProgram = 'Tabungan Emas Rutin';
+        }
+
+        $rekening = '-';
+        if (($row->metode_pembayaran?->value ?? (string) $row->metode_pembayaran) === 'transfer') {
+            $rekening = $row->rekeningBank
+                ? ($row->rekeningBank->nama_bank . ' - ' . $row->rekeningBank->nomor_rekening . ' a.n ' . $row->rekeningBank->atas_nama)
+                : 'Transfer Bank';
+        } elseif (($row->metode_pembayaran?->value ?? (string) $row->metode_pembayaran) === 'cash') {
+            $rekening = 'Kas Kantor / Tunai';
+        }
+
         return [
             $no,
             $this->safeCell($row->nomor_referensi),
+            $this->safeCell($row->user->nomor_anggota ?? '-'),
             $this->safeCell($row->user->name ?? ($row->user_name ?? '-')),
+            $this->safeCell($row->user->phone ?? '-'),
             $this->safeCell($row->jenisTabungan->nama ?? '-'),
+            $this->safeCell($detailProgram),
             $this->safeCell($row->jenis_transaksi instanceof JenisTransaksi ? $row->jenis_transaksi->label() : (string) $row->jenis_transaksi),
-            $row->nominal,
-            $row->unit_didapat,
+            (float) ($row->nominal ?? 0),
+            (float) ($row->unit_didapat ?? 0),
+            (float) ($row->harga_acuan_snapshot ?? 0),
+            (float) ($row->biaya_penalti ?? 0),
             $this->safeCell($row->metode_pembayaran instanceof MetodePembayaran ? $row->metode_pembayaran->label() : (string) $row->metode_pembayaran),
+            $this->safeCell($rekening),
             $row->tanggal_transaksi?->format('d/m/Y'),
             $this->safeCell($row->status_verifikasi instanceof StatusVerifikasi ? $row->status_verifikasi->label() : (string) $row->status_verifikasi),
+            $this->safeCell($row->diverifikasiOleh?->name ?? '-'),
+            $this->safeCell($row->diverifikasi_pada?->format('d/m/Y H:i') ?? '-'),
+            $this->safeCell($row->catatan_user ?? '-'),
+            $this->safeCell($row->catatan_admin ?? '-'),
         ];
     }
 
@@ -132,9 +180,11 @@ class TransaksiExport implements
     public function columnFormats(): array
     {
         return [
-            'F' => '#,##0',
-            'G' => '0.####',
-            'I' => NumberFormat::FORMAT_DATE_DDMMYYYY,
+            'I' => '#,##0',
+            'J' => '0.0000',
+            'K' => '#,##0',
+            'L' => '#,##0',
+            'O' => NumberFormat::FORMAT_DATE_DDMMYYYY,
         ];
     }
 
