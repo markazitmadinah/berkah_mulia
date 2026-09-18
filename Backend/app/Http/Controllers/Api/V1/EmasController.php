@@ -148,14 +148,20 @@ class EmasController extends Controller
         }
 
         $saldoDana = $this->saldoEmasService->getSaldoDana($request->user(), $jenisTabungan);
+        // Harga jual hari ini = harga acuan + markup sesuai gramasi pembelian.
+        // Rencana setor: gramasi = target gram per periode. Luar rencana: estimasi nominal / harga acuan.
+        $gramasi = $konfigurasi && (float) $konfigurasi->target_gram_per_periode > 0
+            ? (float) $konfigurasi->target_gram_per_periode
+            : ((float) $harga->harga_per_gram > 0 ? (float) $request->nominal / (float) $harga->harga_per_gram : 0.0);
+        $hargaJual = $harga->hargaJualPerGram($gramasi);
         $porsi = $this->saldoEmasService->hitungSetoran(
             (float) $request->nominal,
             $konfigurasi,
             $saldoDana,
-            (float) $harga->harga_per_gram
+            $hargaJual
         );
 
-        $transaksi = DB::transaction(function () use ($request, $jenisTabungan, $porsi, $harga, $konfigurasi) {
+        $transaksi = DB::transaction(function () use ($request, $jenisTabungan, $porsi, $harga, $hargaJual, $konfigurasi) {
             $transaksi = $this->transaksiService->buatTransaksi([
                 'user_id' => $request->user()->id,
                 'jenis_tabungan_id' => $jenisTabungan->id,
@@ -166,7 +172,7 @@ class EmasController extends Controller
                 'nominal_selisih' => $porsi['nominal_selisih'],
                 'unit_didapat' => $porsi['unit_didapat'],
                 'harga_acuan_id' => $harga->id,
-                'harga_acuan_snapshot' => $harga->harga_per_gram,
+                'harga_acuan_snapshot' => $hargaJual,
                 'metode_pembayaran' => $request->metode_pembayaran,
                 'rekening_bank_id' => $request->rekening_bank_id,
                 'catatan_user' => $request->catatan_user,
@@ -190,8 +196,8 @@ class EmasController extends Controller
 
     /**
      * POST /emas/tarik
-     * Pencairan FULL saldo emas — hanya boleh jika goal tercapai.
-     * Gram pemilik berkurang setelah diverifikasi admin.
+     * Pencairan FULL saldo emas (gram + saldo dana) — hanya boleh jika goal tercapai.
+     * Refund = total tabungan dipotong 10%. Gram & dana berkurang setelah diverifikasi admin.
      */
     public function tarik(Request $request): JsonResponse
     {
@@ -238,21 +244,28 @@ class EmasController extends Controller
             return $this->errorResponse('Anda masih memiliki pengajuan penarikan/pembatalan yang menunggu verifikasi admin.', 422, 'WITHDRAWAL_PENDING');
         }
 
-        $nominal = round($saldoGram * (float) $harga->harga_per_gram, 2);
+        $hargaJualGram = $harga->hargaJualPerGram($saldoGram);
+        $nilaiGram = round($saldoGram * $hargaJualGram, 2);
+        $saldoDana = $this->saldoEmasService->getSaldoDana($request->user(), $jenisTabungan);
+        ['penalti' => $penalti, 'refund' => $nominal] = $this->saldoEmasService->hitungRefund($nilaiGram, $saldoDana);
 
-        $transaksi = DB::transaction(function () use ($request, $jenisTabungan, $saldoGram, $nominal, $harga) {
+        $transaksi = DB::transaction(function () use ($request, $jenisTabungan, $saldoGram, $nilaiGram, $saldoDana, $penalti, $nominal, $harga, $hargaJualGram) {
             return $this->transaksiService->buatTransaksi([
                 'user_id' => $request->user()->id,
                 'jenis_tabungan_id' => $jenisTabungan->id,
                 'jenis_transaksi' => JenisTransaksi::Tarik,
                 'nominal' => $nominal,
+                'nominal_emas' => $nilaiGram,
+                'nominal_selisih' => -1 * $saldoDana,
                 'unit_didapat' => -1 * $saldoGram,
+                'biaya_penalti' => $penalti,
                 'harga_acuan_id' => $harga->id,
-                'harga_acuan_snapshot' => $harga->harga_per_gram,
+                'harga_acuan_snapshot' => $hargaJualGram,
                 'metode_pembayaran' => MetodePembayaran::Transfer,
-                'catatan_user' => $request->catatan_user
-                    ? "Pencairan full saldo ke {$request->bank_tujuan} ({$request->no_rekening} a.n {$request->atas_nama}). {$request->catatan_user}"
-                    : "Pencairan full saldo ke {$request->bank_tujuan} ({$request->no_rekening} a.n {$request->atas_nama}).",
+                'catatan_user' => 'Pencairan full saldo (refund setelah potongan 10% Rp '
+                    . number_format($penalti, 0, ',', '.') . ') ke '
+                    . "{$request->bank_tujuan} ({$request->no_rekening} a.n {$request->atas_nama})."
+                    . ($request->catatan_user ? " {$request->catatan_user}" : ''),
             ]);
         });
 
@@ -297,25 +310,27 @@ class EmasController extends Controller
             return $this->errorResponse('Anda masih memiliki pengajuan penarikan yang menunggu verifikasi admin.', 422, 'WITHDRAWAL_PENDING');
         }
 
-        $nominal = round($saldoGram * (float) $harga->harga_per_gram, 2);
+        $nominal = round($saldoGram * $harga->hargaJualPerGram($saldoGram), 2);
 
         $transaksi = DB::transaction(function () use ($request, $jenisTabungan, $saldoGram, $nominal, $harga) {
-            return $this->transaksiService->buatTransaksi([
+            $t = $this->transaksiService->buatTransaksi([
                 'user_id' => $request->user()->id,
                 'jenis_tabungan_id' => $jenisTabungan->id,
                 'jenis_transaksi' => JenisTransaksi::Tarik,
                 'nominal' => $nominal,
                 'unit_didapat' => -1 * $saldoGram,
                 'harga_acuan_id' => $harga->id,
-                'harga_acuan_snapshot' => $harga->harga_per_gram,
+                'harga_acuan_snapshot' => $harga->hargaJualPerGram($saldoGram),
                 'metode_pembayaran' => MetodePembayaran::Cash,
                 'catatan_user' => 'Penukaran emas fisik di toko.',
                 'auto_verify' => true,
             ]);
-        });
 
-        // Reset goal emas setelah tukar selesai (gram sudah berkurang).
-        $request->user()->update(['target_emas_gram' => null]);
+            // Reset goal emas setelah tukar selesai (gram sudah berkurang).
+            $request->user()->update(['target_emas_gram' => null]);
+
+            return $t;
+        });
 
         // Notif ke user: silakan ambil emas di toko.
         $this->notif->kirim(
@@ -347,8 +362,8 @@ class EmasController extends Controller
 
     /**
      * POST /emas/batal
-     * Batalkan tabungan emas sebelum goal tercapai → refund 90% dari nilai saldo
-     * (potongan 10% dari nilai saldo terkumpul). Sisa gram dinolkan setelah diverifikasi admin.
+     * Batalkan tabungan emas sebelum goal tercapai → refund TOTAL tabungan
+     * (nilai emas + saldo dana) dipotong 10%. Sisa gram & dana dinolkan setelah diverifikasi admin.
      */
     public function batal(Request $request): JsonResponse
     {
@@ -389,13 +404,11 @@ class EmasController extends Controller
             return $this->errorResponse('Anda masih memiliki pengajuan penarikan/pembatalan yang menunggu verifikasi admin.', 422, 'WITHDRAWAL_PENDING');
         }
 
-        $hargaPerGram = (float) $harga->harga_per_gram;
+        $hargaPerGram = $harga->hargaJualPerGram($saldoGram);
         $nilaiSaldo = round($saldoGram * $hargaPerGram, 2);
-        $penalti = round($nilaiSaldo * 0.10, 2);
-        $refundEmas = round($nilaiSaldo - $penalti, 2);
-        $refundTotal = round($refundEmas + $saldoDana, 2);
+        ['penalti' => $penalti, 'refund' => $refundTotal] = $this->saldoEmasService->hitungRefund($nilaiSaldo, $saldoDana);
 
-        $transaksi = DB::transaction(function () use ($request, $jenisTabungan, $saldoGram, $nilaiSaldo, $penalti, $refundEmas, $refundTotal, $saldoDana, $hargaPerGram, $harga) {
+        $transaksi = DB::transaction(function () use ($request, $jenisTabungan, $saldoGram, $nilaiSaldo, $penalti, $refundTotal, $saldoDana, $hargaPerGram, $harga) {
             return $this->transaksiService->buatTransaksi([
                 'user_id' => $request->user()->id,
                 'jenis_tabungan_id' => $jenisTabungan->id,
@@ -408,43 +421,18 @@ class EmasController extends Controller
                 'harga_acuan_snapshot' => $hargaPerGram,
                 'biaya_penalti' => $penalti,
                 'metode_pembayaran' => MetodePembayaran::Transfer,
-                'catatan_user' => $request->catatan_user
-                    ? "Pembatalan tabungan emas. Refund: emas 90% (Rp " . number_format($refundEmas, 0, ',', '.') . " setelah potong 10% Rp " . number_format($penalti, 0, ',', '.') . ") + saldo dana 100% (Rp " . number_format($saldoDana, 0, ',', '.') . ") = Rp " . number_format($refundTotal, 0, ',', '.') . " ke {$request->bank_tujuan} ({$request->no_rekening} a.n {$request->atas_nama}). {$request->catatan_user}"
-                    : "Pembatalan tabungan emas. Refund: emas 90% (Rp " . number_format($refundEmas, 0, ',', '.') . " setelah potong 10% Rp " . number_format($penalti, 0, ',', '.') . ") + saldo dana 100% (Rp " . number_format($saldoDana, 0, ',', '.') . ") = Rp " . number_format($refundTotal, 0, ',', '.') . " ke {$request->bank_tujuan} ({$request->no_rekening} a.n {$request->atas_nama}).",
+                'catatan_user' => 'Pembatalan tabungan emas. Refund: total tabungan (emas Rp '
+                    . number_format($nilaiSaldo, 0, ',', '.') . ' + saldo dana Rp ' . number_format($saldoDana, 0, ',', '.')
+                    . ') dipotong 10% Rp ' . number_format($penalti, 0, ',', '.')
+                    . ' = Rp ' . number_format($refundTotal, 0, ',', '.')
+                    . " ke {$request->bank_tujuan} ({$request->no_rekening} a.n {$request->atas_nama})."
+                    . ($request->catatan_user ? " {$request->catatan_user}" : ''),
             ]);
         });
 
         return $this->createdResponse(
             new TransaksiResource($transaksi->load(['jenisTabungan', 'rekeningBank'])),
             'Permohonan pembatalan & refund diajukan. Menunggu verifikasi admin.'
-        );
-    }
-
-    /**
-     * PUT /emas/goal
-     */
-    public function updateGoal(Request $request): JsonResponse
-    {
-        $request->validate([
-            'target_emas_gram' => 'nullable|numeric|min:0.01|max:1000000',
-        ]);
-
-        $user = $request->user();
-
-        // Goal sudah ditetapkan → terkunci. Hanya bisa diubah setelah goal tercapai
-        // dan goal dihapus oleh admin saat verifikasi pencairan (cair/batal).
-        if ($user->target_emas_gram !== null) {
-            return $this->errorResponse('Target sudah ditetapkan. Target hanya bisa diubah setelah goal tercapai dan dikonfirmasi admin.', 422, 'GOAL_LOCKED');
-        }
-
-        $user->target_emas_gram = $request->filled('target_emas_gram') ? $request->target_emas_gram : null;
-        $user->save();
-
-        return $this->successResponse(
-            ['target_emas_gram' => $user->target_emas_gram !== null ? (float) $user->target_emas_gram : null],
-            $user->target_emas_gram !== null
-                ? 'Target tabungan emas berhasil disimpan.'
-                : 'Target tabungan emas dihapus.'
         );
     }
 
@@ -539,6 +527,18 @@ class EmasController extends Controller
         if (empty($rows)) {
             return null;
         }
+
+        // Hitung harga jual markup bertingkat per item berdasarkan berat.
+        $rows = array_map(function (array $row) {
+            $markup = HargaEmasHarian::markupPerGram($row['berat_gram']);
+            $hargaPerGram = $row['berat_gram'] > 0 ? $row['harga_jual'] / $row['berat_gram'] : 0;
+
+            return array_merge($row, [
+                'markup_per_gram' => $markup,
+                'harga_jual_per_gram_markup' => (int) round($hargaPerGram + $markup),
+                'harga_jual_markup' => (int) round($row['harga_jual'] + $markup * $row['berat_gram']),
+            ]);
+        }, $rows);
 
         return [
             'tanggal' => $tanggal,

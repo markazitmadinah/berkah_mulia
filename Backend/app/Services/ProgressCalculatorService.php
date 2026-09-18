@@ -75,19 +75,30 @@ class ProgressCalculatorService
 
             $target = $this->targetUser($user, $jenis);
 
+            // Emas progress diukur dalam gram (target_emas_gram), bukan rupiah.
+            if ($jenis->tipe === TipeTabungan::Emas) {
+                $targetGram = $user->target_emas_gram !== null ? (float) $user->target_emas_gram : 0.0;
+                $unit = (float) Transaksi::milikUser($user->id)
+                    ->where('jenis_tabungan_id', $jenis->id)
+                    ->terverifikasi()
+                    ->sum('unit_didapat');
+                $persentase = $targetGram > 0 ? round(min(100, ($unit / $targetGram) * 100), 2) : null;
+            } else {
+                $persentase = $target > 0 ? round(($saldo / $target) * 100, 2) : null;
+            }
+
             $summary[] = [
                 'jenis_tabungan_id' => $jenis->id,
                 'kode' => $jenis->kode,
                 'nama' => $jenis->nama,
                 'tipe' => $jenis->tipe->value,
+                'sub_jenis' => $jenis->sub_jenis?->value ?? null,
                 'total_setoran' => $totalTerverifikasi,
                 'total_penarikan' => $totalPenarikan,
                 'saldo' => $saldo,
                 'pending_amount' => $pendingAmount,
                 'target' => $target,
-                'persentase' => $target > 0
-                    ? round(($saldo / $target) * 100, 2)
-                    : null,
+                'persentase' => $persentase,
             ];
         }
 
@@ -136,11 +147,33 @@ class ProgressCalculatorService
 
         $target = $this->targetUser($user, $jenisTabungan);
 
+        $frekuensi = null;
+        $targetRow = UserTabunganTarget::where('user_id', $user->id)
+            ->where('jenis_tabungan_id', $jenisTabungan->id)
+            ->first();
+        if ($targetRow) {
+            $frekuensi = [
+                'frekuensi_setor' => $targetRow->frekuensi_setor ?: 'bulanan',
+                'frekuensi_label' => $targetRow->frekuensiLabel() ?: 'Bulanan',
+                'nominal_per_periode' => (float) $targetRow->nominal_per_periode,
+                'sisa_pembayaran' => $targetRow->sisaPembayaran($saldo),
+            ];
+        }
+
+        // Emas progress diukur dalam gram (target_emas_gram), bukan rupiah.
+        if ($jenisTabungan->tipe === TipeTabungan::Emas) {
+            $targetGram = $user->target_emas_gram !== null ? (float) $user->target_emas_gram : 0.0;
+            $persentase = $targetGram > 0 ? round(min(100, ((float) $totalUnit / $targetGram) * 100), 2) : null;
+        } else {
+            $persentase = $target > 0 ? round(($saldo / $target) * 100, 2) : null;
+        }
+
         return [
             'jenis_tabungan_id' => $jenisTabungan->id,
             'kode' => $jenisTabungan->kode,
             'nama' => $jenisTabungan->nama,
             'tipe' => $jenisTabungan->tipe->value,
+            'sub_jenis' => $jenisTabungan->sub_jenis?->value ?? null,
             'total_setoran' => $totalSetor,
             'total_penarikan' => $totalTarik,
             'saldo' => $saldo,
@@ -151,10 +184,12 @@ class ProgressCalculatorService
                 ? $this->saldoEmasService->getSaldoDana($user, $jenisTabungan)
                 : 0.0,
             'target' => $target,
-            'target_unit' => $jenisTabungan->target_unit,
-            'persentase' => $target > 0
-                ? round(($saldo / $target) * 100, 2)
+            'target_emas_gram' => $jenisTabungan->tipe === TipeTabungan::Emas
+                ? ($user->target_emas_gram !== null ? (float) $user->target_emas_gram : null)
                 : null,
+            'target_unit' => $jenisTabungan->target_unit,
+            'persentase' => $persentase,
+            'frekuensi' => $frekuensi,
         ];
     }
 }

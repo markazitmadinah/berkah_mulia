@@ -36,7 +36,7 @@ class UsersImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithCalcul
      * dilewati saat import agar template yang tidak diedit tidak menjadi data nyata.
      */
     public const CONTOH_EMAIL = 'nasabah.contoh@gmail.com';
-    public const CONTOH_ANGGOTA = '1234567890123456';
+    public const CONTOH_ANGGOTA = '1234567890';
 
     private array $created = [];
     private array $updated = [];
@@ -56,7 +56,7 @@ class UsersImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithCalcul
 
     private function isEmptyRow(array $row): bool
     {
-        $fields = ['nama_lengkap', 'email', 'no_handphone', 'nomor_anggota_16_digit'];
+        $fields = ['nama_lengkap', 'email', 'no_handphone', 'nomor_anggota_10_digit'];
         foreach ($fields as $field) {
             if (trim((string) ($row[$field] ?? '')) !== '') {
                 return false;
@@ -81,7 +81,7 @@ class UsersImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithCalcul
 
         $email = Str::lower(trim((string) ($row['email'] ?? '')));
         $phone = preg_replace('/\D+/', '', (string) ($row['no_handphone'] ?? ''));
-        $anggota = $this->normalizeAnggota($row['nomor_anggota_16_digit'] ?? '');
+        $anggota = $this->normalizeAnggota($row['nomor_anggota_10_digit'] ?? $row['nomor_anggota_16_digit'] ?? '');
 
         // Baris contoh dari template: jangan pernah menjadi data nyata.
         if ($email === self::CONTOH_EMAIL && $anggota === self::CONTOH_ANGGOTA) {
@@ -100,8 +100,8 @@ class UsersImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithCalcul
         if ($phone === '') {
             $errors[] = 'No. Handphone wajib diisi';
         }
-        if (! preg_match('/^\d{16}$/', $anggota)) {
-            $errors[] = 'Nomor Anggota harus 16 digit angka';
+        if (! preg_match('/^\d{10}$/', $anggota)) {
+            $errors[] = 'Nomor Anggota harus 10 digit angka';
         }
         if (! empty($row['password']) && strlen((string) $row['password']) < 8) {
             $errors[] = 'Password minimal 8 karakter';
@@ -135,7 +135,9 @@ class UsersImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithCalcul
                     $update['status'] = $this->parseStatus($statusVal);
                 }
 
-                $existing->update($update);
+                // forceFill: role/status sengaja tidak fillable (mass-assignment),
+                // tapi import admin harus benar-benar menerapkannya.
+                $existing->forceFill($update)->save();
                 if ($existing->trashed()) {
                     $existing->restore();
                 }
@@ -151,7 +153,8 @@ class UsersImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithCalcul
                 return null;
             }
 
-            $user = User::create([
+            // forceFill: role/status/approved_by/approved_at tidak fillable (mass-assignment).
+            $user = (new User)->forceFill([
                 'name'             => trim((string) $row['nama_lengkap']),
                 'email'            => $email,
                 'phone'            => $phone,
@@ -163,6 +166,7 @@ class UsersImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithCalcul
                 'approved_by'      => auth()->id(),
                 'approved_at'      => now(),
             ]);
+            $user->save();
             $this->created[] = $email;
 
             // Diproses setelah seluruh baris selesai diinsert agar user.id tersedia.

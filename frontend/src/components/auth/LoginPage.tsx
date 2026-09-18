@@ -26,19 +26,19 @@ export const LoginPage: React.FC = () => {
   return (
     <div className="min-h-screen flex items-stretch bg-[#faf8ff]">
       {/* Left Brand Panel */}
-      <div className="hidden lg:flex flex-col justify-between w-1/2 p-12 relative overflow-hidden bg-gradient-to-br from-blue-700 via-blue-800 to-indigo-950 text-white">
-        <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-blue-500/20 blur-3xl" />
-        <div className="absolute -bottom-32 -left-16 w-[28rem] h-[28rem] rounded-full bg-teal-400/10 blur-3xl" />
+      <div className="hidden lg:flex flex-col justify-between w-1/2 p-12 relative overflow-hidden bg-gradient-to-br from-amber-600 via-yellow-700 to-amber-950 text-white">
+        <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-amber-400/20 blur-3xl" />
+        <div className="absolute -bottom-32 -left-16 w-[28rem] h-[28rem] rounded-full bg-yellow-300/10 blur-3xl" />
 
-        <div className="relative flex items-center gap-3">
+        <div className="relative flex items-center gap-4">
           <img
             src={logo}
             alt="Logo Berkah Mulia"
-            className="w-11 h-11 object-cover"
+            className="w-16 h-16 object-cover"
           />
           <div>
-            <div className="font-extrabold text-lg tracking-tight font-display">Berkah Mulia</div>
-            <p className="text-[10px] font-bold text-blue-200 tracking-widest uppercase">Wealth & Ethics Syariah</p>
+            <div className="font-extrabold text-2xl tracking-tight font-display">Berkah Mulia</div>
+            <p className="text-sm font-bold text-amber-200 tracking-widest uppercase">Wealth & Ethics Syariah</p>
           </div>
         </div>
 
@@ -46,26 +46,26 @@ export const LoginPage: React.FC = () => {
           <h1 className="text-4xl font-extrabold leading-tight font-display">
             Manajemen Tabungan Emas & Qurban Syariah
           </h1>
-          <p className="mt-4 text-sm text-blue-100/90 leading-relaxed">
+          <p className="mt-4 text-sm text-amber-50/90 leading-relaxed">
             Portal resmi Koperasi Berkah Mulia. Kelola setoran, verifikasi transaksi, dan pantau tabungan nasabah dalam satu platform.
           </p>
           <div className="mt-8 space-y-3 text-sm">
-            <div className="flex items-center gap-3 text-blue-50/80">
-              <ShieldCheck className="w-4 h-4 text-blue-300 flex-shrink-0" />
+            <div className="flex items-center gap-3 text-amber-50/80">
+              <ShieldCheck className="w-4 h-4 text-amber-300 flex-shrink-0" />
               Setoran diawasi & diproses teller setiap hari kerja
             </div>
-            <div className="flex items-center gap-3 text-blue-50/80">
-              <ShieldCheck className="w-4 h-4 text-blue-300 flex-shrink-0" />
+            <div className="flex items-center gap-3 text-amber-50/80">
+              <ShieldCheck className="w-4 h-4 text-amber-300 flex-shrink-0" />
               Bukti transfer terverifikasi otomatis oleh sistem
             </div>
-            <div className="flex items-center gap-3 text-blue-50/80">
-              <ShieldCheck className="w-4 h-4 text-blue-300 flex-shrink-0" />
+            <div className="flex items-center gap-3 text-amber-50/80">
+              <ShieldCheck className="w-4 h-4 text-amber-300 flex-shrink-0" />
               Konversi fisik gram emas mengikuti harga harian
             </div>
           </div>
         </div>
 
-        <p className="relative text-[11px] text-blue-200/60">
+        <p className="relative text-[11px] text-amber-200/60">
           © 2026 Koperasi Berkah Mulia. Seluruh data dilindungi.
         </p>
       </div>
@@ -77,10 +77,10 @@ export const LoginPage: React.FC = () => {
             <img
               src={logo}
               alt="Logo Berkah Mulia"
-              className="w-20 h-20 object-cover rounded-2xl shadow-lg shadow-blue-600/10"
+              className="w-20 h-20 object-cover rounded-2xl shadow-lg shadow-amber-600/10"
             />
             <span className="font-extrabold text-xl sm:text-2xl text-slate-900 dark:text-white font-display">Berkah Mulia</span>
-            <p className="text-[10px] font-bold text-blue-500 tracking-widest uppercase">Wealth & Ethics Syariah</p>
+            <p className="text-[10px] font-bold text-amber-600 tracking-widest uppercase">Wealth & Ethics Syariah</p>
           </div>
 
           <h2 className="text-[1.7rem] sm:text-3xl font-extrabold text-slate-900 dark:text-white font-display leading-tight text-center lg:text-left">
@@ -109,7 +109,7 @@ export const LoginPage: React.FC = () => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="nama@berkahmulia.com"
-                  className="w-full pl-10 pr-4 py-3 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                  className="w-full pl-10 pr-4 py-3 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/60"
                 />
               </div>
             </div>
@@ -126,7 +126,7 @@ export const LoginPage: React.FC = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full pl-10 pr-4 py-3 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                  className="w-full pl-10 pr-4 py-3 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/60"
                 />
               </div>
             </div>
@@ -134,7 +134,7 @@ export const LoginPage: React.FC = () => {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-extrabold flex items-center justify-center gap-2 shadow-lg shadow-blue-600/25 transition-all cursor-pointer"
+              className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-extrabold flex items-center justify-center gap-2 shadow-lg shadow-amber-600/25 transition-all cursor-pointer"
             >
               {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />}
               <span>{submitting ? 'Memverifikasi...' : 'Masuk ke Aplikasi'}</span>

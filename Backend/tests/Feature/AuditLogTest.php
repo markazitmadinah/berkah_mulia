@@ -53,14 +53,14 @@ class AuditLogTest extends ApiTestCase
             'name' => 'Siti',
             'email' => 'siti@example.com',
             'phone' => '081233344455',
-            'nomor_anggota' => '0000000020260002',
+            'nomor_anggota' => '0020260002',
             'password' => 'password123',
         ])->assertStatus(201);
 
         $this->assertDatabaseHas('audit_logs', ['action' => 'create', 'model_type' => User::class]);
     }
 
-    public function test_purge_audit_log_menghapus_riwayat_dan_menyisakan_jejak_purge(): void
+    public function test_purge_audit_log_tidak_tersedia_karena_append_only(): void
     {
         $this->seedBase();
         $this->actingAsAdmin();
@@ -68,12 +68,11 @@ class AuditLogTest extends ApiTestCase
         AuditLog::record('create', $user);
         AuditLog::record('update', $user);
 
-        $this->deleteJson('/api/v1/admin/audit-logs')
-            ->assertOk()
-            ->assertJsonPath('success', true)
-            ->assertJsonPath('data.deleted', 2);
+        $res = $this->deleteJson('/api/v1/admin/audit-logs');
+        $this->assertTrue(in_array($res->getStatusCode(), [404, 405, 500], true));
 
-        $this->assertSame(1, AuditLog::count());
-        $this->assertDatabaseHas('audit_logs', ['action' => 'purge']);
+        $this->assertSame(2, AuditLog::count());
+        $this->assertDatabaseHas('audit_logs', ['action' => 'create']);
+        $this->assertDatabaseHas('audit_logs', ['action' => 'update']);
     }
 }

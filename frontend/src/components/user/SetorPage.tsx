@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { api } from '../../lib/api';
 import { formatRupiah, parseRupiah, fmtRupiahTyping, fmtRupiahBlur } from '../../utils/format';
+import { estimasiGramDariNominal, hargaJualPerGram } from '../../utils/hargaJual';
 import {
   ArrowLeft,
   Upload,
@@ -95,12 +96,14 @@ export const SetorPage: React.FC<SetorPageProps> = ({ defaultTipe = 'emas', defa
 
   const nominalValue = parseRupiah(nominal);
   const activeHarga = activeHargaEmas ? activeHargaEmas.harga_per_gram : 1200000;
-  const estimasiGram = selTipe === 'emas' && nominalValue > 0 ? (nominalValue / activeHarga).toFixed(4) : null;
+  const estimasiGram = selTipe === 'emas' && nominalValue > 0
+    ? estimasiGramDariNominal(nominalValue, activeHarga)?.toFixed(4) ?? null
+    : null;
   const activeRekening = rekeningBank.filter((r) => r.status_aktif);
 
   const goalGram = userEmasGoal;
   const sisaGram = goalGram != null ? Math.max(goalGram - userEmasGramTotal, 0) : 0;
-  const maxNominal = goalGram != null ? Math.floor(sisaGram * activeHarga) : Infinity;
+  const maxNominal = goalGram != null ? Math.floor(sisaGram * hargaJualPerGram(activeHarga, sisaGram)) : Infinity;
   const goalTercapai = goalGram != null && userEmasGramTotal >= goalGram;
 
   const isBerjangka = selectedJenis?.sub_jenis === 'berjangka';
@@ -167,7 +170,7 @@ export const SetorPage: React.FC<SetorPageProps> = ({ defaultTipe = 'emas', defa
     }
 
     if (selectedJenis?.sub_jenis === 'hari_raya' && (hariRayaStatus?.target ?? 0) <= 0) {
-      showToast('Atur target tabungan hari raya terlebih dahulu sebelum menyetor.', 'error');
+      showToast('Target tabungan hari raya belum diatur admin.', 'error');
       return;
     }
 

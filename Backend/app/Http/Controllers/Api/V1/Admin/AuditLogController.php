@@ -50,7 +50,7 @@ class AuditLogController extends Controller
             $query->where('action', $request->action);
         }
 
-        $perPage = min($request->input('per_page', 15), 100);
+        $perPage = min($request->input('per_page', 15), 1000);
         $items = $query->latest()->paginate($perPage);
 
         return response()->json([
@@ -64,24 +64,5 @@ class AuditLogController extends Controller
                 'last_page' => $items->lastPage(),
             ],
         ]);
-    }
-
-    /**
-     * DELETE /admin/audit-logs
-     * Hapus seluruh riwayat audit agar data tidak menumpuk & membebani sistem.
-     * Satu jejak "purge" tetap ditulis setelah penghapusan sebagai bukti tindakan.
-     */
-    public function destroy(Request $request): JsonResponse
-    {
-        $deleted = AuditLog::query()->delete();
-
-        AuditLog::record('purge', $request->user(), null, ['riwayat_dihapus' => $deleted]);
-
-        return $this->successResponse(
-            ['deleted' => $deleted],
-            $deleted > 0
-                ? "{$deleted} catatan audit berhasil dihapus."
-                : 'Tidak ada catatan audit yang perlu dihapus.'
-        );
     }
 }

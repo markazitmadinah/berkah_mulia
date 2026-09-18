@@ -56,7 +56,7 @@ class GadaiController extends Controller
                 });
             })
             ->latest()
-            ->paginate(min((int) ($request->per_page ?? 25), 100));
+            ->paginate(min((int) ($request->per_page ?? 25), 1000));
 
         $semua = Gadai::query()->count();
         $summary = [
@@ -104,8 +104,7 @@ class GadaiController extends Controller
         $persen = $data['persen_gadai'] ?? 80;
         $besaran = $this->gadaiService->hitungBesaran($taksiran, (float) $persen);
 
-        $gadai = Gadai::create([
-            'nomor_gadai' => $this->gadaiService->buatNomorGadai(),
+        $gadai = $this->gadaiService->buatGadai([
             'user_id' => $peserta->id,
             'jenis_emas' => $data['jenis_emas'],
             'berat_gram' => $berat,
@@ -120,10 +119,11 @@ class GadaiController extends Controller
             'toleransi_hari' => (int) ($data['toleransi_hari'] ?? 0),
             'frekuensi_bayar' => $data['frekuensi_bayar'],
             'nominal_angkuran' => round((float) ($data['nominal_angkuran'] ?? 0), 2),
+            'bunga_persen' => round((float) ($data['bunga_persen'] ?? 4.00), 2),
+            'tipe_bunga' => $data['tipe_bunga'] ?? 'menurun',
             'status' => StatusGadai::Diajukan,
             'catatan' => $data['catatan'] ?? null,
-            'created_by' => $request->user()->id,
-        ]);
+        ], $request->user()->id);
 
         AuditLog::record('gadai.store', $gadai, null, $this->gadaiArray($gadai));
 
@@ -735,6 +735,8 @@ class GadaiController extends Controller
             'tenor_satuan' => 'required|in:harian,mingguan,bulanan',
             'frekuensi_bayar' => 'required|in:harian,mingguan,bulanan',
             'nominal_angkuran' => 'nullable|numeric|min:0',
+            'bunga_persen' => 'nullable|numeric|min:0|max:100',
+            'tipe_bunga' => 'nullable|string|in:menurun,flat',
             'toleransi_hari' => 'nullable|integer|min:0',
             'tanggal_aju' => 'nullable|date',
             'catatan' => 'nullable|string|max:1000',
@@ -784,6 +786,8 @@ class GadaiController extends Controller
             'toleransi_hari' => (int) $gadai->toleransi_hari,
             'frekuensi_bayar' => $gadai->frekuensi_bayar,
             'nominal_angkuran' => (float) $gadai->nominal_angkuran,
+            'bunga_persen' => (float) $gadai->bunga_persen,
+            'tipe_bunga' => $gadai->tipe_bunga,
             'total_dibayar' => (float) $gadai->total_dibayar,
             'sisa_pokok' => $gadai->sisaPokok(),
             'tanggal_lunas' => $gadai->tanggal_lunas?->toDateString(),

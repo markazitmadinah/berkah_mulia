@@ -6,6 +6,11 @@ interface ExportColumn {
   dataKey: string;
 }
 
+interface SummaryItem {
+  label: string;
+  value: string;
+}
+
 const EMERALD: [number, number, number] = [4, 120, 87];
 
 export function exportTablePdf(
@@ -13,7 +18,8 @@ export function exportTablePdf(
   subtitle: string,
   filename: string,
   columns: ExportColumn[],
-  rows: Record<string, string | number | null | undefined>[]
+  rows: Record<string, string | number | null | undefined>[],
+  summary?: SummaryItem[]
 ) {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -44,6 +50,29 @@ export function exportTablePdf(
   y += 12;
   doc.setDrawColor(226, 232, 240);
   doc.line(40, y, pageWidth - 40, y);
+
+  // Summary box (rekap uang masuk/keluar)
+  if (summary && summary.length) {
+    y += 16;
+    const rowsNeeded = Math.ceil(summary.length / 2);
+    const boxH = 26 + rowsNeeded * 22;
+    doc.setFillColor(239, 246, 245);
+    doc.roundedRect(40, y - 6, pageWidth - 80, boxH, 6, 6, 'F');
+    const colW = (pageWidth - 100) / 2;
+    summary.forEach((s, i) => {
+      const cx = 52 + (i % 2) * colW;
+      const cy = y + Math.floor(i / 2) * 22;
+      doc.setFontSize(7.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(4, 120, 87);
+      doc.text(s.label.toUpperCase(), cx, cy);
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42);
+      doc.text(s.value, cx, cy + 13);
+    });
+    y += boxH + 10;
+  }
 
   // Table
   autoTable(doc, {

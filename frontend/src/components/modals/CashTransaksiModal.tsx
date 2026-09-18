@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { RencanaCashOption } from '../../types';
+import { api } from '../../lib/api';
 import { QurbanIcon } from '../QurbanIcon';
 import { formatRupiah, parseRupiah, fmtRupiahTyping, fmtRupiahBlur } from '../../utils/format';
 import {
@@ -16,42 +18,94 @@ interface CashTransaksiModalProps {
   onClose: () => void;
   initialUserId?: number;
   initialJenisId?: number;
+  initialBerjangkaId?: number;
+  initialKonfigurasiId?: number;
+  initialNominal?: number;
 }
 
 export const CashTransaksiModal: React.FC<CashTransaksiModalProps> = ({
   isOpen,
   onClose,
   initialUserId,
-  initialJenisId
+  initialJenisId,
+  initialBerjangkaId,
+  initialKonfigurasiId,
+  initialNominal
 }) => {
   const {
     users,
     jenisTabungan,
     pendaftaranQurban,
     hewanQurban,
+    tabunganBerjangka,
+    fetchTabunganBerjangka,
     inputTransaksiCash,
     showToast
   } = useApp();
 
   const activeUsers = users.filter(u => u.status === 'active' && u.role === 'user');
 
+  const pendaftaranQurbanAktif = pendaftaranQurban.filter((p) => p.status === 'menabung');
+
   const [selectedUserId, setSelectedUserId] = useState<number>(activeUsers[0]?.id || 2);
   const [selectedJenisId, setSelectedJenisId] = useState<number>(jenisTabungan[0]?.id || 1);
   const [nominal, setNominal] = useState<string>('');
   const [catatan, setCatatan] = useState<string>('Setoran tunai via teller kantor');
-  const [selectedQurbanId, setSelectedQurbanId] = useState<number>(pendaftaranQurban[0]?.id || 1);
+  const [selectedQurbanId, setSelectedQurbanId] = useState<number>(pendaftaranQurbanAktif[0]?.id || 1);
+  const [selectedBerjangkaId, setSelectedBerjangkaId] = useState<number>(0);
+  const [selectedKonfigurasiId, setSelectedKonfigurasiId] = useState<number | undefined>(undefined);
+  const [rencanaOptions, setRencanaOptions] = useState<RencanaCashOption[]>([]);
 
   useEffect(() => {
     if (!isOpen) return;
+    fetchTabunganBerjangka();
     if (initialUserId) setSelectedUserId(initialUserId);
     if (initialJenisId) setSelectedJenisId(initialJenisId);
-  }, [isOpen, initialUserId, initialJenisId]);
+    if (initialBerjangkaId) setSelectedBerjangkaId(initialBerjangkaId);
+    if (initialKonfigurasiId) setSelectedKonfigurasiId(initialKonfigurasiId);
+    if (initialNominal && initialNominal > 0) setNominal(initialNominal.toLocaleString('id-ID'));
+  }, [isOpen, initialUserId, initialJenisId, initialBerjangkaId, initialKonfigurasiId, initialNominal]);
+
+  useEffect(() => {
+    const list = pendaftaranQurbanAktif.filter((p) => p.user_id === selectedUserId);
+    if (list.length > 0 && !list.some((p) => p.id === selectedQurbanId)) {
+      setSelectedQurbanId(list[0].id);
+    }
+  }, [selectedUserId, pendaftaranQurbanAktif]);
+
+  // Rencana emas aktif milik nasabah — diambil sendiri agar tidak ambigu
+  // saat nasabah punya lebih dari satu rencana (tanpa perlu dikirim pemanggil).
+  useEffect(() => {
+    if (!isOpen || !selectedUserId) return;
+    const jenis = jenisTabungan.find((j) => j.id === selectedJenisId);
+    if (jenis?.tipe !== 'emas') {
+      setRencanaOptions([]);
+      return;
+    }
+
+    let cancelled = false;
+    api.get<RencanaCashOption[]>(`/admin/users/${selectedUserId}/rencana-emas`)
+      .then((res) => {
+        if (cancelled) return;
+        setRencanaOptions(res.data);
+        if (res.data.length === 1) setSelectedKonfigurasiId(res.data[0].konfigurasi_id);
+      })
+      .catch(() => { if (!cancelled) setRencanaOptions([]); });
+    return () => { cancelled = true; };
+  }, [isOpen, selectedUserId, selectedJenisId, jenisTabungan]);
 
   if (!isOpen) return null;
 
   const selectedJenis = jenisTabungan.find(j => j.id === selectedJenisId);
 
+  // Ambil akun berjangka milik nasabah terpilih (aktif / diajukan) untuk pencatatan setoran
+  const berjangkaList = (tabunganBerjangka?.items ?? []).filter(
+    (t) => t.user_id === selectedUserId && t.status !== 'batal'
+  );
+
   const nominalValue = parseRupiah(nominal);
+  const rencanaTerpilih = rencanaOptions.find((r) => r.konfigurasi_id === selectedKonfigurasiId);
+  const qurbanTerpilih = pendaftaranQurbanAktif.find((p) => p.id === selectedQurbanId);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,12 +114,35 @@ export const CashTransaksiModal: React.FC<CashTransaksiModalProps> = ({
       return;
     }
 
+    if (selectedJenis?.tipe === 'emas' && rencanaTerpilih && nominalValue < rencanaTerpilih.nominal_per_periode) {
+      showToast(`Nominal minimal untuk rencana ini adalah Rp ${formatRupiah(rencanaTerpilih.nominal_per_periode)} (1 periode setoran).`, 'error');
+      return;
+    }
+
+    if (selectedJenis?.tipe === 'qurban' && qurbanTerpilih?.nominal_per_periode && nominalValue < qurbanTerpilih.nominal_per_periode) {
+      showToast(`Nominal minimal untuk target qurban ini adalah Rp ${formatRupiah(qurbanTerpilih.nominal_per_periode)} (1 periode setoran ${qurbanTerpilih.frekuensi_label?.toLowerCase() || 'bulanan'}).`, 'error');
+      return;
+    }
+
+    const isBerjangka = selectedJenis?.sub_jenis === 'berjangka';
+    if (isBerjangka && !selectedBerjangkaId) {
+      showToast('Pilih akun tabungan berjangka terlebih dahulu.', 'error');
+      return;
+    }
+
+    if (selectedJenis?.tipe === 'emas' && rencanaOptions.length > 0 && !selectedKonfigurasiId) {
+      showToast('Pilih rencana setoran terlebih dahulu.', 'error');
+      return;
+    }
+
     inputTransaksiCash({
       user_id: selectedUserId,
       jenis_tabungan_id: selectedJenisId,
       nominal: nominalValue,
       catatan_teller: catatan,
-      pendaftaran_qurban_id: selectedJenis?.tipe === 'qurban' ? selectedQurbanId : undefined
+      pendaftaran_qurban_id: selectedJenis?.tipe === 'qurban' ? selectedQurbanId : undefined,
+      tabungan_berjangka_id: isBerjangka ? selectedBerjangkaId : undefined,
+      konfigurasi_id: selectedJenis?.tipe === 'emas' ? selectedKonfigurasiId : undefined
     });
 
     onClose();
@@ -101,7 +178,11 @@ export const CashTransaksiModal: React.FC<CashTransaksiModalProps> = ({
             </label>
             <select
               value={selectedUserId}
-              onChange={(e) => setSelectedUserId(Number(e.target.value))}
+              onChange={(e) => {
+                setSelectedUserId(Number(e.target.value));
+                setSelectedKonfigurasiId(undefined);
+                setRencanaOptions([]);
+              }}
               className="w-full py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-200 cursor-pointer"
             >
               {activeUsers.map((u) => (
@@ -119,7 +200,11 @@ export const CashTransaksiModal: React.FC<CashTransaksiModalProps> = ({
             </label>
             <select
               value={selectedJenisId}
-              onChange={(e) => setSelectedJenisId(Number(e.target.value))}
+              onChange={(e) => {
+                setSelectedJenisId(Number(e.target.value));
+                setSelectedKonfigurasiId(undefined);
+                setRencanaOptions([]);
+              }}
               className="w-full py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-200 cursor-pointer"
             >
               {jenisTabungan.map((j) => (
@@ -129,6 +214,32 @@ export const CashTransaksiModal: React.FC<CashTransaksiModalProps> = ({
               ))}
             </select>
           </div>
+
+          {/* Rencana Emas selected */}
+          {rencanaOptions.length > 0 && (
+            <div>
+              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                Rencana Setoran (Tabungan Emas)
+              </label>
+              <select
+                value={selectedKonfigurasiId ?? ''}
+                onChange={(e) => {
+                  const kId = Number(e.target.value);
+                  setSelectedKonfigurasiId(kId || undefined);
+                  const rencana = rencanaOptions.find((r) => r.konfigurasi_id === kId);
+                  if (rencana) setNominal(rencana.nominal_per_periode.toLocaleString('id-ID'));
+                }}
+                className="w-full py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-200 cursor-pointer"
+              >
+                <option value="">— Pilih Rencana —</option>
+                {rencanaOptions.map((r) => (
+                  <option key={r.konfigurasi_id} value={r.konfigurasi_id}>
+                    Rencana Rp {r.nominal_per_periode.toLocaleString('id-ID')} ({r.frekuensi_label})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Qurban target if qurban selected */}
           {selectedJenis?.tipe === 'qurban' && (
@@ -141,7 +252,9 @@ export const CashTransaksiModal: React.FC<CashTransaksiModalProps> = ({
                 onChange={(e) => setSelectedQurbanId(Number(e.target.value))}
                 className="w-full py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-200"
               >
-                {pendaftaranQurban.map((p) => {
+                {pendaftaranQurbanAktif
+                    .filter((p) => p.user_id === selectedUserId)
+                    .map((p) => {
                   const h = hewanQurban.find(hw => hw.id === p.hewan_qurban_id);
                   return (
                     <option key={p.id} value={p.id}>
@@ -149,6 +262,32 @@ export const CashTransaksiModal: React.FC<CashTransaksiModalProps> = ({
                     </option>
                   );
                 })}
+              </select>
+              {qurbanTerpilih?.nominal_per_periode ? (
+                <p className="text-[9px] text-slate-400 mt-1">
+                  Kewajiban / {qurbanTerpilih.frekuensi_label?.toLowerCase() || 'bulan'}: <strong className="text-slate-600 dark:text-slate-300">Rp {formatRupiah(qurbanTerpilih.nominal_per_periode)}</strong>
+                </p>
+              ) : null}
+            </div>
+          )}
+
+          {/* Akun berjangka jika produk berjangka terpilih */}
+          {selectedJenis?.sub_jenis === 'berjangka' && (
+            <div>
+              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                Akun Tabungan Berjangka
+              </label>
+              <select
+                value={selectedBerjangkaId}
+                onChange={(e) => setSelectedBerjangkaId(Number(e.target.value))}
+                className="w-full py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-200 cursor-pointer"
+              >
+                <option value={0}>— Pilih Akun —</option>
+                {berjangkaList.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    Berjangka {t.durasi_bulan} bln — Target Rp {formatRupiah(t.target_nominal)} ({t.status})
+                  </option>
+                ))}
               </select>
             </div>
           )}

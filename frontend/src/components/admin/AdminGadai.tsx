@@ -259,7 +259,7 @@ const tenorLabel = (t: string) => ({ harian: 'Harian', mingguan: 'Mingguan', bul
 const freqLabel = (f: string) => ({ harian: 'Harian', mingguan: 'Mingguan', bulanan: 'Bulanan' }[f] || f);
 
 export const AdminGadai: React.FC = () => {
-  const { gadai, users, hargaEmas, searchQuery, approveGadai, aktifkanGadai, lunasiGadai, kembalikanEmasGadai, batalGadai, tandaiTerlambatGadai, perpanjangGadai, deleteGadai, showToast } = useApp();
+  const { gadai, users, hargaEmas, approveGadai, aktifkanGadai, lunasiGadai, kembalikanEmasGadai, batalGadai, tandaiTerlambatGadai, perpanjangGadai, deleteGadai, showToast } = useApp();
 
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [showCreate, setShowCreate] = useState(false);
@@ -270,11 +270,8 @@ export const AdminGadai: React.FC = () => {
   const [delayHapusId, setDelayHapusId] = useState<number | null>(null);
 
   const filtered = useMemo(() => {
-    const q = searchQuery.toLowerCase();
-    return gadai
-      .filter(g => filterStatus === 'all' || g.status === filterStatus)
-      .filter(g => !q || g.nomor_gadai.toLowerCase().includes(q) || (g.user?.name || '').toLowerCase().includes(q) || g.jenis_emas.toLowerCase().includes(q));
-  }, [gadai, filterStatus, searchQuery]);
+    return gadai.filter(g => filterStatus === 'all' || g.status === filterStatus);
+  }, [gadai, filterStatus]);
 
   const sumActive = (key: 'besaran_gadai' | 'sisa_pokok') =>
     gadai.filter(g => ['aktif', 'jatuh_tempo', 'terlambat', 'diperpanjang'].includes(g.status)).reduce((acc, g) => acc + Number(g[key] || 0), 0);

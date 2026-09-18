@@ -6,10 +6,24 @@ use App\Models\HargaEmasHarian;
 use App\Models\JenisTabungan;
 use App\Models\KonfigurasiSetoranEmas;
 use App\Models\Transaksi;
+use App\Models\User;
+use Laravel\Sanctum\Sanctum;
 use Tests\ApiTestCase;
 
 class SetoranBerkalaEmasTest extends ApiTestCase
 {
+    /**
+     * Rencana hanya dibuat admin atas nama nasabah. Membuat rencana untuk $target,
+     * lalu kembali bertindak sebagai $target untuk langkah tes berikutnya.
+     */
+    private function postSetoranBerkala(User $target, array $data): \Illuminate\Testing\TestResponse
+    {
+        Sanctum::actingAs($this->createAdmin());
+        $response = $this->postJson('/api/v1/admin/emas/setoran-berkala', array_merge(['user_id' => $target->id], $data));
+        Sanctum::actingAs($target);
+
+        return $response;
+    }
     private function buatHargaDanGoal(\App\Models\User $user, float $harga = 1000000): JenisTabungan
     {
         $user->update(['target_emas_gram' => 10]);
@@ -57,7 +71,7 @@ class SetoranBerkalaEmasTest extends ApiTestCase
         $user = $this->actingAsUser();
         $user->update(['target_emas_gram' => 10]);
 
-        $response = $this->postJson('/api/v1/emas/setoran-berkala', [
+        $response = $this->postSetoranBerkala($user, [
             'nominal_per_periode' => 15000,
             'target_gram_per_periode' => 0.012,
             'frekuensi_setor' => 'harian',
@@ -85,7 +99,7 @@ class SetoranBerkalaEmasTest extends ApiTestCase
         $user = $this->actingAsUser();
         $this->buatHargaDanGoal($user);
 
-        $this->postJson('/api/v1/emas/setoran-berkala', [
+        $this->postSetoranBerkala($user, [
             'nominal_per_periode' => 15000,
             'target_gram_per_periode' => 0.012,
             'frekuensi_setor' => 'harian',
@@ -93,7 +107,7 @@ class SetoranBerkalaEmasTest extends ApiTestCase
         ])->assertStatus(201);
 
         // Rencana kedua "nabung lagi 5 gram" — nominal & target berbeda, tetap diperbolehkan.
-        $this->postJson('/api/v1/emas/setoran-berkala', [
+        $this->postSetoranBerkala($user, [
             'nominal_per_periode' => 50000,
             'target_gram_total' => 5,
             'frekuensi_setor' => 'mingguan',
@@ -115,7 +129,7 @@ class SetoranBerkalaEmasTest extends ApiTestCase
         $this->buatHargaDanGoal($user);
 
         for ($i = 0; $i < 5; $i++) {
-            $this->postJson('/api/v1/emas/setoran-berkala', [
+            $this->postSetoranBerkala($user, [
                 'nominal_per_periode' => 15000,
                 'target_gram_total' => 2,
                 'frekuensi_setor' => 'harian',
@@ -124,7 +138,7 @@ class SetoranBerkalaEmasTest extends ApiTestCase
         }
 
         // Slot ke-6 ditolak; dapat_membuat jadi false.
-        $this->postJson('/api/v1/emas/setoran-berkala', [
+        $this->postSetoranBerkala($user, [
             'nominal_per_periode' => 15000,
             'target_gram_total' => 2,
             'frekuensi_setor' => 'harian',
@@ -145,7 +159,7 @@ class SetoranBerkalaEmasTest extends ApiTestCase
         $this->buatHargaDanGoal($user); // goal global 10 gr
 
         // Mengubah goal global lewat target_emas_gram → tetap ditolak.
-        $this->postJson('/api/v1/emas/setoran-berkala', [
+        $this->postSetoranBerkala($user, [
             'nominal_per_periode' => 15000,
             'target_emas_gram' => 5,
             'frekuensi_setor' => 'harian',
@@ -153,7 +167,7 @@ class SetoranBerkalaEmasTest extends ApiTestCase
         ])->assertStatus(422)->assertJsonPath('error_code', 'GOAL_LOCKED');
 
         // Tapi target khusus rencana baru (5 gr) diperbolehkan.
-        $this->postJson('/api/v1/emas/setoran-berkala', [
+        $this->postSetoranBerkala($user, [
             'nominal_per_periode' => 50000,
             'target_gram_total' => 5,
             'frekuensi_setor' => 'harian',
@@ -171,7 +185,7 @@ class SetoranBerkalaEmasTest extends ApiTestCase
         $user->update(['target_emas_gram' => null]); // buatHargaDanGoal hanya untuk seed harga/jenis
 
         // User baru: cukup isi target + durasi; target_gram_per_periode dihitung = goal / durasi.
-        $response = $this->postJson('/api/v1/emas/setoran-berkala', [
+        $response = $this->postSetoranBerkala($user, [
             'nominal_per_periode' => 15000,
             'target_emas_gram' => 0.36,
             'frekuensi_setor' => 'harian',
@@ -204,7 +218,7 @@ class SetoranBerkalaEmasTest extends ApiTestCase
         $user = $this->actingAsUser();
         $this->buatHargaDanGoal($user); // goal 10 gr sudah dikunci
 
-        $this->postJson('/api/v1/emas/setoran-berkala', [
+        $this->postSetoranBerkala($user, [
             'nominal_per_periode' => 15000,
             'target_emas_gram' => 5,
             'frekuensi_setor' => 'harian',
@@ -215,9 +229,9 @@ class SetoranBerkalaEmasTest extends ApiTestCase
     public function test_buat_rencana_tanpa_goal_422(): void
     {
         $this->seedBase();
-        $this->actingAsUser();
+        $user = $this->actingAsUser();
 
-        $this->postJson('/api/v1/emas/setoran-berkala', [
+        $this->postSetoranBerkala($user, [
             'nominal_per_periode' => 15000,
             'frekuensi_setor' => 'harian',
             'durasi_periode' => 30,
@@ -229,21 +243,21 @@ class SetoranBerkalaEmasTest extends ApiTestCase
         $this->seedBase();
         $user = $this->actingAsUser();
         $jenis = $this->buatHargaDanGoal($user);
-        $this->buatKonfigurasi($user, $jenis); // nominal 15rb, target 0.012gr @1jt → biaya 12rb
+        $this->buatKonfigurasi($user, $jenis); // nominal 15rb, target 0.012gr → biaya = 0,012 × 1,2jt (markup tier 1-5) = 14.400
 
         $response = $this->postSetor('/api/v1/emas/setor', ['nominal' => 15000]);
 
         $response->assertStatus(201)
             ->assertJsonPath('data.nominal', '15000.00')
-            ->assertJsonPath('data.nominal_emas', '12000.00')
-            ->assertJsonPath('data.nominal_dana', '3000.00')
-            ->assertJsonPath('data.unit_didapat', '0.0120');
+            ->assertJsonPath('data.nominal_emas', '14400.00')
+            ->assertJsonPath('data.nominal_dana', '600.00')
+            ->assertJsonPath('data.unit_didapat', '0.01200000');
 
         $this->assertDatabaseHas('transaksi', [
             'user_id' => $user->id,
             'nominal' => '15000.00',
-            'nominal_emas' => '12000.00',
-            'nominal_selisih' => '3000.00',
+            'nominal_emas' => '14400.00',
+            'nominal_selisih' => '600.00',
             'unit_didapat' => '0.0120',
         ]);
     }
@@ -280,6 +294,38 @@ class SetoranBerkalaEmasTest extends ApiTestCase
             ->assertJsonPath('data.items.1.progress.rekap.jumlah_setoran', 1);
     }
 
+    public function test_admin_cash_setor_mengikuti_rencana_terpilih(): void
+    {
+        $this->seedBase();
+        $user = $this->createUser();
+        $jenis = $this->buatHargaDanGoal($user);
+        $rencanaA = $this->buatKonfigurasi($user, $jenis);
+        $this->buatKonfigurasi($user, $jenis, [
+            'nominal_per_periode' => 50000,
+            'target_gram_per_periode' => 0.05,
+        ]);
+
+        Sanctum::actingAs($this->createAdmin());
+        $this->postJson('/api/v1/admin/transaksi/cash', [
+            'user_id' => $user->id,
+            'jenis_tabungan_id' => $jenis->id,
+            'nominal' => 15000,
+            'konfigurasi_id' => $rencanaA->id,
+        ])->assertStatus(201);
+
+        $this->assertDatabaseHas('transaksi', [
+            'user_id' => $user->id,
+            'konfigurasi_id' => $rencanaA->id,
+            'jenis_transaksi' => 'setor',
+        ]);
+
+        Sanctum::actingAs($user);
+        // Urut terbaru dulu: B (kosong), lalu A (1 setoran) — setoran masuk ke rencana yang dipilih.
+        $this->getJson('/api/v1/emas/setoran-berkala')->assertOk()
+            ->assertJsonPath('data.items.0.progress.rekap.jumlah_setoran', 0)
+            ->assertJsonPath('data.items.1.progress.rekap.jumlah_setoran', 1);
+    }
+
     public function test_setor_luar_rencana_dikonversi_langsung_ke_gram(): void
     {
         $this->seedBase();
@@ -292,7 +338,7 @@ class SetoranBerkalaEmasTest extends ApiTestCase
         $response->assertStatus(201)
             ->assertJsonPath('data.nominal_emas', '20000.00')
             ->assertJsonPath('data.nominal_dana', '0.00')
-            ->assertJsonPath('data.unit_didapat', '0.0200');
+            ->assertJsonPath('data.unit_didapat', '0.01666700');
     }
 
     public function test_setor_rencana_tidak_cukup_semua_masuk_saldo_dana_tanpa_gram(): void
@@ -308,7 +354,7 @@ class SetoranBerkalaEmasTest extends ApiTestCase
         $response->assertStatus(201)
             ->assertJsonPath('data.nominal_emas', '0.00')
             ->assertJsonPath('data.nominal_dana', '15000.00')
-            ->assertJsonPath('data.unit_didapat', '0.0000');
+            ->assertJsonPath('data.unit_didapat', '0.00000000');
     }
 
     public function test_setor_rencana_harga_naik_tidak_jatuh_ke_gram_pecahan(): void
@@ -327,7 +373,7 @@ class SetoranBerkalaEmasTest extends ApiTestCase
 
         $response->assertStatus(201)
             ->assertJsonPath('data.nominal_dana', '1200000.00')
-            ->assertJsonPath('data.unit_didapat', '0.0000');
+            ->assertJsonPath('data.unit_didapat', '0.00000000');
     }
 
     public function test_setor_rencana_harga_turun_membeli_1_gram_penuh(): void
@@ -340,13 +386,13 @@ class SetoranBerkalaEmasTest extends ApiTestCase
             'target_gram_per_periode' => 1,
         ]);
 
-        // Harga 1jt → biaya 1 gram = 1jt, setoran 1,2jt → 1 gram + 200rb saldo dana.
+        // Harga acuan 1jt → harga jual 1 gram = 1jt + markup 200rb = 1,2jt, setoran 1,2jt → 1 gram penuh tanpa sisa.
         $response = $this->postSetor('/api/v1/emas/setor', ['nominal' => 1200000]);
 
         $response->assertStatus(201)
-            ->assertJsonPath('data.nominal_emas', '1000000.00')
-            ->assertJsonPath('data.nominal_dana', '200000.00')
-            ->assertJsonPath('data.unit_didapat', '1.0000');
+            ->assertJsonPath('data.nominal_emas', '1200000.00')
+            ->assertJsonPath('data.nominal_dana', '0.00')
+            ->assertJsonPath('data.unit_didapat', '1.00000000');
     }
 
     public function test_setor_rencana_memakai_saldo_dana_lama_untuk_lengkapi_1_gram(): void
@@ -359,17 +405,18 @@ class SetoranBerkalaEmasTest extends ApiTestCase
             'target_gram_per_periode' => 1,
         ]);
 
-        // Saldo dana 500rb sudah ada dari setoran terverifikasi sebelumnya (1,5jt, 1 gram @1jt → dana 500rb).
+        // Saldo dana 300rb sudah ada dari setoran terverifikasi sebelumnya
+        // (1,5jt diaplikasikan ke 1 gram dgn harga jual = 1jt + markup 200rb = 1,2jt → dana 300rb).
         $sebelumnya = Transaksi::create([
             'nomor_referensi' => 'TRX-SB-LAMA-' . strtoupper(uniqid()),
             'user_id' => $user->id,
             'jenis_tabungan_id' => $jenis->id,
             'jenis_transaksi' => 'setor',
             'nominal' => 1500000,
-            'nominal_emas' => 1000000,
-            'nominal_selisih' => 500000,
+            'nominal_emas' => 1200000,
+            'nominal_selisih' => 300000,
             'unit_didapat' => 1,
-            'harga_per_gram' => 1000000,
+            'harga_per_gram' => 1200000,
             'metode_pembayaran' => 'cash',
             'status_verifikasi' => 'terverifikasi',
             'tanggal_transaksi' => now()->subDay()->toDateString(),
@@ -377,14 +424,15 @@ class SetoranBerkalaEmasTest extends ApiTestCase
         $sebelumnya->created_at = now()->subHour();
         $sebelumnya->save();
 
-        // Setor 2 saat harga naik ke 2jt: biaya 2jt = nominal 1,5jt + saldo dana 500rb → tepat cukup.
-        HargaEmasHarian::create(['tanggal' => now()->toDateString(), 'harga_per_gram' => 2000000, 'status_aktif' => true, 'created_by' => $user->id]);
+        // Setor 2 saat harga acuan 1,6jt: harga jual 1 gram = 1,6jt + markup 200rb = 1,8jt
+        // = nominal 1,5jt + saldo dana 300rb → tepat cukup.
+        HargaEmasHarian::create(['tanggal' => now()->toDateString(), 'harga_per_gram' => 1600000, 'status_aktif' => true, 'created_by' => $user->id]);
         $kedua = $this->postSetor('/api/v1/emas/setor', ['nominal' => 1500000]);
 
         $kedua->assertStatus(201)
-            ->assertJsonPath('data.nominal_emas', '2000000.00')
-            ->assertJsonPath('data.nominal_dana', '-500000.00')
-            ->assertJsonPath('data.unit_didapat', '1.0000');
+            ->assertJsonPath('data.nominal_emas', '1800000.00')
+            ->assertJsonPath('data.nominal_dana', '-300000.00')
+            ->assertJsonPath('data.unit_didapat', '1.00000000');
     }
 
     public function test_progress_menampilkan_rekap_dan_konsistensi(): void
@@ -458,7 +506,7 @@ class SetoranBerkalaEmasTest extends ApiTestCase
             ->assertJsonPath('data.dapat_membuat', true)
             ->assertJsonCount(0, 'data.items');
 
-        $this->postJson('/api/v1/emas/setoran-berkala', [
+        $this->postSetoranBerkala($user, [
             'nominal_per_periode' => 15000,
             'target_gram_per_periode' => 0.012,
             'frekuensi_setor' => 'mingguan',
@@ -476,7 +524,8 @@ class SetoranBerkalaEmasTest extends ApiTestCase
         // Satu setoran rencana terverifikasi: 0,012gr (biaya 12.000) + saldo dana 3.000.
         $this->buatSetorTerverifikasi($user, $jenis, ['konfigurasi_id' => $rencana->id]);
 
-        // Refund = 90% nilai gram (12.000 − 10% = 10.800) + saldo dana 3.000 = 13.800.
+        // Refund = TOTAL tabungan (nilai gram dinilai harga jual 0,012gr × 1,2jt =
+        // 14.400 + saldo dana 3.000) dipotong 10% (1.740) = 15.660.
         $response = $this->postJson("/api/v1/emas/setoran-berkala/{$rencana->id}/batalkan", [
             'bank_tujuan' => 'BSI',
             'no_rekening' => '7123456789',
@@ -486,16 +535,16 @@ class SetoranBerkalaEmasTest extends ApiTestCase
         $response->assertOk()
             ->assertJsonPath('data.rencana.status', 'aktif')
             ->assertJsonPath('data.refund.gram_dibatalkan', 0.012)
-            ->assertJsonPath('data.refund.penalti_10_persen', 1200)
+            ->assertJsonPath('data.refund.penalti_10_persen', 1740)
             ->assertJsonPath('data.refund.saldo_dana', 3000)
-            ->assertJsonPath('data.refund.nominal_refund', 13800);
+            ->assertJsonPath('data.refund.nominal_refund', 15660);
 
         $this->assertDatabaseHas('transaksi', [
             'user_id' => $user->id,
             'konfigurasi_id' => $rencana->id,
             'jenis_transaksi' => 'tarik',
-            'nominal' => '13800.00',
-            'biaya_penalti' => '1200.00',
+            'nominal' => '15660.00',
+            'biaya_penalti' => '1740.00',
             'nominal_selisih' => '-3000.00',
             'unit_didapat' => '-0.0120',
             'status_verifikasi' => 'menunggu_verifikasi',
@@ -551,7 +600,7 @@ class SetoranBerkalaEmasTest extends ApiTestCase
             ->assertJsonPath('data.jenis_transaksi', 'tarik')
             ->assertJsonPath('data.nominal', '6000.00')
             ->assertJsonPath('data.nominal_dana', '-6000.00')
-            ->assertJsonPath('data.unit_didapat', '0.0000');
+            ->assertJsonPath('data.unit_didapat', '0.00000000');
 
         // Belum terverifikasi → saldo dana belum berkurang, tapi pencairan kedua diblokir.
         $this->getJson('/api/v1/emas/setoran-berkala')
@@ -609,7 +658,7 @@ class SetoranBerkalaEmasTest extends ApiTestCase
 
         HargaEmasHarian::create(['tanggal' => now()->toDateString(), 'harga_per_gram' => 1000000, 'status_aktif' => true, 'created_by' => $user->id]);
 
-        $response = $this->postJson('/api/v1/emas/setoran-berkala', [
+        $response = $this->postSetoranBerkala($user, [
             'nominal_per_periode' => 15000,
             'target_gram_total' => 10,
             'frekuensi_setor' => 'harian',

@@ -39,7 +39,7 @@ class UsersTemplate implements FromArray, WithHeadings, WithStyles, ShouldAutoSi
             'Nama Lengkap',
             'Email',
             'No. Handphone',
-            'Nomor Anggota (16 digit)',
+            'Nomor Anggota (10 digit)',
             'Alamat',
             'Password',
             'Peran',
@@ -79,7 +79,7 @@ class UsersTemplate implements FromArray, WithHeadings, WithStyles, ShouldAutoSi
             'Contoh Nasabah',
             'nasabah.contoh@gmail.com',
             '08123456789',
-            '1234567890123456',
+            '1234567890',
             'Jl. Contoh No. 1, Jakarta',
             'password123',
             'Nasabah',
@@ -140,7 +140,7 @@ class UsersTemplate implements FromArray, WithHeadings, WithStyles, ShouldAutoSi
 
                 // Petunjuk pengisian diletakkan sebagai komentar sel (bukan nilai sel),
                 // supaya tidak ikut terbaca sebagai baris data saat file di-import.
-                $note = 'Petunjuk: Isi mulai baris 3. Kolom wajib: Nama, Email, No. Handphone, Nomor Anggota (16 digit). '
+                $note = 'Petunjuk: Isi mulai baris 3. Kolom wajib: Nama, Email, No. Handphone, Nomor Anggota (10 digit). '
                     . 'Kolom tabungan ("Target" dan "Saldo Awal") bersifat OPSIONAL — kosongkan bila tabungan tidak ada. '
                     . 'Target = nominal target tabungan; Saldo Awal = dana yang sudah dibayarkan, dicatat otomatis sebagai '
                     . 'saldo awal terverifikasi tanpa input manual dari nasabah. Isi angka tanpa titik/koma (contoh: 500000). '

@@ -15,7 +15,7 @@ use Tests\ApiTestCase;
 
 class TabunganBerjangkaTest extends ApiTestCase
 {
-    public function test_store_langsung_aktif(): void
+    public function test_user_tidak_bisa_membuat_tabungan_berjangka(): void
     {
         $this->seedBase();
         $this->actingAsUser();
@@ -24,25 +24,48 @@ class TabunganBerjangkaTest extends ApiTestCase
             'target_nominal' => 600000,
             'durasi_bulan' => 6,
             'frekuensi_setor' => 'bulanan',
+        ])->assertStatus(500); // route dihapus → error handler, bukan 201
+
+        $res = $this->getJson('/api/v1/tabungan-berjangka')->assertOk();
+        $this->assertFalse($res->json('data.dapat_membuat'));
+        $this->assertSame(0, $res->json('data.slot_tersedia'));
+    }
+
+    public function test_admin_membuat_berjangka_langsung_aktif(): void
+    {
+        $this->seedBase();
+        $user = $this->actingAsUser();
+        $this->actingAsAdmin();
+
+        $this->postJson('/api/v1/admin/tabungan-berjangka', [
+            'user_id' => $user->id,
+            'target_nominal' => 600000,
+            'durasi_bulan' => 6,
+            'frekuensi_setor' => 'bulanan',
         ])->assertCreated()
             ->assertJsonPath('data.status', 'aktif')
             ->assertJsonStructure(['data' => ['id', 'tanggal_mulai', 'tanggal_jatuh_tempo']]);
+
+        $this->assertDatabaseCount('tabungan_berjangka', 1);
     }
 
-    public function test_store_dibatasi_5_tabungan_berjangka_per_user(): void
+    public function test_admin_dibatasi_5_tabungan_berjangka_per_user(): void
     {
         $this->seedBase();
-        $this->actingAsUser();
+        $user = $this->actingAsUser();
+        $this->actingAsAdmin();
 
         for ($i = 0; $i < 5; $i++) {
-            $this->postJson('/api/v1/tabungan-berjangka', [
+            $this->postJson('/api/v1/admin/tabungan-berjangka', [
+                'user_id' => $user->id,
                 'target_nominal' => 60000,
                 'durasi_bulan' => 1,
                 'frekuensi_setor' => 'bulanan',
             ])->assertCreated();
         }
 
-        $this->postJson('/api/v1/tabungan-berjangka', [
+        $this->postJson('/api/v1/admin/tabungan-berjangka', [
+            'user_id' => $user->id,
             'target_nominal' => 60000,
             'durasi_bulan' => 1,
             'frekuensi_setor' => 'bulanan',
@@ -53,19 +76,16 @@ class TabunganBerjangkaTest extends ApiTestCase
     {
         $this->seedBase();
         $user = $this->actingAsUser();
+        $admin = User::where('role', UserRole::Admin)->first();
 
-        $this->postJson('/api/v1/tabungan-berjangka', [
-            'target_nominal' => 600000,
-            'durasi_bulan' => 6,
-            'frekuensi_setor' => 'bulanan',
-        ])->assertCreated();
+        $tb = $this->buatBerjangkaAktif($user->id, $admin->id);
 
         // User melihat tunggakan per tabungan
         $res = $this->getJson('/api/v1/tabungan-berjangka')->assertOk();
         $item = collect($res->json('data.items'))->first();
         $this->assertNotEmpty($item['tertunggak']);
-        $this->assertSame(1, $item['tertunggak']['jumlah_periode']);
-        $this->assertEquals(100000.0, $item['tertunggak']['nominal']);
+        $this->assertSame(2, $item['tertunggak']['jumlah_periode']);
+        $this->assertEquals(200000.0, $item['tertunggak']['nominal']);
 
         // Admin tunggakan melaporkan user & nominal tagihannya
         $this->actingAsAdmin();
@@ -73,8 +93,8 @@ class TabunganBerjangkaTest extends ApiTestCase
         $item = collect($res->json('data.items'))
             ->first(fn ($i) => $i['sumber'] === 'berjangka' && $i['user_id'] === $user->id);
         $this->assertNotNull($item);
-        $this->assertSame(1, $item['jumlah_periode_tertunggak']);
-        $this->assertEquals(100000.0, $item['nominal_tagihan']);
+        $this->assertSame(2, $item['jumlah_periode_tertunggak']);
+        $this->assertEquals(200000.0, $item['nominal_tagihan']);
     }
 
     public function test_batal_tanpa_saldo_langsung_hilang_dari_riwayat(): void

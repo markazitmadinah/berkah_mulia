@@ -6,19 +6,29 @@ use App\Enums\UserRole;
 use App\Enums\UserStatus;
 use App\Models\User;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Str;
 
 class AdminUserSeeder extends Seeder
 {
     public function run(): void
     {
+        $email = env('ADMIN_EMAIL') ?: 'admin@berkahmulia.com';
+        $password = env('ADMIN_PASSWORD');
+        $isNew = ! User::where('email', $email)->exists();
+
+        if ($isNew && ! $password) {
+            $password = Str::password(14);
+            $this->command?->warn("Admin baru '{$email}' dibuat dengan password acak (lihat log / atur ADMIN_PASSWORD untuk kustom).");
+        }
+
         $admin = User::updateOrCreate(
-            ['email' => 'admin@berkahmulia.com'],
-            [
-                'name' => 'Admin Berkah Mulia',
-                'email' => 'admin@berkahmulia.com',
-                'phone' => '081200000001',
-                'password' => 'password123', // auto-hashed via cast
-            ]
+            ['email' => $email],
+            array_filter([
+                'name' => env('ADMIN_NAME') ?: 'Admin Berkah Mulia',
+                'email' => $email,
+                'phone' => env('ADMIN_PHONE') ?: '081200000001',
+                'password' => $password, // auto-hashed via cast; null → password lama dipertahankan
+            ])
         );
 
         // role & status bukan mass-assignable (lihat $fillable User) — tetapkan langsung.

@@ -35,7 +35,7 @@ class AdminUserTest extends ApiTestCase
             'name' => 'User Baru',
             'email' => 'baru@example.com',
             'phone' => '081299887766',
-            'nomor_anggota' => '0000000020260001',
+            'nomor_anggota' => '0020260001',
             'password' => 'password123',
         ])->assertStatus(201)->assertJsonPath('data.status', 'active');
 

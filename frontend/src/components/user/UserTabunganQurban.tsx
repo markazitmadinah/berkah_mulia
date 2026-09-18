@@ -262,6 +262,17 @@ export const UserTabunganQurban: React.FC<UserTabunganQurbanProps> = ({
                         )}
                       </div>
                     </div>
+
+                    {pend.nominal_per_periode != null && pend.nominal_per_periode > 0 && (
+                      <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
+                        <span className="text-slate-500">
+                          Kewajiban / {pend.frekuensi_label?.toLowerCase() || 'bulan'}: <strong className="text-blue-600 dark:text-blue-300 font-extrabold">Rp {formatRupiah(pend.nominal_per_periode)}</strong>
+                        </span>
+                        {pend.sisa_pembayaran != null && pend.sisa_pembayaran > 0 && (
+                          <span className="text-slate-400">· sisa {pend.sisa_pembayaran}× bayar</span>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Action */}

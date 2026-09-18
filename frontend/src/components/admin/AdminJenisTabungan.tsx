@@ -2,15 +2,8 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
   Layers,
-  Edit,
-  Trash2,
-  CheckCircle2,
-  XCircle,
-  Coins,
-  Wallet,
-  Sparkles,
-  Info,
-  Calendar
+  Calendar,
+  Settings
 } from 'lucide-react';
 import { JenisTabungan } from '../../types';
 
@@ -18,29 +11,19 @@ const DEFAULT_KODES = ['EMAS', 'tabungan-pribadi', 'tabungan-qurban', 'tabungan-
 const MAX_JENIS_TABUNGAN = 6;
 
 interface AdminJenisTabunganProps {
-  onOpenEditModal: (item: JenisTabungan) => void;
+  onOpenKelola: (item: JenisTabungan) => void;
 }
 
 export const AdminJenisTabungan: React.FC<AdminJenisTabunganProps> = ({
-  onOpenEditModal
+  onOpenKelola
 }) => {
   const {
     jenisTabungan,
-    deleteJenisTabungan,
     toggleStatusJenisTabungan,
-    updateJenisTabungan,
-    transaksi,
-    showToast
+    updateJenisTabungan
   } = useApp();
 
   const [deadlineDrafts, setDeadlineDrafts] = useState<Record<number, string>>({});
-
-  const handleDelete = (id: number) => {
-    const res = deleteJenisTabungan(id);
-    if (!res.success) {
-      showToast(res.message, 'error');
-    }
-  };
 
   const isDefault = (kode: string) => DEFAULT_KODES.includes(kode);
   const shortKode = (k: string) => k.replace(/^tabungan-/i, '');
@@ -68,7 +51,6 @@ export const AdminJenisTabungan: React.FC<AdminJenisTabunganProps> = ({
       {/* Grid of Product Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {jenisTabungan.map((item) => {
-          const hasTrx = transaksi.some((t) => t.jenis_tabungan_id === item.id);
           const def = isDefault(item.kode);
 
           return (
@@ -178,42 +160,14 @@ export const AdminJenisTabungan: React.FC<AdminJenisTabunganProps> = ({
                 )}
               </div>
 
-              {/* Action buttons per card */}
-              <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                <span className="text-[11px] text-slate-400">
-                  {hasTrx ? 'Ada transaksi aktif' : 'Belum ada transaksi'}
-                </span>
-
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => onOpenEditModal(item)}
-                    disabled={def}
-                    className={`p-2 rounded-xl text-xs font-bold flex items-center gap-1 transition-colors ${
-                      def
-                        ? 'opacity-40 cursor-not-allowed bg-slate-100 dark:bg-slate-800 text-slate-400'
-                        : 'bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 text-slate-700 dark:text-slate-200 cursor-pointer'
-                    }`}
-                    title={def ? 'Tabungan bawaan (Emas/Pribadi/Qurban) sudah fix, settingan tidak bisa diubah' : 'Edit Produk'}
-                  >
-                    <Edit className="w-3.5 h-3.5" />
-                    <span>Edit</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleDelete(item.id)}
-                    disabled={hasTrx || def}
-                    className={`p-2 rounded-xl text-xs font-bold flex items-center gap-1 transition-colors ${
-                      hasTrx || def
-                        ? 'opacity-40 cursor-not-allowed bg-slate-100 dark:bg-slate-800 text-slate-400'
-                        : 'bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400 cursor-pointer'
-                    }`}
-                    title={def ? 'Tabungan bawaan tidak bisa dihapus' : hasTrx ? 'Produk tidak dapat dihapus karena memiliki riwayat transaksi (409)' : 'Hapus Produk'}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Hapus</span>
-                  </button>
-                </div>
-              </div>
+{/* Action per card */}
+              <button
+                onClick={() => onOpenKelola(item)}
+                className="mt-6 w-full py-3 px-4 rounded-2xl text-sm font-extrabold flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/25 transition-colors cursor-pointer"
+                title="Kelola tabungan, rencana, setoran cash, dan penarikan produk ini"
+              >
+                <Settings className="w-4 h-4" /> Kelola Tabungan
+              </button>
             </div>
           );
         })}

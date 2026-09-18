@@ -11,7 +11,7 @@ use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
-use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 class TransaksiController extends Controller
@@ -41,7 +41,7 @@ class TransaksiController extends Controller
             $query->where('jenis_tabungan_id', $request->jenis_tabungan_id);
         }
 
-        $perPage = min($request->input('per_page', 15), 100);
+        $perPage = min($request->input('per_page', 15), 1000);
         $items = $query->latest()->paginate($perPage);
 
         return response()->json([
@@ -100,7 +100,7 @@ class TransaksiController extends Controller
      *
      * Stream the stored proof-of-transfer. Accessible by the transaction owner or an admin.
      */
-    public function showBukti(Request $request, Transaksi $transaksi): StreamedResponse
+    public function showBukti(Request $request, Transaksi $transaksi): Response
     {
         $user = $request->user();
 

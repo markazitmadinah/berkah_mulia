@@ -54,15 +54,34 @@ class GadaiService
     }
 
     /**
-     * Nomor gadai berurutan "0001", "0002", dst (padan nomor anggota 16 digit).
+     * Simpan gadai baru dan beri nomor berurutan "0001", "0002", dst (padan nomor anggota 10 digit),
+     * diturunkan dari urutan id. Hitung + insert dibungkus transaksi dan dikunci (advisory lock
+     * MySQL; sqlite diserialkan oleh transaksi itu sendiri) agar dua pengajuan paralel
+     * tidak mendapat nomor yang sama.
+     * # ponytail: GET_LOCK scoped per koneksi DB — cukup untuk satu app; ganti sequence DB publik bila multi-app.
      */
-    public function buatNomorGadai(): string
+    public function buatGadai(array $data, int $createdById): Gadai
     {
-        return DB::transaction(function () {
-            $max = Gadai::withTrashed()->max('id') ?? 0;
-            $nomor = str_pad((string) ($max + 1), 4, '0', STR_PAD_LEFT);
+        // GET_LOCK() hanya ada di MySQL; sqlite diserialkan oleh transaksi itu sendiri.
+        $mysql = DB::getDriverName() === 'mysql';
 
-            return $nomor;
+        return DB::transaction(function () use ($data, $createdById, $mysql) {
+            if ($mysql && ! DB::selectOne('SELECT GET_LOCK(?, 10) AS ok', ['gadai_nomor_seq'])?->ok) {
+                abort(503, 'Gagal membuat nomor gadai, silakan coba lagi.');
+            }
+
+            try {
+                $max = Gadai::withTrashed()->max('id') ?? 0;
+
+                return Gadai::create($data + [
+                    'nomor_gadai' => str_pad((string) ($max + 1), 4, '0', STR_PAD_LEFT),
+                    'created_by' => $createdById,
+                ]);
+            } finally {
+                if ($mysql) {
+                    DB::select('SELECT RELEASE_LOCK(?)', ['gadai_nomor_seq']);
+                }
+            }
         });
     }
 

@@ -85,8 +85,109 @@ class QurbanTest extends ApiTestCase
             ->assertJsonPath('data.status', 'menabung');
     }
 
-    public function test_user_daftar_saat_pendaftaran_ditutup_403(): void
+    public function test_daftar_qurban_dengan_frekuensi(): void
     {
+        $this->seedBase();
+        $user = $this->actingAsUser();
+        $periode = $this->createAktifPeriode();
+        $hewan = $this->createHewan($periode, 1200000);
+
+        $this->postJson('/api/v1/qurban/daftar', [
+            'hewan_qurban_id' => $hewan->id,
+            'jumlah_hewan' => 1,
+            'frekuensi_setor' => 'bulanan',
+            'nominal_per_periode' => 200000,
+        ])->assertStatus(201)
+            ->assertJsonPath('data.frekuensi_setor', 'bulanan')
+            ->assertJsonPath('data.frekuensi_label', 'Bulanan')
+            ->assertJsonPath('data.nominal_per_periode', '200000.00')
+            ->assertJsonPath('data.sisa_pembayaran', 6);
+    }
+
+    public function test_tunggakan_qurban_menghitung_periode_jatuh_tempo(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+        $periode = $this->createAktifPeriode();
+        $hewan = $this->createHewan($periode, 1000000);
+        $user = $this->createUser();
+
+        $pendaftaran = PendaftaranQurban::create([
+            'user_id' => $user->id,
+            'periode_qurban_id' => $periode->id,
+            'hewan_qurban_id' => $hewan->id,
+            'jumlah_hewan' => 1,
+            'target_dana' => 1000000,
+            'total_terkumpul' => 100000,
+            'status' => StatusPendaftaranQurban::Menabung,
+            'frekuensi_setor' => 'harian',
+            'nominal_per_periode' => 100000,
+            'tanggal_daftar' => now()->subDays(3)->toDateString(),
+        ]);
+
+        // 4 periode jatuh tempo (H+0 s/d H+3) − 1 periode terbayar = 3 tertunggak.
+        $tertunggak = $pendaftaran->tertunggak();
+        $this->assertSame(3, $tertunggak['jumlah_periode']);
+        $this->assertEquals(300000.0, $tertunggak['nominal']);
+    }
+
+    public function test_tunggakan_qurban_tidak_melebihi_total_periode_rencana(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+        $periode = $this->createAktifPeriode();
+        $hewan = $this->createHewan($periode, 1000000);
+        $user = $this->createUser();
+
+        // 20 hari berlalu tapi rencana hanya 10 periode (1jt ÷ 100rb) → tunggakan max 10.
+        $pendaftaran = PendaftaranQurban::create([
+            'user_id' => $user->id,
+            'periode_qurban_id' => $periode->id,
+            'hewan_qurban_id' => $hewan->id,
+            'jumlah_hewan' => 1,
+            'target_dana' => 1000000,
+            'total_terkumpul' => 0,
+            'status' => StatusPendaftaranQurban::Menabung,
+            'frekuensi_setor' => 'harian',
+            'nominal_per_periode' => 100000,
+            'tanggal_daftar' => now()->subDays(20)->toDateString(),
+        ]);
+
+        $tertunggak = $pendaftaran->tertunggak();
+        $this->assertSame(10, $tertunggak['jumlah_periode']);
+        $this->assertEquals(1000000.0, $tertunggak['nominal']);
+    }
+
+    public function test_monitoring_nasabah_menyertakan_tunggakan_qurban(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+        $periode = $this->createAktifPeriode();
+        $hewan = $this->createHewan($periode, 1000000);
+        $user = $this->createUser();
+
+        PendaftaranQurban::create([
+            'user_id' => $user->id,
+            'periode_qurban_id' => $periode->id,
+            'hewan_qurban_id' => $hewan->id,
+            'jumlah_hewan' => 1,
+            'target_dana' => 1000000,
+            'total_terkumpul' => 100000,
+            'status' => StatusPendaftaranQurban::Menabung,
+            'frekuensi_setor' => 'harian',
+            'nominal_per_periode' => 100000,
+            'tanggal_daftar' => now()->subDays(3)->toDateString(),
+        ]);
+
+        $res = $this->getJson('/api/v1/admin/monitoring-tabungan')->assertOk();
+        $row = collect($res->json('data'))->firstWhere('user.id', $user->id);
+
+        $this->assertNotNull($row);
+        $this->assertSame(3, $row['qurban'][0]['tertunggak']['jumlah_periode']);
+        $this->assertEquals(300000.0, $row['qurban'][0]['tertunggak']['nominal']);
+    }
+
+    public function test_user_daftar_saat_pendaftaran_ditutup_403(): void    {
         $this->seedBase();
         $this->actingAsUser();
         $periode = $this->createAktifPeriode([
@@ -321,7 +422,7 @@ class QurbanTest extends ApiTestCase
             ->assertOk()->assertJsonPath('meta.total', 1);
     }
 
-    public function test_daftar_hewan_nonaktif_tetap_bisa_if_aktif_tidak_difilter(): void
+    public function test_daftar_hewan_nonaktif_ditolak(): void
     {
         $this->seedBase();
         $this->actingAsUser();
@@ -330,10 +431,10 @@ class QurbanTest extends ApiTestCase
         $hewan->update(['status_aktif' => false]);
 
         $this->postJson('/api/v1/qurban/daftar', ['hewan_qurban_id' => $hewan->id, 'jumlah_hewan' => 1])
-            ->assertStatus(201);
+            ->assertStatus(422)->assertJsonPath('error_code', 'HEWAN_TIDAK_AKTIF');
     }
 
-    public function test_admin_hapus_pendaftaran_menghapus_pendaftaran_dan_setorannya(): void
+    public function test_admin_hapus_pendaftaran_mengembalikan_dana_dan_menyimpan_riwayat_setoran(): void
     {
         $this->seedBase();
         $this->actingAsAdmin();
@@ -367,9 +468,17 @@ class QurbanTest extends ApiTestCase
             ->assertOk();
 
         $this->assertSoftDeleted('pendaftaran_qurban', ['id' => $pendaftaran->id]);
-        // Setoran ikut dihapus lunak (soft delete) — riwayat dana nasabah tetap ada sebagai jejak audit,
-        // tapi tidak lagi masuk perhitungan saldo qurban.
-        $this->assertSoftDeleted('transaksi', ['id' => $trx->id]);
+
+        // Setoran TIDAK dihapus — riwayat dana nasabah tetap sebagai jejak audit.
+        $this->assertDatabaseHas('transaksi', ['id' => $trx->id, 'deleted_at' => null]);
+
+        // Dana dikembalikan lewat transaksi tarik terverifikasi (netto ledger = 0).
+        $refund = Transaksi::where('pendaftaran_qurban_id', $pendaftaran->id)
+            ->where('jenis_transaksi', 'tarik')
+            ->where('status_verifikasi', 'terverifikasi')
+            ->first();
+        $this->assertNotNull($refund);
+        $this->assertEquals(500000.0, (float) $refund->nominal);
     }
 
     public function test_admin_tidak_bisa_hapus_pendaftaran_sudah_dicairkan(): void

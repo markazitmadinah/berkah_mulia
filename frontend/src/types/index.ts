@@ -69,6 +69,14 @@ export interface HargaEmasHarian {
   tanggal: string;
   harga_per_gram: number;
   harga_beli?: number | null;
+  harga_jual_per_gram?: number;
+  harga_jual_tiers?: Array<{
+    label: string;
+    gramasi_min: number;
+    gramasi_max: number | null;
+    markup: number;
+    harga_jual: number;
+  }>;
   tagihan_harian_default?: number;
   status_aktif: boolean;
   catatan?: string;
@@ -81,6 +89,9 @@ export interface HargaHariIniItem {
   label: string;
   harga_jual: number;
   harga_beli: number;
+  markup_per_gram?: number;
+  harga_jual_per_gram_markup?: number;
+  harga_jual_markup?: number;
 }
 
 export interface HargaHariIniResponse {
@@ -127,6 +138,11 @@ export interface PendaftaranQurban {
   tanggal_dicairkan?: string;
   dicairkan_oleh?: number;
   catatan?: string;
+  frekuensi_setor?: FrekuensiSetoran;
+  frekuensi_label?: string | null;
+  nominal_per_periode?: number | null;
+  sisa_pembayaran?: number | null;
+  persentase?: number | null;
 }
 
 export interface RekeningBank {
@@ -172,6 +188,26 @@ export interface Transaksi {
   catatan_user?: string;
   tanggal_transaksi: string;
   created_at: string;
+}
+
+export interface TransaksiFilters {
+  tanggal_awal?: string;
+  tanggal_akhir?: string;
+  status?: string;
+  metode?: string;
+  tipe?: string;
+}
+
+export type RekapPeriod = 'harian' | 'mingguan' | 'bulanan';
+
+export interface RekapRow {
+  label: string;
+  mulai: string;
+  selesai: string;
+  masuk: number;
+  keluar: number;
+  selisih: number;
+  jumlah: number;
 }
 
 export interface Notifikasi {
@@ -222,6 +258,8 @@ export interface KonfigurasiSetoranEmas {
 
 export interface SetoranBerkalaProgress {
   konfigurasi_id: number;
+  frekuensi_setor: FrekuensiSetoran | null;
+  frekuensi_label: string | null;
   nominal_per_periode: number;
   durasi_periode: number | null;
   rekap: {
@@ -247,6 +285,12 @@ export interface SetoranBerkalaProgress {
   capaian_gram: number | null;
 }
 
+export interface RencanaCashOption {
+  konfigurasi_id: number;
+  nominal_per_periode: number;
+  frekuensi_label: string | null;
+}
+
 export interface SetoranBerkalaResponse {
   dapat_membuat: boolean;
   status: string | null;
@@ -260,6 +304,7 @@ export interface SetoranBerkalaResponse {
 export interface SetoranBerkalaPayload {
   nominal_per_periode: number;
   target_gram_total?: number; // target RENCANA ini sendiri (per-rencana, mis. "nabung lagi 5g")
+  target_gram_per_periode?: number; // gram yang dibeli per pembayaran (sisa nominal → saldo dana)
   frekuensi_setor: FrekuensiSetoran;
   durasi_periode: number;
 }
@@ -271,8 +316,17 @@ export interface HariRayaStatus {
   hari_raya: string | null;
   target: number;
   terkumpul: number;
+  frekuensi: FrekuensiProgress | null;
+  sisa_nominal: number;
   persentase: number | null;
   masa_pencairan: boolean;
+}
+
+export interface FrekuensiProgress {
+  frekuensi_setor: FrekuensiSetoran;
+  frekuensi_label: string;
+  nominal_per_periode: number | null;
+  sisa_pembayaran: number | null;
 }
 
 export interface UserSummaryProgress {
@@ -291,6 +345,7 @@ export interface ProfilTabungan {
     kode: string;
     nama: string;
     tipe: string;
+    sub_jenis?: SubJenisTabungan | string | null;
     total_setoran: number;
     total_penarikan: number;
     saldo: number;
@@ -299,8 +354,11 @@ export interface ProfilTabungan {
     unit_label: string | null;
     saldo_dana: number;
     target: number | null;
+    target_emas_gram?: number | null;
     target_unit: number | null;
     persentase: number | null;
+    frekuensi?: FrekuensiProgress | null;
+    setoran_berkala?: SetoranBerkalaProgress[] | null;
   };
   konfigurasi: KonfigurasiSetoranEmas[] | null;
   setoran_berkala: SetoranBerkalaProgress[] | null;
@@ -316,7 +374,28 @@ export interface ProfilQurban {
   persentase: number | null;
   status: string;
   status_label: string;
+  frekuensi_setor: FrekuensiSetoran | null;
+  frekuensi_label: string | null;
+  nominal_per_periode: number | null;
+  sisa_pembayaran: number | null;
   tanggal_daftar: string;
+  tertunggak: { jumlah_periode: number; nominal: number };
+}
+
+export interface ProfilBerjangka {
+  id: number;
+  target_nominal: number;
+  durasi_bulan: number;
+  frekuensi_setor: FrekuensiSetoran;
+  frekuensi_label: string;
+  nominal_per_periode: number;
+  tanggal_mulai: string | null;
+  tanggal_jatuh_tempo: string | null;
+  status: string;
+  terkumpul: number;
+  persentase: number;
+  tertunggak: { jumlah_periode: number; nominal: number };
+  sisa_target: number;
 }
 
 export interface ProfilNasabah {
@@ -324,6 +403,7 @@ export interface ProfilNasabah {
   produk: {
     tabungan: ProfilTabungan[];
     qurban: ProfilQurban[];
+    berjangka: ProfilBerjangka[];
   };
   summary: {
     total_tabungan_aktif: number;
@@ -504,4 +584,25 @@ export interface CairkanTabunganBerjangkaPayload {
   no_rekening: string;
   atas_nama: string;
   catatan?: string;
+}
+
+export interface MonitoringNasabah {
+  user: User;
+  tabungan: Array<
+    ProfilTabungan['progress'] & {
+      berjangka?: Array<{
+        id: number;
+        target_nominal: number;
+        durasi_bulan: number;
+        frekuensi_setor: FrekuensiSetoran;
+        frekuensi_label: string;
+        nominal_per_periode: number;
+        terkumpul: number;
+        persentase: number;
+        sisa_target: number;
+        status: string;
+      }>;
+    }
+  >;
+  qurban: Array<Pick<ProfilQurban, 'id' | 'hewan' | 'jumlah_hewan' | 'target_dana' | 'total_terkumpul' | 'persentase' | 'status' | 'frekuensi_setor' | 'frekuensi_label' | 'nominal_per_periode' | 'sisa_pembayaran' | 'tertunggak'>>;
 }

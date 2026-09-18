@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useApp } from '../../context/AppContext';
-import { formatRupiah, parseRupiah, fmtRupiahTyping, fmtRupiahBlur } from '../../utils/format';
-import { ArrowDownLeft, ArrowUpRight, Calendar, Gift, Target, Sparkles } from 'lucide-react';
+import { formatRupiah } from '../../utils/format';
+import { ArrowDownLeft, ArrowUpRight, Calendar, Gift, Target, Sparkles, Repeat } from 'lucide-react';
 
 interface UserTabunganHariRayaProps {
   onOpenSetorPribadi: (subJenisId?: number) => void;
@@ -12,14 +12,10 @@ export const UserTabunganHariRaya: React.FC<UserTabunganHariRayaProps> = ({
 }) => {
   const {
     hariRayaStatus,
-    setTargetHariRaya,
     cairkanHariRaya,
     userTransaksi,
-    currentUser,
-    showToast
+    currentUser
   } = useApp();
-
-  const [targetInput, setTargetInput] = useState('');
 
   const st = hariRayaStatus;
   const trx = userTransaksi.filter((t) => t.jenis_tabungan_id === st?.jenis_tabungan_id);
@@ -32,15 +28,6 @@ export const UserTabunganHariRaya: React.FC<UserTabunganHariRayaProps> = ({
   const deadlineLabels = st.deadline
     ? `pada ${new Date(st.deadline + 'T00:00:00').toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`
     : 'pada tanggal yang diatur admin';
-
-  const handleSimpanTarget = () => {
-    const nominal = parseRupiah(targetInput);
-    if (nominal < 10000) {
-      showToast('Minimal target Rp 10.000.', 'error');
-      return;
-    }
-    setTargetHariRaya(nominal);
-  };
 
   const handleCairkan = () => {
     if (window.confirm(`Cairkan seluruh saldo tabungan hari raya (Rp ${formatRupiah(terkumpul)}) ke rekening Anda?`)) {
@@ -66,7 +53,7 @@ export const UserTabunganHariRaya: React.FC<UserTabunganHariRayaProps> = ({
           Tabungan Hari Raya
         </h1>
         <p className="text-xs md:text-sm text-slate-600 dark:text-slate-300 mt-1 max-w-xl">
-          Tentukan target sendiri, lalu setor kapan saja. Dana otomatis siap dicairkan 1 minggu sebelum hari raya ke rekening Anda.
+          Target & frekuensi diatur admin. Setor kapan saja, dana siap dicairkan 1 minggu sebelum hari raya ke rekening Anda.
         </p>
       </div>
 
@@ -94,45 +81,20 @@ export const UserTabunganHariRaya: React.FC<UserTabunganHariRayaProps> = ({
         </div>
       )}
 
-      {/* Target Setup / Progress */}
+      {/* Target Progress */}
       {st.target === 0 ? (
-        <div className="rounded-3xl p-6 bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 shadow-sm">
-          <div className="flex items-center gap-3 mb-3">
-            <span className="w-10 h-10 rounded-2xl bg-rose-600/10 text-rose-600 dark:text-rose-400 flex items-center justify-center">
-              <Target className="w-5 h-5" />
-            </span>
-            <div>
-              <h3 className="font-extrabold text-base text-slate-900 dark:text-white">Atur Target Tabungan Hari Raya</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {st.deadline
-                  ? `Dana dicairkan ${st.deadline ? new Date(st.deadline + 'T00:00:00').toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : ''}.`
-                  : 'Tentukan berapa dana yang ingin dikumpulkan untuk hari raya.'}
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">Rp</span>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={targetInput}
-                onChange={(e) => setTargetInput(fmtRupiahTyping(e.target.value))}
-                onBlur={() => setTargetInput(fmtRupiahBlur(targetInput))}
-                placeholder="Contoh: 3.000.000,50"
-                className="w-full pl-10 pr-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-bold text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500/50"
-              />
-            </div>
-            <button
-              onClick={handleSimpanTarget}
-              className="py-3 px-6 rounded-2xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-extrabold text-sm transition-all cursor-pointer"
-            >
-              Simpan Target
-            </button>
-          </div>
+        <div className="rounded-3xl p-6 bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 shadow-sm text-center">
+          <span className="w-10 h-10 mx-auto rounded-2xl bg-rose-600/10 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+            <Target className="w-5 h-5" />
+          </span>
+          <h3 className="font-extrabold text-base text-slate-900 dark:text-white mt-3">Target Belum Diatur</h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
+            Target dan frekuensi setoran tabungan hari raya diatur oleh admin. Hubungi admin untuk mengaktifkannya.
+          </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div className="space-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           <div className="rounded-3xl p-6 bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 shadow-sm flex flex-col justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Terkumpul</span>
             <span className="my-2 text-2xl sm:text-3xl font-extrabold text-emerald-600 dark:text-emerald-400 break-words">
@@ -163,6 +125,24 @@ export const UserTabunganHariRaya: React.FC<UserTabunganHariRayaProps> = ({
               />
             </div>
           </div>
+          </div>
+
+          <div className="rounded-3xl p-5 bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 shadow-sm flex flex-wrap items-center gap-x-5 gap-y-2">
+            <span className="px-2.5 py-1 rounded-full bg-rose-100 dark:bg-rose-950 text-[10px] font-bold text-rose-700 dark:text-rose-300 flex items-center gap-1">
+              <Repeat className="w-3 h-3" /> {st.frekuensi?.frekuensi_label ?? 'Bulanan'}
+            </span>
+            {st.frekuensi?.nominal_per_periode != null && (
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                Setoran <strong className="text-slate-700 dark:text-slate-200">Rp {formatRupiah(st.frekuensi.nominal_per_periode)}</strong>
+                {st.frekuensi.frekuensi_label ? ` / ${st.frekuensi.frekuensi_label.toLowerCase()}` : ''}
+              </span>
+            )}
+            {st.frekuensi?.sisa_pembayaran != null && (
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                Sisa <strong className="text-rose-600 dark:text-rose-300">{st.frekuensi.sisa_pembayaran}x</strong> pembayaran
+              </span>
+            )}
+          </div>
         </div>
       )}
 
@@ -172,10 +152,10 @@ export const UserTabunganHariRaya: React.FC<UserTabunganHariRayaProps> = ({
           onClick={() => onOpenSetorPribadi(st.jenis_tabungan_id)}
           disabled={st.target === 0}
           className="w-full py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-600/25 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          title={st.target === 0 ? 'Atur target tabungan hari raya terlebih dahulu' : undefined}
+          title={st.target === 0 ? 'Target belum diatur admin' : undefined}
         >
           <ArrowDownLeft className="w-4 h-4" />
-          <span>{st.target === 0 ? 'Atur Target Dulu Sebelum Setor' : 'Setor Tabungan Hari Raya'}</span>
+          <span>{st.target === 0 ? 'Menunggu Target dari Admin' : 'Setor Tabungan Hari Raya'}</span>
         </button>
       )}
 

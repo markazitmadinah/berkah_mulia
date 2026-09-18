@@ -1040,7 +1040,8 @@ POST /emas/tarik
 | `atas_nama` | string | Ya | max 100 |
 | `catatan_user` | string | Tidak | max 500 |
 
-> Tidak ada field `nominal` — nilai pencairan selalu full saldo, dihitung server-side.
+> Tidak ada field `nominal` — pencairan selalu full saldo (gram + saldo dana), dihitung server-side.
+> Refund = total saldo dipotong **10%** (`biaya_penalti`).
 
 ### Contoh Request
 
@@ -1061,11 +1062,12 @@ curl -X POST http://localhost:8000/api/v1/emas/tarik \
     "id": 8,
     "nomor_referensi": "TRX-20260831-B4D2E9",
     "jenis_transaksi": "tarik",
-    "nominal": "1500000.00",
+    "nominal": "1350000.00",
     "unit_didapat": "-1.4286",
+    "biaya_penalti": "150000.00",
     "harga_acuan_snapshot": "1050000.00",
     "status_verifikasi": "menunggu_verifikasi",
-    "catatan_user": "Pencairan full saldo ke Bank Syariah Indonesia (BSI) (7123456789 a.n Ahmad Fauzi). Kebutuhan dana keluarga"
+    "catatan_user": "Pencairan full saldo (refund setelah potongan 10% Rp 150.000) ke Bank Syariah Indonesia (BSI) (7123456789 a.n Ahmad Fauzi). Kebutuhan dana keluarga"
   }
 }
 ```
@@ -1077,7 +1079,7 @@ curl -X POST http://localhost:8000/api/v1/emas/tarik \
 
 ## 4.6.2 Pembatalan & Refund Tabungan Emas (User)
 
-Pembatalan tabungan emas **sebelum** goal tercapai → refund **90%** dari nilai saldo terkumpul (potongan **10%**). Stored sebagai transaksi `tarik` dengan `nominal` = full nilai saldo, `unit_didapat` negatif, dan `biaya_penalti` = 10% nilai saldo. Saldo gram nol setelah diverifikasi admin.
+Pembatalan tabungan emas **sebelum** goal tercapai → refund **TOTAL tabungan** (nilai emas + saldo dana) dipotong **10%**. Stored sebagai transaksi `tarik` dengan `nominal` = refund, `unit_didapat` negatif, dan `biaya_penalti` = 10% total tabungan. Saldo gram & dana nol setelah diverifikasi admin.
 
 ```
 POST /emas/batal
@@ -1120,7 +1122,7 @@ curl -X POST http://localhost:8000/api/v1/emas/batal \
     "biaya_penalti": "150000.00",
     "harga_acuan_snapshot": "1050000.00",
     "status_verifikasi": "menunggu_verifikasi",
-    "catatan_user": "Pembatalan tabungan emas. Refund 90%: Rp 1.350.000 (potong 10%: Rp 150.000) ke Bank Syariah Indonesia (BSI) (7123456789 a.n Ahmad Fauzi). Membatalkan tabungan"
+    "catatan_user": "Pembatalan tabungan emas. Refund: total tabungan (emas Rp 1.500.000 + saldo dana Rp 0) dipotong 10% Rp 150.000 = Rp 1.350.000 ke Bank Syariah Indonesia (BSI) (7123456789 a.n Ahmad Fauzi). Membatalkan tabungan"
   }
 }
 ```
@@ -1180,7 +1182,7 @@ POST /emas/setoran-berkala/{id}/batalkan
 **Akses:** User (pemilik rencana).
 
 Membatalkan **satu** rencana pembayaran emas saja — rencana lain tidak tersentuh.
-Nilai emas rencana direfund **90%** (potongan 10%), saldo dana rencana **100%**.
+Refund = **TOTAL tabungan rencana** (nilai emas + saldo dana rencana) dipotong **10%**.
 Refund menjadi transaksi `tarik` berstatus `menunggu_verifikasi`; gram & saldo dana
 benar-benar keluar **setelah admin memverifikasi** transaksi refund tersebut. Sampai
 diverifikasi, rencana tetap berstatus `aktif` tapi **dikunci** — tidak bisa disetor ulang
@@ -1494,8 +1496,31 @@ POST /transaksi/{id}/upload-bukti
 ## 7.4 List Semua Transaksi (Admin)
 
 ```
-GET /admin/transaksi?status=menunggu_verifikasi&metode=transfer&search=TRX-202
+GET /admin/transaksi?status=menunggu_verifikasi&metode=transfer&search=TRX-202&tanggal_awal=2026-09-01&tanggal_akhir=2026-09-15
 ```
+
+| Param | Tipe | Keterangan |
+|---|---|---|
+| `status` | string | `menunggu_verifikasi` \| `terverifikasi` \| `ditolak` |
+| `metode` | string | `cash` \| `transfer` |
+| `jenis_tabungan_id` | integer | Produk tabungan |
+| `search` | string | Cari nomor referensi / nama nasabah |
+| `tanggal_awal` | date (`Y-m-d`) | Batas bawah tanggal transaksi |
+| `tanggal_akhir` | date (`Y-m-d`) | Batas atas (harus ≥ `tanggal_awal`) |
+| `per_page` | integer | Maks 100 |
+
+## 7.4a Export Pembukuan Transaksi (Admin)
+
+```
+GET /admin/transaksi/export?tanggal_awal=2026-09-01&tanggal_akhir=2026-09-15&status=terverifikasi&metode=transfer
+```
+
+Mengunduh file `.xlsx` berisi **2 sheet**:
+
+1. **Data Transaksi** — rincian mutasi (referensi, nasabah, produk, jenis, nominal, gram, metode, tanggal, status).
+   Filter yang sama dengan list berlaku: `status`, `metode`, `search`, `tanggal_awal`, `tanggal_akhir`.
+2. **Rekap Harian** — ringkasan uang masuk (setoran terverifikasi), uang keluar (penarikan terverifikasi),
+   selisih, dan jumlah transaksi per tanggal, ditutup baris `TOTAL`.
 
 ## 7.5 Detail Transaksi (Admin)
 
@@ -2045,6 +2070,7 @@ Status: `menunggu_approval` → `aktif` → (`selesai` via pencairan) | `batal` 
 | 52 | GET | `/transaksi-saya/{id}` | User |
 | 53 | POST | `/transaksi/{id}/upload-bukti` | User |
 | 54 | GET | `/admin/transaksi` | Admin |
+| 54a | GET | `/admin/transaksi/export` | Admin |
 | 55 | GET | `/admin/transaksi/{id}` | Admin |
 | 56 | POST | `/admin/transaksi/{id}/verifikasi` | Admin |
 | 57 | POST | `/admin/transaksi/{id}/tolak` | Admin |

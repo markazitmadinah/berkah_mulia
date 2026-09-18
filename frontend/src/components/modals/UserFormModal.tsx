@@ -85,8 +85,8 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       showToast('Nomor telepon harus angka 9–15 digit', 'error');
       return;
     }
-    if (!/^\d{16}$/.test(nomorAnggota)) {
-      showToast('Nomor anggota wajib 16 digit angka (contoh: 0000000020260001)', 'error');
+    if (!/^\d{10}$/.test(nomorAnggota)) {
+      showToast('Nomor anggota wajib 10 digit angka (contoh: 0234567334)', 'error');
       return;
     }
 
@@ -227,16 +227,16 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                Nomor Anggota (16 digit)
+                Nomor Anggota (10 digit)
               </label>
               <input
                 type="text"
                 inputMode="numeric"
                 required
-                maxLength={16}
+                maxLength={10}
                 value={nomorAnggota}
-                onChange={(e) => setNomorAnggota(e.target.value.replace(/\D/g, '').slice(0, 16))}
-                placeholder="0000000020260001"
+                onChange={(e) => setNomorAnggota(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                placeholder="0234567334"
                 className="w-full py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none"
               />
             </div>
@@ -254,7 +254,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
             </div>
           </div>
 
-          {nomorAnggota.length === 16 && (
+          {nomorAnggota.length === 10 && (
             <div className="py-2.5 px-3 rounded-2xl bg-emerald-50 dark:bg-slate-900 border border-dashed border-emerald-300 dark:border-emerald-500/40 font-mono font-extrabold text-sm text-emerald-700 dark:text-emerald-400 tracking-widest">
               {nomorAnggota.replace(/(\d{4})(?=\d)/g, '$1 ').trim()}
             </div>

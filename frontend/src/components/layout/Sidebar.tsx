@@ -22,7 +22,8 @@ import {
   LogOut,
   ChevronDown,
   CalendarCheck,
-  Headphones
+  Headphones,
+  TrendingUp
 } from 'lucide-react';
 
 interface SidebarProps {

@@ -4,10 +4,12 @@ namespace Tests\Feature;
 
 use App\Enums\JenisTransaksi;
 use App\Enums\StatusVerifikasi;
+use App\Enums\SubJenisTabungan;
 use App\Models\JenisTabungan;
 use App\Models\PendaftaranQurban;
 use App\Models\PeriodeQurban;
 use App\Models\HewanQurban;
+use App\Models\TabunganBerjangka;
 use App\Models\Transaksi;
 use Tests\ApiTestCase;
 
@@ -147,6 +149,94 @@ class TransaksiTest extends ApiTestCase
         $this->assertEquals('target_tercapai', $pendaftaran->status->value);
     }
 
+    public function test_cash_qurban_ditolak_kurang_dari_satu_periode(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+        $user = $this->createUser();
+        $periode = PeriodeQurban::create([
+            'tahun' => date('Y'),
+            'tanggal_buka_pendaftaran' => now()->subDay()->toDateString(),
+            'tanggal_tutup_pendaftaran' => now()->addMonth()->toDateString(),
+            'tanggal_idul_adha' => now()->addMonths(2)->toDateString(),
+            'tanggal_pencairan' => now()->addMonths(2)->subDays(14)->toDateString(),
+            'status' => 'aktif',
+            'created_by' => auth()->id(),
+        ]);
+        $hewan = HewanQurban::create(['jenis_hewan' => 'Lembu', 'harga_per_unit' => 8000000, 'periode_qurban_id' => $periode->id, 'created_by' => auth()->id()]);
+        $pendaftaran = PendaftaranQurban::create([
+            'user_id' => $user->id,
+            'periode_qurban_id' => $periode->id,
+            'hewan_qurban_id' => $hewan->id,
+            'jumlah_hewan' => 1,
+            'target_dana' => 8000000,
+            'status' => 'menabung',
+            'frekuensi_setor' => 'harian',
+            'nominal_per_periode' => 29520.30,
+            'tanggal_daftar' => now()->toDateString(),
+        ]);
+        $jenis = JenisTabungan::where('tipe', 'qurban')->first();
+
+        $this->postJson('/api/v1/admin/transaksi/cash', [
+            'user_id' => $user->id,
+            'jenis_tabungan_id' => $jenis->id,
+            'pendaftaran_qurban_id' => $pendaftaran->id,
+            'nominal' => 20000,
+        ])->assertStatus(422)->assertJsonPath('error_code', 'NOMINAL_KURANG_1_PERIODE');
+
+        $this->postJson('/api/v1/admin/transaksi/cash', [
+            'user_id' => $user->id,
+            'jenis_tabungan_id' => $jenis->id,
+            'pendaftaran_qurban_id' => $pendaftaran->id,
+            'nominal' => 29520.30,
+        ])->assertStatus(201);
+    }
+
+    public function test_cash_transaksi_berjangka_terhubung_akun_spesifik(): void    {
+        $this->seedBase();
+        $admin = $this->actingAsAdmin();
+        $user = $this->createUser();
+
+        $jenis = JenisTabungan::where('sub_jenis', SubJenisTabungan::Berjangka)->firstOrFail();
+        $tb = TabunganBerjangka::create([
+            'user_id' => $user->id,
+            'jenis_tabungan_id' => $jenis->id,
+            'target_nominal' => 600000,
+            'durasi_bulan' => 6,
+            'frekuensi_setor' => 'bulanan',
+            'nominal_per_periode' => 100000,
+            'tanggal_mulai' => now()->toDateString(),
+            'tanggal_jatuh_tempo' => now()->addMonths(6)->toDateString(),
+            'status' => 'aktif',
+            'approved_by' => $admin->id,
+            'approved_at' => now(),
+            'created_by' => $admin->id,
+        ]);
+
+        $this->postJson('/api/v1/admin/transaksi/cash', [
+            'user_id' => $user->id,
+            'jenis_tabungan_id' => $jenis->id,
+            'tabungan_berjangka_id' => $tb->id,
+            'nominal' => 200000,
+        ])->assertStatus(201)->assertJsonPath('data.status_verifikasi', 'terverifikasi');
+
+        $this->assertDatabaseHas('transaksi', [
+            'tabungan_berjangka_id' => $tb->id,
+            'status_verifikasi' => 'terverifikasi',
+            'user_id' => $user->id,
+        ]);
+        $this->assertEquals(200000.0, $tb->terkumpulNominal());
+
+        // Berjangka milik user lain → ditolak
+        $userLain = $this->createUser(['email' => 'lain@example.com', 'phone' => '081211199932']);
+        $this->postJson('/api/v1/admin/transaksi/cash', [
+            'user_id' => $userLain->id,
+            'jenis_tabungan_id' => $jenis->id,
+            'tabungan_berjangka_id' => $tb->id,
+            'nominal' => 50000,
+        ])->assertStatus(422)->assertJsonPath('error_code', 'BERJANGKA_TIDAK_COCOK');
+    }
+
     public function test_non_admin_tidak_bisa_verifikasi(): void
     {
         $this->seedBase();
@@ -157,5 +247,43 @@ class TransaksiTest extends ApiTestCase
 
         $this->postJson("/api/v1/admin/transaksi/{$trx->id}/verifikasi")
             ->assertStatus(403);
+    }
+
+    public function test_admin_filter_transaksi_per_tanggal(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+        $user = $this->createUser();
+        $jenis = JenisTabungan::where('kode', 'tabungan-pribadi')->first();
+        $trx = $this->createPendingTransaksi($user->id, $jenis->id, 150000);
+
+        $dalamRentang = now()->toDateString();
+        $trx->update(['tanggal_transaksi' => $dalamRentang]);
+        $this->createPendingTransaksi($user->id, $jenis->id, 250000)
+            ->update(['tanggal_transaksi' => now()->subDays(30)->toDateString()]);
+
+        $this->getJson('/api/v1/admin/transaksi?per_page=50&tanggal_awal=' . now()->subDay()->toDateString() . '&tanggal_akhir=' . now()->addDay()->toDateString())
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.nomor_referensi', $trx->nomor_referensi);
+
+        $this->getJson('/api/v1/admin/transaksi?tanggal_awal=bukan-tanggal')
+            ->assertStatus(422);
+    }
+
+    public function test_admin_export_transaksi_per_tanggal(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+        $user = $this->createUser();
+        $jenis = JenisTabungan::where('kode', 'tabungan-pribadi')->first();
+        $this->createPendingTransaksi($user->id, $jenis->id, 500000);
+        $this->createPendingTransaksi($user->id, $jenis->id, 75000)
+            ->update(['tanggal_transaksi' => now()->subDays(7)->toDateString()]);
+
+        $res = $this->get('/api/v1/admin/transaksi/export?tanggal_awal=&tanggal_akhir=' . now()->toDateString());
+        $res->assertStatus(200);
+        $res->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        $this->assertStringContainsString('.xlsx', $res->headers->get('content-disposition'));
     }
 }

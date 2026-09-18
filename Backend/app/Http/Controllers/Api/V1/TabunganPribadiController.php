@@ -68,6 +68,20 @@ class TabunganPribadiController extends Controller
             return $this->errorResponse('Jenis tabungan pribadi tidak valid atau belum tersedia.', 404, 'NOT_FOUND');
         }
 
+        // Bila setoran diatribusikan ke akun berjangka, akun itu harus milik user,
+        // sejenis, dan aktif — mencegah tabungan berjangka milik user lain ikut terhitung.
+        if ($request->filled('tabungan_berjangka_id')) {
+            $tb = \App\Models\TabunganBerjangka::where('id', $request->tabungan_berjangka_id)
+                ->where('user_id', $request->user()->id)
+                ->where('jenis_tabungan_id', $jenisTabungan->id)
+                ->where('status', 'aktif')
+                ->exists();
+
+            if (! $tb) {
+                return $this->errorResponse('Tabungan berjangka tidak valid untuk setoran ini.', 422, 'BERJANGKA_TIDAK_VALID');
+            }
+        }
+
         if ($jenisTabungan->sub_jenis === SubJenisTabungan::Berjangka
             && $jenisTabungan->deadline
             && $jenisTabungan->deadline->lt(now()->startOfDay())) {

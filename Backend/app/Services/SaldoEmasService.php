@@ -59,18 +59,22 @@ class SaldoEmasService
         return Transaksi::milikUser($user->id)
             ->where('jenis_tabungan_id', $k->jenis_tabungan_id)
             ->where('jenis_transaksi', 'setor')
-            ->where('nominal', (float) $k->nominal_per_periode)
             ->terverifikasi()
-            ->where(function (Builder $q) use ($k, $mulai) {
+            ->where(function (Builder $q) use ($k) {
+                // Baris bertanda konfigurasi_id dihitung apa pun nominalnya;
+                // filter nominal hanya untuk data lama (tanpa tanda).
                 $q->where('konfigurasi_id', $k->id)
-                    ->orWhere(function (Builder $q2) use ($k, $mulai) {
+                    ->orWhere(function (Builder $q2) use ($k) {
                         $q2->whereNull('konfigurasi_id')
-                            ->whereBetween('tanggal_transaksi', [
-                                $mulai->toDateString(),
-                                $k->tanggal_deadline ?: now()->toDateString(),
-                            ]);
+                            ->where('nominal', (float) $k->nominal_per_periode);
                     });
-            });
+            })
+            // Semua setoran (termasuk yang bertanda konfigurasi_id) dibatasi pada
+            // jendela rencana — setoran setelah deadline tidak dihitung progress/refund.
+            ->whereBetween('tanggal_transaksi', [
+                $mulai->toDateString(),
+                $k->tanggal_deadline ?: now()->toDateString(),
+            ]);
     }
 
     /**
@@ -95,6 +99,25 @@ class SaldoEmasService
             ->where('jenis_tabungan_id', $jenisTabungan->id)
             ->terverifikasi()
             ->sum('nominal_selisih'), 2);
+    }
+
+    /**
+     * Refund batal/pencairan emas: potongan 10% dihitung dari TOTAL tabungan
+     * (nilai emas + saldo dana), bukan hanya dari nilai emas.
+     *
+     * @return array{total: float, penalti: float, refund: float}
+     */
+    public function hitungRefund(float $nilaiEmas, float $dana): array
+    {
+        $total = round($nilaiEmas + $dana, 2);
+
+        if ($total <= 0) {
+            return ['total' => 0.0, 'penalti' => 0.0, 'refund' => 0.0];
+        }
+
+        $penalti = round($total * 0.10, 2);
+
+        return ['total' => $total, 'penalti' => $penalti, 'refund' => round($total - $penalti, 2)];
     }
 
     /**
@@ -160,9 +183,9 @@ class SaldoEmasService
 if ($konfigurasi->tanggal_deadline && now()->endOfDay()->gt(Carbon::parse($konfigurasi->tanggal_deadline)->endOfDay())) {
                 $selesai = true;
             } elseif ($konfigurasi->durasi_periode && (int) $konfigurasi->durasi_periode > 0) {
-                $jumlahSetorRencana = $this->setoranRencana($user, $konfigurasi)->count();
+                $periodeTerbayar = $this->jumlahPeriodeTerbayar($user, $konfigurasi);
 
-                if ($jumlahSetorRencana >= (int) $konfigurasi->durasi_periode) {
+                if ($periodeTerbayar >= (int) $konfigurasi->durasi_periode) {
                     $selesai = true;
                 }
             }
@@ -171,6 +194,27 @@ if ($konfigurasi->tanggal_deadline && now()->endOfDay()->gt(Carbon::parse($konfi
                 $konfigurasi->update(['status' => StatusKonfigurasiSetoran::Selesai]);
             }
         }
+    }
+
+    /**
+     * Jumlah periode yang terbayar = nominal total setoran rencana terverifikasi
+     * dibagi nominal per periode. Satu setoran besar bisa menutup beberapa periode.
+     */
+    private function jumlahPeriodeTerbayar(User $user, KonfigurasiSetoranEmas $konfigurasi): int
+    {
+        $nominalPeriode = (float) $konfigurasi->nominal_per_periode;
+        if ($nominalPeriode <= 0) {
+            return $this->setoranRencana($user, $konfigurasi)->count();
+        }
+
+        $nominalTotal = (clone $this->setoranRencana($user, $konfigurasi))
+            ->whereBetween('tanggal_transaksi', [
+                Carbon::parse($konfigurasi->tanggal_mulai ?: $konfigurasi->created_at)->startOfDay()->toDateString(),
+                $konfigurasi->tanggal_deadline ?: now()->toDateString(),
+            ])
+            ->sum('nominal');
+
+        return (int) floor($nominalTotal / $nominalPeriode);
     }
 
     /**
@@ -195,17 +239,23 @@ if ($konfigurasi->tanggal_deadline && now()->endOfDay()->gt(Carbon::parse($konfi
         $terlaksana = (clone $setorRencana)->count();
         $nominalTotal = (clone $setorRencana)->sum('nominal');
 
+        // Periode yang terbayar dihitung dari nominal (satu setoran bisa menutup banyak periode),
+        // bukan dari jumlah transaksi — agar progress & tunggakan mengikuti nominal yang disetor.
+        $periodeTerbayar = $nominalPeriode > 0
+            ? (int) floor((float) $nominalTotal / $nominalPeriode)
+            : $terlaksana;
+
         // Gram terkumpul RENCANA ini = unit_didapat setoran yang diatribusikan ke rencana ini.
         $gramTerkumpul = (clone $setorRencana)->sum('unit_didapat');
 
         $persentase = $seharusnya > 0
-            ? round(min(100, ($terlaksana / $seharusnya) * 100), 2)
+            ? round(min(100, ($periodeTerbayar / $seharusnya) * 100), 2)
             : 100.0;
 
         $sisaPeriode = null;
         $estimasiSelesai = null;
         if ($konfigurasi->durasi_periode) {
-            $sisaPeriode = max(0, (int) $konfigurasi->durasi_periode - $terlaksana);
+            $sisaPeriode = max(0, (int) $konfigurasi->durasi_periode - $periodeTerbayar);
             $estimasiSelesai = $konfigurasi->tanggal_deadline?->toDateString();
         }
 
@@ -220,6 +270,8 @@ if ($konfigurasi->tanggal_deadline && now()->endOfDay()->gt(Carbon::parse($konfi
 
         return [
             'konfigurasi_id' => $konfigurasi->id,
+            'frekuensi_setor' => $frekuensi,
+            'frekuensi_label' => $konfigurasi->frekuensi_setor->label(),
             'nominal_per_periode' => round((float) $konfigurasi->nominal_per_periode, 2),
             'durasi_periode' => $konfigurasi->durasi_periode,
             'rekap' => [
@@ -231,15 +283,15 @@ if ($konfigurasi->tanggal_deadline && now()->endOfDay()->gt(Carbon::parse($konfi
             ],
             'konsistensi' => [
                 'periode_seharusnya' => $seharusnya,
-                'periode_terlaksana' => $terlaksana,
+                'periode_terlaksana' => $periodeTerbayar,
                 'persentase' => $persentase,
                 'status' => $persentase >= 100 ? 'tepat_waktu' : 'tertinggal',
             ],
             // Tagihan: periode jatuh tempo yang belum dibayar. Per frekuensi: harian=hari,
             // mingguan=minggu, bulanan=bulan. Nominal = jumlah periode tertunggak × nominal/priode.
             'tertunggak' => [
-                'jumlah_periode' => max(0, $seharusnya - $terlaksana),
-                'nominal' => round(max(0, $seharusnya - $terlaksana) * $nominalPeriode, 2),
+                'jumlah_periode' => max(0, $seharusnya - $periodeTerbayar),
+                'nominal' => round(max(0, $seharusnya - $periodeTerbayar) * $nominalPeriode, 2),
             ],
             'sisa_periode' => $sisaPeriode,
             'estimasi_selesai' => $estimasiSelesai,

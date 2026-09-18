@@ -4,12 +4,10 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\JenisTransaksi;
 use App\Enums\StatusVerifikasi;
-use App\Enums\SubJenisTabungan;
 use App\Enums\TipeNotifikasi;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\TransaksiResource;
 use App\Models\AuditLog;
-use App\Models\JenisTabungan;
 use App\Models\TabunganBerjangka;
 use App\Models\Transaksi;
 use App\Services\NotifikasiService;
@@ -22,8 +20,6 @@ use Illuminate\Support\Facades\DB;
 class TabunganBerjangkaController extends Controller
 {
     use ApiResponse;
-
-    private const MAX_PER_USER = 5;
 
     public function __construct(
         private TransaksiService $transaksiService,
@@ -75,83 +71,9 @@ class TabunganBerjangkaController extends Controller
 
         return $this->successResponse([
             'items' => $result,
-            'dapat_membuat' => $aktifCount < self::MAX_PER_USER,
-            'slot_tersedia' => max(0, self::MAX_PER_USER - $aktifCount),
+            'dapat_membuat' => false, // pembuatan berjangka hanya via admin
+            'slot_tersedia' => 0,
         ]);
-    }
-
-    /**
-     * POST /tabungan-berjangka — user membuat tabungan berjangka baru (langsung aktif, maks 5).
-     */
-    public function store(Request $request): JsonResponse
-    {
-        $data = $request->validate([
-            'target_nominal' => 'required|numeric|min:50000',
-            'durasi_bulan' => 'required|integer|min:1|max:120',
-            'frekuensi_setor' => 'required|in:harian,mingguan,bulanan',
-            'catatan' => 'nullable|string|max:500',
-        ]);
-
-        $userId = $request->user()->id;
-
-        // Check limit
-        $aktifCount = TabunganBerjangka::milikUser($userId)
-            ->whereIn('status', ['aktif', 'menunggu_approval'])
-            ->count();
-
-        if ($aktifCount >= self::MAX_PER_USER) {
-            return $this->errorResponse('Sudah mencapai batas maksimal ' . self::MAX_PER_USER . ' tabungan berjangka aktif.', 422, 'LIMIT_REACHED');
-        }
-
-        $jenisBerjangka = JenisTabungan::where('sub_jenis', SubJenisTabungan::Berjangka)->first();
-        if (! $jenisBerjangka) {
-            return $this->errorResponse('Produk tabungan berjangka belum dikonfigurasi admin.', 400, 'PRODUK_TIDAK_ADA');
-        }
-
-        // Calculate nominal per periode
-        $target = (float) $data['target_nominal'];
-        $durasi = (int) $data['durasi_bulan'];
-        $frekuensi = $data['frekuensi_setor'];
-
-        $totalPeriode = match ($frekuensi) {
-            'harian' => $durasi * 30,
-            'mingguan' => $durasi * 4,
-            'bulanan' => $durasi,
-        };
-
-        $nominalPerPeriode = $totalPeriode > 0 ? ceil($target / $totalPeriode * 100) / 100 : $target;
-
-        $tb = TabunganBerjangka::create([
-            'user_id' => $userId,
-            'jenis_tabungan_id' => $jenisBerjangka->id,
-            'target_nominal' => $target,
-            'durasi_bulan' => $durasi,
-            'frekuensi_setor' => $frekuensi,
-            'nominal_per_periode' => $nominalPerPeriode,
-            'tanggal_mulai' => now()->toDateString(),
-            'tanggal_jatuh_tempo' => now()->addMonths($durasi)->toDateString(),
-            'status' => 'aktif',
-            'approved_by' => $userId,
-            'approved_at' => now(),
-            'catatan' => $data['catatan'] ?? null,
-            'created_by' => $userId,
-        ]);
-
-        AuditLog::record('tabungan_berjangka.store', $tb, null, [
-            'target' => $target,
-            'durasi' => $durasi,
-            'frekuensi' => $frekuensi,
-        ]);
-
-        return $this->createdResponse([
-            'id' => $tb->id,
-            'target_nominal' => (float) $tb->target_nominal,
-            'durasi_bulan' => $tb->durasi_bulan,
-            'nominal_per_periode' => (float) $tb->nominal_per_periode,
-            'tanggal_mulai' => $tb->tanggal_mulai?->toDateString(),
-            'tanggal_jatuh_tempo' => $tb->tanggal_jatuh_tempo?->toDateString(),
-            'status' => $tb->status,
-        ], 'Tabungan berjangka berhasil dibuat dan langsung aktif. Setoran dapat dimulai sekarang.');
     }
 
     /**
@@ -261,24 +183,19 @@ class TabunganBerjangkaController extends Controller
 
         $catatan = 'Pencairan Tabungan Berjangka (Goal Rp ' . number_format((float) $tabunganBerjangka->target_nominal, 0, ',', '.') . ' Tercapai & Jatuh Tempo) ke ' . $request->bank_tujuan . ' (' . $request->no_rekening . ' a.n ' . $request->atas_nama . ').' . ($request->catatan ? ' ' . $request->catatan : '');
 
-        $transaksi = DB::transaction(function () use ($request, $tabunganBerjangka, $totalSaldo, $catatan) {
-            $transaksi = $this->transaksiService->buatTransaksi([
-                'user_id' => $request->user()->id,
-                'jenis_tabungan_id' => $tabunganBerjangka->jenis_tabungan_id,
-                'tabungan_berjangka_id' => $tabunganBerjangka->id,
-                'jenis_transaksi' => JenisTransaksi::Tarik,
-                'nominal' => $totalSaldo,
-                'metode_pembayaran' => 'transfer',
-                'status_verifikasi' => StatusVerifikasi::MenungguVerifikasi,
-                'catatan_user' => $catatan,
-            ]);
-
-            $tabunganBerjangka->update([
-                'status' => 'selesai',
-            ]);
-
-            return $transaksi;
-        });
+        // Status TIDAK diubah ke 'selesai' di sini — pencairan belum terverifikasi.
+        // TransaksiObserver tidak menangani ini, jadi penandaan 'selesai' dilakukan
+        // saat admin memverifikasi (Admin\TransaksiController::verifikasi).
+        $transaksi = $this->transaksiService->buatTransaksi([
+            'user_id' => $request->user()->id,
+            'jenis_tabungan_id' => $tabunganBerjangka->jenis_tabungan_id,
+            'tabungan_berjangka_id' => $tabunganBerjangka->id,
+            'jenis_transaksi' => JenisTransaksi::Tarik,
+            'nominal' => $totalSaldo,
+            'metode_pembayaran' => 'transfer',
+            'status_verifikasi' => StatusVerifikasi::MenungguVerifikasi,
+            'catatan_user' => $catatan,
+        ]);
 
         AuditLog::record('tabungan_berjangka.cairkan', $tabunganBerjangka, null, [
             'nominal' => $totalSaldo,

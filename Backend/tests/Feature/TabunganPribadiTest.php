@@ -6,6 +6,7 @@ use App\Enums\JenisTransaksi;
 use App\Enums\StatusVerifikasi;
 use App\Models\JenisTabungan;
 use App\Models\Transaksi;
+use App\Models\UserTabunganTarget;
 use Tests\ApiTestCase;
 
 class TabunganPribadiTest extends ApiTestCase
@@ -134,11 +135,17 @@ class TabunganPribadiTest extends ApiTestCase
     public function test_setor_hari_raya_mengikutkan_jenis_id(): void
     {
         $this->seedBase();
-        $this->actingAsUser();
+        $user = $this->actingAsUser();
 
         $hariRaya = JenisTabungan::where('kode', 'tabungan-hari-raya')->first();
 
-        $this->putJson('/api/v1/tabungan-hari-raya/target', ['target_nominal' => 1000000])->assertOk();
+        UserTabunganTarget::create([
+            'user_id' => $user->id,
+            'jenis_tabungan_id' => $hariRaya->id,
+            'target_nominal' => 1000000,
+            'frekuensi_setor' => 'bulanan',
+            'nominal_per_periode' => 100000,
+        ]);
 
         $this->postSetor('/api/v1/tabungan-pribadi/setor', [
             'jenis_tabungan_id' => $hariRaya->id,

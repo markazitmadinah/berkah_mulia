@@ -110,15 +110,17 @@ class EmasTest extends ApiTestCase
             'nominal' => 100000,
         ]);
 
+        // Harga jual = harga acuan 1jt + markup gramasi 0,1 gram (tier 1-5) = 1,2jt.
+        // unit = 100.000 / 1.200.000 = 0,0833 gram.
         $response->assertStatus(201)
             ->assertJsonPath('data.jenis_transaksi', 'setor')
             ->assertJsonPath('data.status_verifikasi', 'menunggu_verifikasi')
-            ->assertJsonPath('data.unit_didapat', '0.1000');
+            ->assertJsonPath('data.unit_didapat', '0.08333300');
 
         $this->assertDatabaseHas('transaksi', [
             'jenis_tabungan_id' => JenisTabungan::where('kode', 'EMAS')->first()->id,
-            'unit_didapat' => '0.1000',
-            'harga_acuan_snapshot' => '1000000.00',
+            'unit_didapat' => '0.083333',
+            'harga_acuan_snapshot' => '1200000.00',
         ]);
     }
 
@@ -191,43 +193,52 @@ class EmasTest extends ApiTestCase
             ->assertOk()->assertJsonPath('meta.total', 1);
     }
 
-    public function test_user_set_target_emas_gram(): void
+    public function test_admin_set_target_emas(): void
     {
         $this->seedBase();
-        $user = $this->actingAsUser();
+        $admin = $this->actingAsAdmin();
+        $user = $this->createUser();
 
-        $this->putJson('/api/v1/emas/goal', ['target_emas_gram' => 10.5])
+        $this->putJson("/api/v1/admin/users/{$user->id}/target-emas", ['target_emas_gram' => 10.5])
             ->assertOk()
             ->assertJsonPath('data.target_emas_gram', 10.5);
 
         $this->assertDatabaseHas('users', ['id' => $user->id, 'target_emas_gram' => '10.5000']);
     }
 
-    public function test_user_tidak_bisa_hapus_atau_ubah_target_saat_goal_aktif(): void
+    public function test_admin_bisa_mengubah_atau_hapus_target_emas(): void
     {
         $this->seedBase();
-        $user = $this->actingAsUser();
-        $user->update(['target_emas_gram' => 5]);
+        $this->actingAsAdmin();
+        $user = $this->createUser(['target_emas_gram' => 5]);
 
-        // Hapus (null) ditolak karena goal masih aktif.
-        $this->putJson('/api/v1/emas/goal', ['target_emas_gram' => null])
-            ->assertStatus(422)
-            ->assertJsonPath('error_code', 'GOAL_LOCKED');
+        $this->putJson("/api/v1/admin/users/{$user->id}/target-emas", ['target_emas_gram' => 8])
+            ->assertOk()
+            ->assertJsonPath('data.target_emas_gram', 8);
+        $this->assertDatabaseHas('users', ['id' => $user->id, 'target_emas_gram' => '8.0000']);
 
-        // Ubah ke nilai lain juga ditolak.
-        $this->putJson('/api/v1/emas/goal', ['target_emas_gram' => 8])
-            ->assertStatus(422)
-            ->assertJsonPath('error_code', 'GOAL_LOCKED');
+        $this->putJson("/api/v1/admin/users/{$user->id}/target-emas", ['target_emas_gram' => null])
+            ->assertOk()
+            ->assertJsonPath('data.target_emas_gram', null);
+        $this->assertDatabaseHas('users', ['id' => $user->id, 'target_emas_gram' => null]);
+    }
 
-        $this->assertDatabaseHas('users', ['id' => $user->id, 'target_emas_gram' => '5.0000']);
+    public function test_user_tidak_bisa_set_target_emas(): void
+    {
+        $this->seedBase();
+        $this->actingAsUser();
+
+        $this->putJson('/api/v1/emas/goal', ['target_emas_gram' => 10.5])
+            ->assertStatus(404);
     }
 
     public function test_target_emas_gram_validasi_min_ditolak(): void
     {
         $this->seedBase();
-        $this->actingAsUser();
+        $this->actingAsAdmin();
+        $user = $this->createUser();
 
-        $this->putJson('/api/v1/emas/goal', ['target_emas_gram' => 0])
+        $this->putJson("/api/v1/admin/users/{$user->id}/target-emas", ['target_emas_gram' => 0])
             ->assertStatus(422);
     }
 
@@ -284,7 +295,9 @@ class EmasTest extends ApiTestCase
             'tanggal_transaksi' => now()->toDateString(),
         ]);
 
-        // Pencairan full saldo (10 gram) → nominal 10jt, unit -10.
+        // Pencairan full saldo (10 gram, tanpa dana) dinilai harga jual:
+        // 1,15jt/gram (acuan 1jt + markup 150rb tier 6-10g) → nilai 11,5jt,
+        // penalti 10% 1,15jt, refund 10,35jt, unit -10.
         $response = $this->postJson('/api/v1/emas/tarik', [
             'bank_tujuan' => 'BSI',
             'no_rekening' => '7123456789',
@@ -294,13 +307,15 @@ class EmasTest extends ApiTestCase
         $response->assertStatus(201)
             ->assertJsonPath('data.jenis_transaksi', 'tarik')
             ->assertJsonPath('data.status_verifikasi', 'menunggu_verifikasi')
-            ->assertJsonPath('data.unit_didapat', '-10.0000');
+            ->assertJsonPath('data.unit_didapat', '-10.00000000')
+            ->assertJsonPath('data.biaya_penalti', '1150000.00');
 
         $this->assertDatabaseHas('transaksi', [
             'user_id' => $user->id,
             'jenis_transaksi' => 'tarik',
-            'nominal' => '10000000.00',
+            'nominal' => '10350000.00',
             'unit_didapat' => '-10.0000',
+            'biaya_penalti' => '1150000.00',
         ]);
     }
 
@@ -333,20 +348,21 @@ class EmasTest extends ApiTestCase
             'atas_nama' => 'Ahmad',
         ]);
 
-        // Nilai saldo = 1.5gr × 1jt = 1.500.000; penalti 10% = 150.000; refund 90% = 1.350.000.
+        // Nilai saldo = 1.5gr × 1,2jt (harga jual: acuan 1jt + markup 200rb) = 1.800.000;
+        // penalti 10% = 180.000; refund 90% = 1.620.000.
         $response->assertStatus(201)
             ->assertJsonPath('data.jenis_transaksi', 'tarik')
             ->assertJsonPath('data.status_verifikasi', 'menunggu_verifikasi')
-            ->assertJsonPath('data.nominal_emas', '1500000.00')
-            ->assertJsonPath('data.unit_didapat', '-1.5000')
-            ->assertJsonPath('data.biaya_penalti', '150000.00');
+            ->assertJsonPath('data.nominal_emas', '1800000.00')
+            ->assertJsonPath('data.unit_didapat', '-1.50000000')
+            ->assertJsonPath('data.biaya_penalti', '180000.00');
 
         $this->assertDatabaseHas('transaksi', [
             'user_id' => $user->id,
             'jenis_transaksi' => 'tarik',
-            'nominal' => '1350000.00',
+            'nominal' => '1620000.00',
             'unit_didapat' => '-1.5000',
-            'biaya_penalti' => '150000.00',
+            'biaya_penalti' => '180000.00',
         ]);
     }
 
@@ -489,7 +505,7 @@ class EmasTest extends ApiTestCase
         $response->assertOk()
             ->assertJsonPath('data.jenis_transaksi', 'tarik')
             ->assertJsonPath('data.status_verifikasi', 'terverifikasi')
-            ->assertJsonPath('data.unit_didapat', '-2.0558');
+            ->assertJsonPath('data.unit_didapat', '-2.05580000');
 
         // Goal emas di-reset setelah tukar selesai.
         $this->assertNull($user->fresh()->target_emas_gram);

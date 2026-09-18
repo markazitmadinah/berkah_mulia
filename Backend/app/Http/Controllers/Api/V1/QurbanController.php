@@ -62,10 +62,17 @@ class QurbanController extends Controller
         $request->validate([
             'hewan_qurban_id' => 'required|exists:hewan_qurban,id',
             'jumlah_hewan' => 'required|integer|min:1',
+            'frekuensi_setor' => 'nullable|string|in:harian,mingguan,bulanan',
+            'nominal_per_periode' => 'nullable|numeric|min:1000',
+            'catatan' => 'nullable|string|max:500',
         ]);
 
         $hewan = HewanQurban::findOrFail($request->hewan_qurban_id);
         $periode = $hewan->periodeQurban;
+
+        if (! $hewan->status_aktif) {
+            return $this->errorResponse('Hewan qurban ini tidak tersedia untuk pendaftaran.', 422, 'HEWAN_TIDAK_AKTIF');
+        }
 
         if (! $periode->isPendaftaranDibuka()) {
             return $this->errorResponse('Pendaftaran qurban sudah ditutup atau belum dibuka.', 403, 'REGISTRATION_CLOSED');
@@ -81,6 +88,14 @@ class QurbanController extends Controller
             'target_dana' => $targetDana,
             'status' => StatusPendaftaranQurban::Menabung,
             'tanggal_daftar' => now()->toDateString(),
+            'catatan' => $request->catatan,
+            'frekuensi_setor' => $request->frekuensi_setor ?? 'bulanan',
+            'nominal_per_periode' => $this->qurbanService->nominalPerPeriode(
+                $targetDana,
+                $periode,
+                $request->frekuensi_setor,
+                $request->filled('nominal_per_periode') ? (float) $request->nominal_per_periode : null
+            ),
         ]);
 
         $pendaftaran->load(['hewanQurban', 'periodeQurban']);
@@ -143,6 +158,18 @@ class QurbanController extends Controller
 
         if (! $jenisTabungan) {
             return $this->errorResponse('Tabungan qurban belum tersedia.', 404, 'NOT_FOUND');
+        }
+
+        // Minimal 1 periode setoran (konsisten dengan input cash admin).
+        if ((float) $pendaftaran->nominal_per_periode > 0
+            && (float) $request->nominal < (float) $pendaftaran->nominal_per_periode) {
+            return $this->errorResponse(
+                'Nominal minimal untuk target qurban ini adalah Rp '
+                    . number_format((float) $pendaftaran->nominal_per_periode, 0, ',', '.')
+                    . ' (1 periode setoran ' . ($pendaftaran->frekuensiLabel() ?: 'bulanan') . ').',
+                422,
+                'NOMINAL_KURANG_1_PERIODE'
+            );
         }
 
         $transaksi = DB::transaction(function () use ($request, $jenisTabungan, $pendaftaran) {

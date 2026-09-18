@@ -275,6 +275,7 @@ class TabunganBerjangkaController extends Controller
             'is_goal_reached' => $tb->isGoalReached(),
             'can_withdraw' => $tb->canWithdraw(),
             'sisa_target' => max(0, round((float) $tb->target_nominal - $terkumpul, 2)),
+            'tertunggak' => $tb->tertunggak(),
             'created_at' => $tb->created_at?->toISOString(),
         ];
     }

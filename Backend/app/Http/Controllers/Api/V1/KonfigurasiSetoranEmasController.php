@@ -13,6 +13,7 @@ use App\Http\Resources\TransaksiResource;
 use App\Models\JenisTabungan;
 use App\Models\KonfigurasiSetoranEmas;
 use App\Models\Transaksi;
+use App\Models\User;
 use App\Services\EmasConversionService;
 use App\Services\NotifikasiService;
 use App\Services\SaldoEmasService;
@@ -59,12 +60,14 @@ class KonfigurasiSetoranEmasController extends Controller
         ]);
     }
 
-    /**
-     * POST /emas/setoran-berkala
+/**
+     * POST /admin/emos/setoran-berkala
+     * Rencana hanya dibuat oleh admin atas nama nasabah (user_id).
      */
     public function store(Request $request): JsonResponse
     {
         $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
             'nominal_per_periode' => 'required|numeric|min:10000',
             'frekuensi_setor' => 'required|in:harian,mingguan,bulanan',
             'durasi_periode' => 'required|integer|min:1',
@@ -74,7 +77,7 @@ class KonfigurasiSetoranEmasController extends Controller
             'tanggal_mulai' => 'nullable|date|after_or_equal:today',
         ]);
 
-        $user = $request->user();
+        $user = User::findOrFail($request->user_id);
         $jenis = $this->jenisTabunganEmas();
 
         if (! $jenis) {
@@ -153,7 +156,7 @@ class KonfigurasiSetoranEmasController extends Controller
     /**
      * POST /emas/setoran-berkala/{konfigurasi}/batalkan
      * Batal & refund PER RENCANA (tidak menyentuh rencana lain):
-     * nilai emas rencana dikembalikan 90% (potongan 10%), saldo dana rencana 100%.
+     * TOTAL tabungan rencana (nilai gram + saldo dana rencana) dipotong 10%.
      * Refund berupa transaksi tarik yang menunggu verifikasi admin.
      */
     public function batalkan(Request $request, KonfigurasiSetoranEmas $konfigurasi): JsonResponse
@@ -181,13 +184,12 @@ class KonfigurasiSetoranEmasController extends Controller
             if (! $harga) {
                 return $this->errorResponse('Harga emas belum diinput oleh admin. Silakan hubungi admin.', 400);
             }
-            $nilaiGram = round($gram * (float) $harga->harga_per_gram, 2);
+            $nilaiGram = round($gram * $harga->hargaJualPerGram($gram), 2);
         } else {
             $nilaiGram = 0.0;
         }
 
-        $penalti = round($nilaiGram * 0.10, 2);
-        $refund = round(($nilaiGram - $penalti) + $danaRencana, 2);
+        ['penalti' => $penalti, 'refund' => $refund] = $this->saldoEmasService->hitungRefund($nilaiGram, $danaRencana);
 
         $transaksi = null;
 
@@ -220,11 +222,10 @@ class KonfigurasiSetoranEmasController extends Controller
                     'unit_didapat' => -1 * $gram,
                     'biaya_penalti' => $penalti,
                     'metode_pembayaran' => MetodePembayaran::Transfer,
-                    'catatan_user' => 'Pembatalan rencana setoran berkala. Refund: emas 90% (Rp '
-                        . number_format($nilaiGram - $penalti, 0, ',', '.')
-                        . ' setelah potong 10% Rp ' . number_format($penalti, 0, ',', '.')
-                        . ') + saldo dana 100% (Rp ' . number_format($danaRencana, 0, ',', '.')
-                        . ') = Rp ' . number_format($refund, 0, ',', '.')
+                    'catatan_user' => 'Pembatalan rencana setoran berkala. Refund: total tabungan (emas Rp '
+                        . number_format($nilaiGram, 0, ',', '.') . ' + saldo dana Rp ' . number_format($danaRencana, 0, ',', '.')
+                        . ') dipotong 10% Rp ' . number_format($penalti, 0, ',', '.')
+                        . ' = Rp ' . number_format($refund, 0, ',', '.')
                         . ' ke ' . $request->bank_tujuan . ' (' . $request->no_rekening . ' a.n ' . $request->atas_nama . ').',
                 ]);
             });

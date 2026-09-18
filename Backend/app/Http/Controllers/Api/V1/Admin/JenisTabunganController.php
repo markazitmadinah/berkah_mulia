@@ -152,6 +152,13 @@ class JenisTabunganController extends Controller
             return $this->errorResponse('Tidak bisa menghapus jenis tabungan yang masih memiliki transaksi.', 409, 'CONFLICT');
         }
 
+        // Downstream rows tanpa FK cascade: berjangka, rencana emas, target nasabah.
+        if (\App\Models\TabunganBerjangka::where('jenis_tabungan_id', $jenisTabungan->id)->exists()
+            || \App\Models\KonfigurasiSetoranEmas::where('jenis_tabungan_id', $jenisTabungan->id)->exists()
+            || $jenisTabungan->userTargets()->exists()) {
+            return $this->errorResponse('Tidak bisa menghapus jenis tabungan yang masih dipakai data tabungan/rencana nasabah.', 409, 'CONFLICT');
+        }
+
         AuditLog::record('delete', $jenisTabungan);
         $jenisTabungan->delete();
 

@@ -3,19 +3,25 @@
 namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Enums\JenisTransaksi;
+use App\Enums\MetodePembayaran;
 use App\Enums\StatusPendaftaranQurban;
 use App\Enums\StatusPeriodeQurban;
 use App\Enums\TipeNotifikasi;
+use App\Enums\TipeTabungan;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\HewanQurbanResource;
 use App\Http\Resources\PendaftaranQurbanResource;
 use App\Http\Resources\PeriodeQurbanResource;
 use App\Models\AuditLog;
 use App\Models\HewanQurban;
+use App\Models\JenisTabungan;
 use App\Models\PendaftaranQurban;
 use App\Models\PeriodeQurban;
 use App\Models\Transaksi;
+use App\Models\User;
 use App\Services\NotifikasiService;
+use App\Services\QurbanTargetService;
+use App\Services\TransaksiService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,7 +31,11 @@ class QurbanController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private NotifikasiService $notif) {}
+    public function __construct(
+        private NotifikasiService $notif,
+        private QurbanTargetService $qurbanService,
+        private TransaksiService $transaksiService,
+    ) {}
 
     public function storePeriode(Request $request): JsonResponse
     {
@@ -139,7 +149,7 @@ class QurbanController extends Controller
 
     public function listPeriode(Request $request): JsonResponse
     {
-        $perPage = min($request->input('per_page', 15), 100);
+        $perPage = min($request->input('per_page', 15), 1000);
         $items = PeriodeQurban::with('hewanQurban')->latest()->paginate($perPage);
 
         return response()->json([
@@ -157,7 +167,7 @@ class QurbanController extends Controller
 
     public function listHewan(Request $request): JsonResponse
     {
-        $perPage = min($request->input('per_page', 15), 100);
+        $perPage = min($request->input('per_page', 15), 1000);
         $items = HewanQurban::with('periodeQurban')->latest()->paginate($perPage);
 
         return response()->json([
@@ -185,7 +195,7 @@ class QurbanController extends Controller
             $query->where('periode_qurban_id', $request->periode_id);
         }
 
-        $perPage = min($request->input('per_page', 15), 100);
+        $perPage = min($request->input('per_page', 15), 1000);
         $items = $query->latest()->paginate($perPage);
 
         return response()->json([
@@ -201,6 +211,65 @@ class QurbanController extends Controller
         ]);
     }
 
+    public function storePendaftaran(Request $request): JsonResponse
+    {
+        $request->validate([
+            'user_id' => 'required|exists:users,id',
+            'hewan_qurban_id' => 'required|exists:hewan_qurban,id',
+            'jumlah_hewan' => 'required|integer|min:1',
+            'frekuensi_setor' => 'nullable|string|in:harian,mingguan,bulanan',
+            'nominal_per_periode' => 'nullable|numeric|min:1000',
+            'catatan' => 'nullable|string|max:500',
+        ]);
+
+        $user = User::findOrFail($request->user_id);
+        $hewan = HewanQurban::findOrFail($request->hewan_qurban_id);
+        $periode = $hewan->periodeQurban;
+
+        if (! $hewan->status_aktif) {
+            return $this->errorResponse('Hewan qurban ini tidak tersedia untuk pendaftaran.', 422, 'HEWAN_TIDAK_AKTIF');
+        }
+
+        if (! $periode->isPendaftaranDibuka()) {
+            return $this->errorResponse('Pendaftaran qurban sudah ditutup atau belum dibuka.', 403, 'REGISTRATION_CLOSED');
+        }
+
+        $targetDana = $this->qurbanService->hitungTargetDana($hewan, $request->jumlah_hewan);
+
+        $pendaftaran = PendaftaranQurban::create([
+            'user_id' => $user->id,
+            'periode_qurban_id' => $periode->id,
+            'hewan_qurban_id' => $hewan->id,
+            'jumlah_hewan' => $request->jumlah_hewan,
+            'target_dana' => $targetDana,
+            'status' => StatusPendaftaranQurban::Menabung,
+            'tanggal_daftar' => now()->toDateString(),
+            'catatan' => $request->catatan,
+            'frekuensi_setor' => $request->frekuensi_setor ?? 'bulanan',
+            'nominal_per_periode' => $this->qurbanService->nominalPerPeriode(
+                $targetDana,
+                $periode,
+                $request->frekuensi_setor,
+                $request->filled('nominal_per_periode') ? (float) $request->nominal_per_periode : null
+            ),
+        ]);
+
+        $pendaftaran->load(['hewanQurban', 'periodeQurban']);
+
+        $this->notif->kirimKeSemuaAdmin(
+            'Pendaftaran Qurban Baru (Admin)',
+            auth()->user()->name . ' mendaftarkan ' . $user->name . ' qurban ' . $hewan->jenis_hewan . ' '
+                . $request->jumlah_hewan . ' ekor, target dana Rp ' . number_format($targetDana, 0, ',', '.') . '.',
+            TipeNotifikasi::Info,
+            ['pendaftaran_qurban_id' => $pendaftaran->id]
+        );
+
+        return $this->createdResponse(
+            new PendaftaranQurbanResource($pendaftaran),
+            'Pendaftaran qurban untuk ' . $user->name . ' berhasil. Target dana: Rp ' . number_format($targetDana, 0, ',', '.')
+        );
+    }
+
     public function cairkan(Request $request, PendaftaranQurban $pendaftaran): JsonResponse
     {
         if ($pendaftaran->status === StatusPendaftaranQurban::SudahDicairkan) {
@@ -213,13 +282,20 @@ class QurbanController extends Controller
         }
 
         $oldValues = ['status' => $pendaftaran->status->value, 'total_terkumpul' => $pendaftaran->total_terkumpul];
+        $nominal = (float) $pendaftaran->total_terkumpul;
 
-        $pendaftaran->update([
-            'status' => StatusPendaftaranQurban::SudahDicairkan,
-            'total_terkumpul' => 0,
-            'tanggal_dicairkan' => now()->toDateString(),
-            'dicairkan_oleh' => auth()->id(),
-        ]);
+        DB::transaction(function () use ($pendaftaran, $nominal) {
+            // Catat pengeluaran sebagai transaksi tarik terverifikasi (jejak ledger),
+            // bukan sekadar mengosongkan total_terkumpul.
+            $this->catatPencairanQurban($pendaftaran, $nominal, 'Pencairan dana qurban oleh admin.');
+
+            $pendaftaran->update([
+                'status' => StatusPendaftaranQurban::SudahDicairkan,
+                'total_terkumpul' => 0,
+                'tanggal_dicairkan' => now()->toDateString(),
+                'dicairkan_oleh' => auth()->id(),
+            ]);
+        });
 
         AuditLog::record('cairkan', $pendaftaran, $oldValues, ['status' => 'sudah_dicairkan', 'total_terkumpul' => 0]);
 
@@ -262,12 +338,12 @@ class QurbanController extends Controller
 
         $oldValues = ['status' => $pendaftaran->status->value, 'total_terkumpul' => $pendaftaran->total_terkumpul];
 
-        DB::transaction(function () use ($pendaftaran) {
-            // Hapus setoran qurban terkait secara lunak (soft delete) — riwayat dana
-            // nasabah tetap ada sebagai jejak audit, tapi tak lagi masuk perhitungan saldo.
-            Transaksi::where('pendaftaran_qurban_id', $pendaftaran->id)
-                ->where('jenis_transaksi', JenisTransaksi::Setor->value)
-                ->delete();
+        $nominal = $pendaftaran->terkumpulNetto();
+
+        DB::transaction(function () use ($pendaftaran, $nominal) {
+            // Setoran tidak dihapus (jejak audit dipertahankan). Saldo dikembalikan
+            // lewat transaksi tarik terverifikasi sehingga netto ledger = 0.
+            $this->catatPencairanQurban($pendaftaran, $nominal, 'Pengembalian dana qurban karena pendaftaran dihapus admin.');
 
             $pendaftaran->delete();
         });
@@ -275,5 +351,33 @@ class QurbanController extends Controller
         AuditLog::record('delete', $pendaftaran, $oldValues);
 
         return $this->deletedResponse('Pendaftaran qurban berhasil dihapus.');
+    }
+
+    /**
+     * Catat transaksi tarik terverifikasi untuk dana qurban (pencairan/pengembalian).
+     * Nominal 0 dilewati (tidak ada dana untuk dikembalikan).
+     */
+    private function catatPencairanQurban(PendaftaranQurban $pendaftaran, float $nominal, string $catatan): void
+    {
+        if ($nominal <= 0) {
+            return;
+        }
+
+        $jenis = JenisTabungan::where('tipe', TipeTabungan::Qurban)->first();
+
+        if (! $jenis) {
+            return;
+        }
+
+        $this->transaksiService->buatTransaksi([
+            'user_id' => $pendaftaran->user_id,
+            'jenis_tabungan_id' => $jenis->id,
+            'pendaftaran_qurban_id' => $pendaftaran->id,
+            'jenis_transaksi' => JenisTransaksi::Tarik,
+            'nominal' => $nominal,
+            'metode_pembayaran' => MetodePembayaran::Transfer,
+            'catatan_admin' => $catatan,
+            'auto_verify' => true,
+        ]);
     }
 }

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { formatRupiah } from '../../utils/format';
+import { MARKUP_1_5_GRAM } from '../../utils/hargaJual';
 import {
   Coins,
   Edit,
@@ -31,6 +32,7 @@ export const AdminHargaEmas: React.FC<AdminHargaEmasProps> = ({
     activeHargaEmas,
     deleteHargaEmas,
     syncHargaEmas,
+    setActiveTab,
     transaksi,
     showToast
   } = useApp();
@@ -48,7 +50,9 @@ export const AdminHargaEmas: React.FC<AdminHargaEmasProps> = ({
   const fmtMonth = (k: string) => new Date(k + '-01T00:00:00').toLocaleDateString('id-ID', { month: 'short', year: 'numeric' });
   const formatChartLabel = (d: string) => timeframe === '1Y' ? fmtMonth(d) : fmtDate(d);
 
-  const { points: chartData } = buildGoldChart(hargaEmas, timeframe);
+  // Chart pakai harga jual (acuan + markup 1–5 gram) agar konsisten dengan Harga Emas Hari Ini
+  const hargaJualHistory = hargaEmas.map(h => ({ ...h, harga_per_gram: h.harga_per_gram + MARKUP_1_5_GRAM }));
+  const { points: chartData } = buildGoldChart(hargaJualHistory, timeframe);
   const n = chartData.length;
   const labelTicks = chartData.length <= 4
     ? chartData.map((p, i) => ({ d: p.label, pct: n > 1 ? i / (n - 1) : 0 }))
@@ -77,6 +81,15 @@ export const AdminHargaEmas: React.FC<AdminHargaEmasProps> = ({
 
         <div className="flex flex-wrap items-center gap-2.5 sm:justify-end">
           <button
+            onClick={() => setActiveTab('harga-hari-ini')}
+            className="py-2.5 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all cursor-pointer flex-shrink-0"
+            title="Buka halaman Harga Emas Hari Ini (Admin)"
+          >
+            <TrendingUp className="w-4 h-4" />
+            <span>Harga Emas Hari Ini</span>
+          </button>
+
+          <button
             onClick={handleSync}
             disabled={syncing}
             className="py-2.5 px-4 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-amber-600/20 transition-all cursor-pointer flex-shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
@@ -100,11 +113,11 @@ export const AdminHargaEmas: React.FC<AdminHargaEmasProps> = ({
       <div className="rounded-3xl p-6 lg:p-8 bg-gradient-to-r from-amber-500/10 via-orange-400/5 to-amber-500/10 dark:from-amber-950/40 dark:via-slate-800 dark:to-orange-950/20 border border-amber-300/60 dark:border-amber-500/20 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
           <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950 px-2.5 py-1 rounded-full">
-            Harga Acuan Aktif Saat Ini
+            Harga Jual Emas Aktif Saat Ini
           </span>
           <div className="flex items-baseline flex-wrap gap-x-2 gap-y-1 mt-3">
             <span className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-slate-900 dark:text-white whitespace-nowrap">
-              Rp {formatRupiah(activeHargaEmas ? activeHargaEmas.harga_per_gram : 1200000)}
+              Rp {formatRupiah(activeHargaEmas ? activeHargaEmas.harga_per_gram + MARKUP_1_5_GRAM : 1200000)}
             </span>
             <span className="text-base font-bold text-amber-600">/ gram</span>
           </div>
@@ -116,7 +129,7 @@ export const AdminHargaEmas: React.FC<AdminHargaEmasProps> = ({
         <div className="p-4 rounded-2xl bg-white/90 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 max-w-xs text-xs text-slate-600 dark:text-slate-300 shadow-sm flex items-start gap-2.5">
           <Info className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
 <p>
-              Harga diperbarui otomatis setiap hari dari web resmi Logam Mulia (Antam). Gunakan tombol <strong>Sync Harga dari Antam</strong> untuk menarik harga hari ini secara manual. Admin masih bisa input manual sebagai koreksi, dan perubahan akan otomatis menonaktifkan harga lama.
+              Harga diperbarui otomatis setiap hari dari web resmi Logam Mulia (Antam). Gunakan tombol <strong>Sync Harga dari Antam</strong> untuk menarik harga hari ini secara manual. Harga yang tampil adalah harga jual koperasi (acuan + margin); admin masih bisa input manual sebagai koreksi, dan perubahan akan otomatis menonaktifkan harga lama.
             </p>
         </div>
       </div>
@@ -200,7 +213,7 @@ export const AdminHargaEmas: React.FC<AdminHargaEmasProps> = ({
             <thead>
               <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 uppercase text-[10px]">
                 <th className="py-3 px-3">Tanggal</th>
-                <th className="py-3 px-3">Harga per Gram</th>
+                <th className="py-3 px-3">Harga Acuan / Gram</th>
                 <th className="py-3 px-3">Tagihan Harian</th>
                 <th className="py-3 px-3">Catatan / Keterangan</th>
                 <th className="py-3 px-3">Status</th>

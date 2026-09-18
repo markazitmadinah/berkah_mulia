@@ -37,7 +37,6 @@ export const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
 }) => {
   const {
     users,
-    searchQuery,
     suspendUser,
     activateUser,
     deleteUser,
@@ -48,15 +47,10 @@ export const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
   const [filterRole, setFilterRole] = useState<string>('all');
 
   const filteredUsers = users.filter((u) => {
-    const matchesSearch =
-      u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.phone.includes(searchQuery);
-
     const matchesStatus = filterStatus === 'all' || u.status === filterStatus;
     const matchesRole = filterRole === 'all' || u.role === filterRole;
 
-    return matchesSearch && matchesStatus && matchesRole;
+    return matchesStatus && matchesRole;
   });
 
   const handleDownloadTemplate = () => {

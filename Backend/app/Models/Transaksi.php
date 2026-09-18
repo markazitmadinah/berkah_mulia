@@ -52,7 +52,7 @@ class Transaksi extends Model
             'nominal' => 'decimal:2',
             'nominal_emas' => 'decimal:2',
             'nominal_selisih' => 'decimal:2',
-            'unit_didapat' => 'decimal:4',
+            'unit_didapat' => 'decimal:8',
             'harga_acuan_snapshot' => 'decimal:2',
             'biaya_penalti' => 'decimal:2',
             'tanggal_transaksi' => 'date',

@@ -5,16 +5,19 @@ namespace App\Http\Controllers\Api\V1\Admin;
 use App\Enums\JenisTransaksi;
 use App\Enums\MetodePembayaran;
 use App\Enums\StatusKonfigurasiSetoran;
+use App\Enums\StatusPendaftaranQurban;
 use App\Enums\StatusVerifikasi;
 use App\Enums\TipeNotifikasi;
 use App\Enums\TipeTabungan;
 use App\Exports\TransaksiExport;
+use App\Exports\TransaksiRekapExport;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\TransaksiResource;
 use App\Models\AuditLog;
 use App\Models\JenisTabungan;
 use App\Models\KonfigurasiSetoranEmas;
 use App\Models\Notifikasi;
+use App\Models\TabunganBerjangka;
 use App\Models\Transaksi;
 use App\Models\User;
 use App\Services\NotifikasiService;
@@ -47,6 +50,8 @@ class TransaksiController extends Controller
             'status' => 'nullable|string|in:menunggu_verifikasi,terverifikasi,ditolak',
             'metode' => 'nullable|string|in:cash,transfer',
             'jenis_tabungan_id' => 'nullable|integer|exists:jenis_tabungan,id',
+            'tanggal_awal' => 'nullable|date',
+            'tanggal_akhir' => 'nullable|date|after_or_equal:tanggal_awal',
             'search' => 'nullable|string|max:255',
         ]);
 
@@ -61,6 +66,12 @@ class TransaksiController extends Controller
         if ($request->filled('jenis_tabungan_id')) {
             $query->where('jenis_tabungan_id', $request->jenis_tabungan_id);
         }
+        if ($request->filled('tanggal_awal')) {
+            $query->whereDate('tanggal_transaksi', '>=', $request->tanggal_awal);
+        }
+        if ($request->filled('tanggal_akhir')) {
+            $query->whereDate('tanggal_transaksi', '<=', $request->tanggal_akhir);
+        }
         if ($request->filled('search')) {
             $search = str_replace(['%', '_'], ['\%', '\_'], $request->search);
             $query->where(function ($q) use ($search) {
@@ -69,7 +80,7 @@ class TransaksiController extends Controller
             });
         }
 
-        $perPage = min($request->input('per_page', 15), 100);
+        $perPage = min($request->input('per_page', 15), 1000);
         $items = $query->latest()->paginate($perPage);
 
         return response()->json([
@@ -90,10 +101,22 @@ class TransaksiController extends Controller
      */
     public function export(Request $request): BinaryFileResponse
     {
-        $filename = 'transaksi_koperasi_berkah_mulia_' . now()->format('Y-m-d') . '.xlsx';
+        $request->validate([
+            'status' => 'nullable|string|in:menunggu_verifikasi,terverifikasi,ditolak',
+            'metode' => 'nullable|string|in:cash,transfer',
+            'tipe' => 'nullable|string',
+            'search' => 'nullable|string|max:255',
+            'tanggal_awal' => 'nullable|date',
+            'tanggal_akhir' => 'nullable|date|after_or_equal:tanggal_awal',
+        ]);
+
+        $filename = 'pembukuan_transaksi_koperasi_berkah_mulia_' . now()->format('Y-m-d') . '.xlsx';
 
         return Excel::download(
-            new TransaksiExport($request->status, $request->metode, $request->search),
+            [
+                new TransaksiExport($request->status, $request->metode, $request->search, $request->tanggal_awal, $request->tanggal_akhir, $request->tipe),
+                new TransaksiRekapExport($request->status, $request->metode, $request->tanggal_awal, $request->tanggal_akhir, $request->tipe),
+            ],
             $filename
         );
     }
@@ -118,7 +141,17 @@ class TransaksiController extends Controller
         // Balance guard: verify only if current balance can cover the transaction.
         $jenis = $transaksi->jenisTabungan;
         $user = $transaksi->user;
-        if ($jenis && $user) {
+
+        if (! $user) {
+            return $this->errorResponse('Transaksi tidak memiliki nasabah yang valid.', 422, 'INVALID_TRANSACTION');
+        }
+
+        // Penarikan wajib punya jenis tabungan agar guard saldo tidak bisa dilewati.
+        if (! $jenis && $transaksi->jenis_transaksi === JenisTransaksi::Tarik) {
+            return $this->errorResponse('Transaksi penarikan tidak memiliki jenis tabungan yang valid.', 422, 'INVALID_TRANSACTION');
+        }
+
+        if ($jenis) {
             if ($jenis->tipe === TipeTabungan::Emas) {
                 // Emas balance is tracked two ways: grams (unit_didapat) & saldo dana (nominal_selisih).
                 // The withdrawal nominal is the rupiah market value (grams × price),
@@ -211,6 +244,14 @@ class TransaksiController extends Controller
                 );
             }
 
+            // Tabungan berjangka: tarik terverifikasi → tabungan resmi ditutup ('selesai').
+            // (Status tidak lagi diubah saat pengajuan agar penolakan tidak mengunci tabungan.)
+            if ($transaksi->jenis_transaksi === JenisTransaksi::Tarik && $transaksi->tabungan_berjangka_id) {
+                TabunganBerjangka::whereKey($transaksi->tabungan_berjangka_id)
+                    ->where('status', 'aktif')
+                    ->update(['status' => 'selesai']);
+            }
+
             // Notif ke user: transaksi terverifikasi.
             $this->notif->kirim(
                 $transaksi->user,
@@ -276,6 +317,14 @@ class TransaksiController extends Controller
             'catatan_admin' => $request->catatan_admin,
         ]);
 
+        // Tabungan berjangka: tolak tarik → kembalikan status agar bisa diajukan ulang.
+        // (Termasuk memperbaiki data lama yang sempat terkunci 'selesai' saat pengajuan.)
+        if ($transaksi->jenis_transaksi === JenisTransaksi::Tarik && $transaksi->tabungan_berjangka_id) {
+            TabunganBerjangka::whereKey($transaksi->tabungan_berjangka_id)
+                ->where('status', 'selesai')
+                ->update(['status' => 'aktif']);
+        }
+
         AuditLog::record('reject', $transaksi, $oldValues, ['status_verifikasi' => 'ditolak', 'catatan_admin' => $request->catatan_admin]);
 
         $this->notif->kirim(
@@ -302,18 +351,72 @@ class TransaksiController extends Controller
         $request->validate([
             'user_id' => 'required|exists:users,id',
             'jenis_tabungan_id' => 'required|exists:jenis_tabungan,id',
-            'nominal' => 'required|numeric|min:1',
+            'nominal' => 'required|numeric|min:10000',
             'pendaftaran_qurban_id' => 'nullable|exists:pendaftaran_qurban,id',
+            'tabungan_berjangka_id' => 'nullable|integer|exists:tabungan_berjangka,id',
+            'konfigurasi_id' => 'nullable|integer|exists:konfigurasi_setoran_emas,id',
             'catatan_admin' => 'nullable|string|max:500',
         ]);
 
         $jenis = JenisTabungan::findOrFail($request->jenis_tabungan_id);
 
-        $transaksi = DB::transaction(function () use ($request, $jenis) {
+        if ($request->filled('pendaftaran_qurban_id')) {
+            $penda = \App\Models\PendaftaranQurban::findOrFail($request->pendaftaran_qurban_id);
+            if ($penda->user_id != $request->user_id) {
+                return $this->errorResponse('Pendaftaran qurban tidak cocok dengan nasabah yang dipilih.', 422, 'QURBAN_TIDAK_COCOK');
+            }
+            if ($jenis->tipe !== TipeTabungan::Qurban) {
+                return $this->errorResponse('Pendaftaran qurban hanya berlaku untuk produk tabungan qurban.', 422, 'QURBAN_BUKAN_QURBAN');
+            }
+            if ($penda->status !== StatusPendaftaranQurban::Menabung) {
+                return $this->errorResponse('Qurban ini sudah lunas / tidak lagi aktif untuk setoran tambahan.', 422, 'QURBAN_TERKUNCI');
+            }
+            if ((float) $penda->nominal_per_periode > 0 && (float) $request->nominal < (float) $penda->nominal_per_periode) {
+                return $this->errorResponse(
+                    'Nominal minimal untuk target qurban ini adalah Rp ' . number_format((float) $penda->nominal_per_periode, 0, ',', '.') . ' (1 periode setoran ' . ($penda->frekuensiLabel() ?: 'bulanan') . ').',
+                    422,
+                    'NOMINAL_KURANG_1_PERIODE'
+                );
+            }
+        }
+
+        if ($request->filled('tabungan_berjangka_id')) {
+            $tb = \App\Models\TabunganBerjangka::findOrFail($request->tabungan_berjangka_id);
+            if ($tb->user_id != $request->user_id || $tb->jenis_tabungan_id != $request->jenis_tabungan_id) {
+                return $this->errorResponse('Tabungan berjangka tidak cocok dengan nasabah atau produk yang dipilih.', 422, 'BERJANGKA_TIDAK_COCOK');
+            }
+        }
+
+        $konfigurasiDipilih = null;
+        if ($request->filled('konfigurasi_id')) {
+            $konfigurasiDipilih = \App\Models\KonfigurasiSetoranEmas::findOrFail($request->konfigurasi_id);
+            if ($konfigurasiDipilih->user_id != $request->user_id || $konfigurasiDipilih->jenis_tabungan_id != $request->jenis_tabungan_id) {
+                return $this->errorResponse('Rencana setoran tidak cocok dengan nasabah atau produk yang dipilih.', 422, 'KONFIGURASI_TIDAK_COCOK');
+            }
+            if ($jenis->tipe === TipeTabungan::Emas && (float) $request->nominal < (float) $konfigurasiDipilih->nominal_per_periode) {
+                return $this->errorResponse(
+                    'Nominal minimal untuk rencana ini adalah Rp ' . number_format((float) $konfigurasiDipilih->nominal_per_periode, 0, ',', '.') . ' (1 periode setoran).',
+                    422,
+                    'NOMINAL_KURANG_1_PERIODE'
+                );
+            }
+        }
+
+        // Emas: tolak setoran bila rencana yang bersangkutan sedang menunggu batal & refund.
+        if ($jenis->tipe === TipeTabungan::Emas) {
+            $userCek = User::findOrFail($request->user_id);
+            $konfigurasiCek = $konfigurasiDipilih ?? $this->saldoEmasService->getAktif($userCek, $jenis);
+            if ($konfigurasiCek && $this->saldoEmasService->refundTerkunci($userCek, $konfigurasiCek)) {
+                return $this->errorResponse('Rencana ini masih punya pengajuan batal & refund yang menunggu verifikasi admin.', 422, 'REFUND_PENDING');
+            }
+        }
+
+        $transaksi = DB::transaction(function () use ($request, $jenis, $konfigurasiDipilih) {
             $data = [
                 'user_id' => $request->user_id,
                 'jenis_tabungan_id' => $request->jenis_tabungan_id,
                 'pendaftaran_qurban_id' => $request->pendaftaran_qurban_id,
+                'tabungan_berjangka_id' => $request->tabungan_berjangka_id,
                 'jenis_transaksi' => JenisTransaksi::Setor,
                 'nominal' => $request->nominal,
                 'metode_pembayaran' => MetodePembayaran::Cash,
@@ -331,19 +434,26 @@ class TransaksiController extends Controller
                     abort(400, 'Harga emas belum diinput oleh admin. Silakan hubungi admin.');
                 }
 
+                $konfigurasi = $konfigurasiDipilih ?? $this->saldoEmasService->getAktif($user, $jenis);
+                $gramasi = $konfigurasi && (float) $konfigurasi->target_gram_per_periode > 0
+                    ? (float) $konfigurasi->target_gram_per_periode
+                    : ((float) $harga->harga_per_gram > 0 ? (float) $request->nominal / (float) $harga->harga_per_gram : 0.0);
+                $hargaJual = $harga->hargaJualPerGram($gramasi);
+
                 $porsi = $this->saldoEmasService->hitungSetoran(
                     (float) $request->nominal,
-                    $this->saldoEmasService->getAktif($user, $jenis),
+                    $konfigurasi,
                     $this->saldoEmasService->getSaldoDana($user, $jenis),
-                    (float) $harga->harga_per_gram
+                    $hargaJual
                 );
 
                 $data += [
+                    'konfigurasi_id' => $konfigurasi?->id,
                     'nominal_emas' => $porsi['nominal_emas'],
                     'nominal_selisih' => $porsi['nominal_selisih'],
                     'unit_didapat' => $porsi['unit_didapat'],
                     'harga_acuan_id' => $harga->id,
-                    'harga_acuan_snapshot' => $harga->harga_per_gram,
+                    'harga_acuan_snapshot' => $hargaJual,
                 ];
             }
 

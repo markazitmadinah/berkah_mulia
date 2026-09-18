@@ -25,6 +25,7 @@ import {
   SetoranBerkalaPayload,
   HariRayaStatus,
   ProfilNasabah,
+  MonitoringNasabah,
   PembayaranHarianResponse,
   TunggakanSetoranResponse,
   Gadai,
@@ -34,9 +35,12 @@ import {
   TabunganBerjangkaResponse,
   TabunganBerjangkaPayload,
   SetorTabunganBerjangkaPayload,
-  CairkanTabunganBerjangkaPayload
+  CairkanTabunganBerjangkaPayload,
+  TransaksiFilters,
+  FrekuensiSetoran
 } from '../types';
 import { formatRupiah } from '../utils/format';
+import { hargaJualPerGram } from '../utils/hargaJual';
 
 type ToastType = 'success' | 'error' | 'info';
 interface Toast {
@@ -76,6 +80,8 @@ interface DaftarQurbanPayload {
   jumlah_hewan: number;
   target_dana?: number;
   catatan?: string;
+  frekuensi_setor?: FrekuensiSetoran;
+  nominal_per_periode?: number;
 }
 
 interface CashTransaksiPayload {
@@ -83,6 +89,8 @@ interface CashTransaksiPayload {
   jenis_tabungan_id: number;
   nominal: number;
   pendaftaran_qurban_id?: number;
+  tabungan_berjangka_id?: number;
+  konfigurasi_id?: number;
   catatan_teller?: string;
 }
 
@@ -118,14 +126,10 @@ interface AppContextType {
   currentUser: User;
   activeTab: string;
   setActiveTab: (tab: string) => void;
-  adminSubTab: string;
-  setAdminSubTab: (tab: string) => void;
   userSubTab: string;
   setUserSubTab: (tab: string) => void;
   adminQurbanTab: string;
   setAdminQurbanTab: (tab: string) => void;
-  searchQuery: string;
-  setSearchQuery: (q: string) => void;
 
   users: User[];
   jenisTabungan: JenisTabungan[];
@@ -137,7 +141,6 @@ interface AppContextType {
   transaksi: Transaksi[];
   notifikasi: Notifikasi[];
   auditLogs: AuditLog[];
-  hapusAuditLogs: () => void;
   gadai: Gadai[];
   gadaiDetail: Gadai | null;
   fetchGadaiDetail: (id: number) => void;
@@ -157,7 +160,6 @@ interface AppContextType {
   tolakAngsuranGadai: (angsuranId: number, catatan: string) => void;
   tabunganBerjangka: TabunganBerjangkaResponse | null;
   fetchTabunganBerjangka: () => void;
-  buatTabunganBerjangka: (data: TabunganBerjangkaPayload) => void;
   setorTabunganBerjangka: (id: number, data: SetorTabunganBerjangkaPayload) => void;
   cairkanTabunganBerjangka: (id: number, data: CairkanTabunganBerjangkaPayload) => void;
   batalTabunganBerjangka: (id: number) => void;
@@ -171,6 +173,9 @@ interface AppContextType {
   clearProfilNasabah: () => void;
   pembayaranHarian: PembayaranHarianResponse | null;
   tunggakanSetoran: TunggakanSetoranResponse | null;
+  monitoringNasabah: MonitoringNasabah[] | null;
+  fetchMonitoringNasabah: () => void;
+  clearMonitoringNasabah: () => void;
   fetchPembayaranHarian: (tanggal?: string) => void;
   clearPembayaranHarian: () => void;
   fetchTunggakanSetoran: () => void;
@@ -201,11 +206,10 @@ interface AppContextType {
   importUsers: (file: File) => Promise<void>;
   downloadUserTemplate: () => Promise<void>;
   exportUsers: () => Promise<void>;
-  exportTransaksi: () => Promise<void>;
+  exportTransaksi: (filters?: TransaksiFilters) => Promise<void>;
 
   createJenisTabungan: (data: Record<string, unknown>) => void;
   updateJenisTabungan: (id: number, data: Record<string, unknown>) => void;
-  deleteJenisTabungan: (id: number) => ActionResult;
   toggleStatusJenisTabungan: (id: number) => void;
 
   inputHargaEmas: (data: HargaEmasInput) => void;
@@ -219,23 +223,21 @@ interface AppContextType {
   updateHewanQurban: (id: number, data: Record<string, unknown>) => void;
   deleteHewanQurban: (id: number) => ActionResult;
   daftarTabunganQurban: (data: DaftarQurbanPayload) => void;
-  cairkanPendaftaranQurban: (id: number) => void;
+  daftarQurbanAdmin: (userId: number, data: DaftarQurbanPayload) => void;
   lunasPendaftaranQurban: (id: number) => void;
   lunasQurban: (id: number) => void;
   deletePendaftaranQurban: (id: number) => void;
 
   createSetoranUser: (data: SetoranPayload) => void;
-  buatSetoranBerkala: (data: SetoranBerkalaPayload) => void;
+  buatSetoranBerkala: (userId: number, data: SetoranBerkalaPayload) => void;
   batalkanSetoranBerkala: (id: number, data: PenarikanEmasPayload) => void;
-  cairkanDana: (data: PenarikanEmasPayload) => void;
-  updateEmasGoal: (target: number | null) => void;
+  setTargetHariRayaAdmin: (userId: number, target: number, data?: { frekuensi_setor?: FrekuensiSetoran; nominal_per_periode?: number }) => void;
+  cairkanTabunganAdmin: (userId: number, data: { jenis_tabungan_id: number; tabungan_berjangka_id?: number; konfigurasi_id?: number; nominal?: number; catatan_admin?: string }) => void;
+  buatTabunganBerjangkaAdmin: (userId: number, payload: TabunganBerjangkaPayload) => void;
   createPenarikanUser: (data: PenarikanPayload) => void;
   createPenarikanEmas: (data: PenarikanEmasPayload) => void;
-  ajukanBatalEmas: (data: PenarikanEmasPayload) => void;
   tukarEmas: () => void;
   hariRayaStatus: HariRayaStatus | null;
-  refreshHariRaya: () => void;
-  setTargetHariRaya: (target: number) => void;
   cairkanHariRaya: () => void;
   inputTransaksiCash: (data: CashTransaksiPayload) => void;
   verifikasiTransaksi: (id: number) => void;
@@ -366,7 +368,12 @@ const normPendaftaran = (p: unknown): PendaftaranQurban => {
     tanggal_daftar: (x.tanggal_daftar || '').slice(0, 10),
     tanggal_dicairkan: x.tanggal_dicairkan,
     dicairkan_oleh: x.dicairkan_oleh ?? undefined,
-    catatan: x.catatan || undefined
+    catatan: x.catatan || undefined,
+    frekuensi_setor: x.frekuensi_setor,
+    frekuensi_label: x.frekuensi_label,
+    nominal_per_periode: x.nominal_per_periode != null ? Number(x.nominal_per_periode) : null,
+    sisa_pembayaran: x.sisa_pembayaran != null ? Number(x.sisa_pembayaran) : null,
+    persentase: x.persentase != null ? Number(x.persentase) : null
   };
 };
 
@@ -468,10 +475,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [activeTab, setActiveTab] = useState<string>('dashboard');
-  const [adminSubTab, setAdminSubTab] = useState<string>('periode');
   const [userSubTab, setUserSubTab] = useState<string>('periode-aktif');
   const [adminQurbanTab, setAdminQurbanTab] = useState<string>('pendaftaran');
-  const [searchQuery, setSearchQuery] = useState<string>('');
 
   const [users, setUsers] = useState<User[]>([]);
   const [jenisTabungan, setJenisTabungan] = useState<JenisTabungan[]>([]);
@@ -483,6 +488,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [profilNasabahError, setProfilNasabahError] = useState<string | null>(null);
   const [pembayaranHarian, setPembayaranHarian] = useState<PembayaranHarianResponse | null>(null);
   const [tunggakanSetoran, setTunggakanSetoran] = useState<TunggakanSetoranResponse | null>(null);
+  const [monitoringNasabah, setMonitoringNasabah] = useState<MonitoringNasabah[] | null>(null);
   const [periodeQurban, setPeriodeQurban] = useState<PeriodeQurban[]>([]);
   const [hewanQurban, setHewanQurban] = useState<HewanQurban[]>([]);
   const [pendaftaranQurban, setPendaftaranQurban] = useState<PendaftaranQurban[]>([]);
@@ -561,7 +567,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ? null
         : api.get<HariRayaStatus>('/tabungan-hari-raya/status').catch(() => null);
       const trx$ = api
-        .get<Transaksi[]>(isAdmin ? '/admin/transaksi?per_page=200' : '/transaksi-saya?per_page=200')
+        .get<Transaksi[]>(isAdmin ? '/admin/transaksi?per_page=1000' : '/transaksi-saya?per_page=200')
         .catch(() => null);
       const users$ = isAdmin ? api.get<User[]>('/admin/users?per_page=200').catch(() => null) : null;
       const audit$ = !light && isAdmin ? api.get<AuditLog[]>('/admin/audit-logs?per_page=100').catch(() => null) : null;
@@ -748,7 +754,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     .filter(t => t.tipe_tabungan === 'emas')
     .reduce((acc, curr) => acc + (curr.unit_didapat || 0), 0);
 
-  const userEmasRupiahTotal = userEmasGramTotal * activeHargaEmas.harga_per_gram;
+  const userEmasRupiahTotal = userEmasGramTotal > 0
+    ? userEmasGramTotal * hargaJualPerGram(activeHargaEmas.harga_per_gram, userEmasGramTotal)
+    : 0;
 
   // Total gram emas yang sudah berhasil di-tukar (akumulasi riwayat tarik emas terverifikasi)
   // -- bertambah tiap user menyelesaikan goal & menukar emas di toko
@@ -875,6 +883,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const clearTunggakanSetoran = () => setTunggakanSetoran(null);
 
+  const fetchMonitoringNasabah = () => {
+    api
+      .get<MonitoringNasabah[]>('/admin/monitoring-tabungan?per_page=1000')
+      .then((res) => setMonitoringNasabah(res.data))
+      .catch((e: { message?: string }) => showToast(e?.message || 'Gagal memuat monitoring tabungan.', 'error'));
+  };
+
+  const clearMonitoringNasabah = () => setMonitoringNasabah(null);
+
   const suspendUser = (userId: number) =>
     withRefresh(() => api.post(`/admin/users/${userId}/suspend`), 'Akun berhasil dibekukan.');
   const activateUser = (userId: number) =>
@@ -929,28 +946,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         throw e;
       });
 
-  const exportTransaksi = () =>
-    downloadFile(`/admin/transaksi/export`, `transaksi_koperasi_berkah_mulia_${new Date().toISOString().slice(0, 10)}.xlsx`)
-      .then(() => showToast('Data transaksi berhasil diexport!'))
+  const exportTransaksi = (filters: TransaksiFilters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.tanggal_awal) params.set('tanggal_awal', filters.tanggal_awal);
+    if (filters.tanggal_akhir) params.set('tanggal_akhir', filters.tanggal_akhir);
+    if (filters.status && filters.status !== 'all') params.set('status', filters.status);
+    if (filters.metode && filters.metode !== 'all') params.set('metode', filters.metode);
+    if (filters.tipe && filters.tipe !== 'all') params.set('tipe', filters.tipe);
+
+    const qs = params.toString();
+    return downloadFile(`/admin/transaksi/export${qs ? `?${qs}` : ''}`, `pembukuan_transaksi_koperasi_berkah_mulia_${new Date().toISOString().slice(0, 10)}.xlsx`)
+      .then(() => showToast('Data pembukuan transaksi berhasil diexport!'))
       .catch((e: { message?: string }) => {
         showToast(e?.message || 'Gagal mengexport transaksi.', 'error');
         throw e;
       });
+  };
 
   // ─── Admin: Jenis Tabungan ────────────────────────────────
   const createJenisTabungan = (data: Record<string, unknown>) =>
     withRefresh(() => api.post('/admin/jenis-tabungan', data), 'Produk tabungan berhasil dibuat.');
   const updateJenisTabungan = (id: number, data: Record<string, unknown>) =>
     withRefresh(() => api.put(`/admin/jenis-tabungan/${id}`, data), 'Produk tabungan berhasil diperbarui.');
-
-  const deleteJenisTabungan = (id: number): ActionResult => {
-    const hasTransactions = transaksi.some(t => t.jenis_tabungan_id === id);
-    if (hasTransactions) {
-      return { success: false, message: 'Tidak dapat menghapus produk ini karena sudah terdapat transaksi nasabah (409 CONFLICT).' };
-    }
-    withRefresh(() => api.del(`/admin/jenis-tabungan/${id}`), 'Produk tabungan berhasil dihapus.');
-    return { success: true, message: 'Produk tabungan berhasil dihapus.' };
-  };
 
   const toggleStatusJenisTabungan = (id: number) => {
     const target = jenisTabungan.find((j) => j.id === id);
@@ -1019,16 +1036,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const daftarTabunganQurban = (data: DaftarQurbanPayload) => {
     withRefresh(
-      () => api.post('/qurban/daftar', { hewan_qurban_id: data.hewan_qurban_id, jumlah_hewan: data.jumlah_hewan }),
+      () => api.post('/qurban/daftar', {
+        hewan_qurban_id: data.hewan_qurban_id,
+        jumlah_hewan: data.jumlah_hewan,
+        frekuensi_setor: data.frekuensi_setor,
+        nominal_per_periode: data.nominal_per_periode,
+        catatan: data.catatan
+      }),
       'Pendaftaran qurban berhasil. Mulai menyicil setoran tabungan.'
     );
   };
 
-      const cairkanPendaftaranQurban = (id: number) =>
-        withRefresh(() => api.post(`/admin/qurban/${id}/cairkan`), 'Pendaftaran qurban berhasil dicairkan.');
+  const daftarQurbanAdmin = (userId: number, data: DaftarQurbanPayload) => {
+    runAndRefresh(
+      () => api.post('/admin/qurban/pendaftaran', {
+        user_id: userId,
+        hewan_qurban_id: data.hewan_qurban_id,
+        jumlah_hewan: data.jumlah_hewan,
+        frekuensi_setor: data.frekuensi_setor,
+        nominal_per_periode: data.nominal_per_periode,
+        catatan: data.catatan
+      }),
+      'Pendaftaran qurban untuk nasabah berhasil dibuat.'
+    );
+  };
 
-      const lunasPendaftaranQurban = (id: number) =>
-        withRefresh(() => api.post(`/admin/qurban/${id}/lunas`), 'Pendaftaran qurban berhasil dinyatakan lunas.');
+  const lunasPendaftaranQurban = (id: number) =>
+    withRefresh(() => api.post(`/admin/qurban/${id}/lunas`), 'Pendaftaran qurban berhasil dinyatakan lunas.');
 
       const lunasQurban = (id: number) =>
         withRefresh(() => api.post(`/qurban/${id}/lunas`), 'Pengajuan pelunasan berhasil dikirim. Menunggu verifikasi admin.');
@@ -1085,10 +1119,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  const buatSetoranBerkala = (data: SetoranBerkalaPayload) => {
+  const buatSetoranBerkala = (userId: number, data: SetoranBerkalaPayload) => {
     runAndRefresh(
-      () => api.post('/emas/setoran-berkala', data),
-      'Setoran berkala emas aktif! Setor tepat nominal flat di tiap periode sesuai frekuensi.'
+      () => api.post('/admin/emas/setoran-berkala', { user_id: userId, ...data }),
+      'Rencana setoran berkala emas berhasil dibuat untuk nasabah.'
     );
   };
 
@@ -1104,41 +1138,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  const cairkanDana = (data: PenarikanEmasPayload) => {
+  const setTargetHariRayaAdmin = (
+    userId: number,
+    target: number,
+    data?: { frekuensi_setor?: FrekuensiSetoran; nominal_per_periode?: number }
+  ) => {
     runAndRefresh(
-      () => api.post('/emas/dana/cair', {
-        nominal: data.nominal ?? undefined,
-        bank_tujuan: data.bank_tujuan,
-        no_rekening: data.no_rekening,
-        atas_nama: data.atas_nama,
-        catatan_user: data.catatan_user || ''
+      () => api.put('/admin/tabungan-hari-raya/target', {
+        user_id: userId,
+        target_nominal: target,
+        frekuensi_setor: data?.frekuensi_setor,
+        nominal_per_periode: data?.nominal_per_periode
       }),
-      'Permohonan pencairan saldo dana diajukan. Menunggu verifikasi admin.'
+      'Target tabungan hari raya untuk nasabah berhasil disimpan.'
     );
   };
 
-  const updateEmasGoal = (target: number | null) => {
-    api.put('/emas/goal', { target_emas_gram: target })
-      .then(async () => {
-        setCurrentUser(prev => ({ ...prev, target_emas_gram: target }));
-        showToast(target != null ? 'Target tabungan emas berhasil disimpan.' : 'Target tabungan emas dihapus.');
-        await refresh();
-      })
-      .catch((e: { message?: string }) => {
-        showToast(e?.message || 'Terjadi kesalahan. Coba lagi.', 'error');
-      });
-  };
-
-  const refreshHariRaya = () => {
-    api.get<HariRayaStatus>('/tabungan-hari-raya/status')
-      .then((res) => setHariRayaStatus(res.data))
-      .catch(() => undefined);
-  };
-
-  const setTargetHariRaya = (target: number) => {
+  const cairkanTabunganAdmin = (userId: number, data: { jenis_tabungan_id: number; tabungan_berjangka_id?: number; konfigurasi_id?: number; nominal?: number; catatan_admin?: string }) => {
     runAndRefresh(
-      () => api.put('/tabungan-hari-raya/target', { target_nominal: target }),
-      'Target tabungan hari raya berhasil disimpan.'
+      () => api.post(`/admin/tabungan/${userId}/cairkan`, data),
+      'Pencairan tabungan nasabah berhasil diproses (terverifikasi).'
+    );
+  };
+
+  const buatTabunganBerjangkaAdmin = (userId: number, payload: TabunganBerjangkaPayload) => {
+    runAndRefresh(
+      () => api.post('/admin/tabungan-berjangka', { user_id: userId, ...payload }),
+      'Tabungan berjangka untuk nasabah berhasil dibuat (aktif).'
     );
   };
 
@@ -1180,22 +1206,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  const ajukanBatalEmas = (data: PenarikanEmasPayload) => {
-    if (userEmasGramTotal <= 0) {
-      showToast('Tidak ada saldo emas untuk dibatalkan.', 'error');
-      return;
-    }
-    runAndRefresh(
-      () => api.post('/emas/batal', {
-        bank_tujuan: data.bank_tujuan,
-        no_rekening: data.no_rekening,
-        atas_nama: data.atas_nama,
-        catatan_user: data.catatan_user || ''
-      }),
-      'Permohonan pembatalan & refund diajukan. Menunggu verifikasi admin.'
-    );
-  };
-
   const tukarEmas = () => {
     if (userEmasGramTotal <= 0) {
       showToast('Tidak ada saldo emas untuk ditukar.', 'error');
@@ -1215,6 +1225,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         jenis_tabungan_id: data.jenis_tabungan_id,
         nominal: data.nominal,
         pendaftaran_qurban_id: data.pendaftaran_qurban_id,
+        tabungan_berjangka_id: data.tabungan_berjangka_id,
+        konfigurasi_id: data.konfigurasi_id,
         catatan_admin: data.catatan_teller
       }),
       'Transaksi cash berhasil dibukukan dan otomatis terverifikasi.'
@@ -1261,14 +1273,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     withRefresh(() => api.del(`/admin/rekening-bank/${id}`), 'Rekening bank berhasil dihapus.');
     return { success: true, message: 'Rekening bank berhasil dihapus.' };
-  };
-
-  // ─── Audit Log ─────────────────────────────────────────────
-  const hapusAuditLogs = () => {
-    withRefresh(
-      () => api.del('/admin/audit-logs').then(() => setAuditLogs([])),
-      'Riwayat audit log berhasil dihapus.'
-    );
   };
 
   // ─── Gadai (Admin) ────────────────────────────────────────
@@ -1333,9 +1337,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .catch(() => undefined);
   };
 
-  const buatTabunganBerjangka = (data: TabunganBerjangkaPayload) =>
-    withRefresh(() => api.post('/tabungan-berjangka', data), 'Tabungan berjangka berhasil diajukan. Tunggu persetujuan admin.');
-
   const setorTabunganBerjangka = (id: number, data: SetorTabunganBerjangkaPayload) => {
     const form = new FormData();
     form.append('nominal', String(data.nominal));
@@ -1392,15 +1393,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logout,
     currentUser,
     activeTab,
-    setActiveTab,
-    adminSubTab,
-    setAdminSubTab,
-    userSubTab,
+setActiveTab,
+  userSubTab,
     setUserSubTab,
     adminQurbanTab,
     setAdminQurbanTab,
-    searchQuery,
-    setSearchQuery,
     users,
     jenisTabungan,
     hargaEmas,
@@ -1411,7 +1408,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     transaksi,
     notifikasi,
     auditLogs,
-    hapusAuditLogs,
     gadai,
     gadaiDetail,
     fetchGadaiDetail,
@@ -1437,6 +1433,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     clearPembayaranHarian,
     fetchTunggakanSetoran,
     clearTunggakanSetoran,
+    monitoringNasabah,
+    fetchMonitoringNasabah,
+    clearMonitoringNasabah,
     activeHargaEmas,
     userTransaksi,
     userPendaftaranQurban,
@@ -1463,8 +1462,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     exportTransaksi,
     createJenisTabungan,
     updateJenisTabungan,
-    deleteJenisTabungan,
-    toggleStatusJenisTabungan,
+toggleStatusJenisTabungan,
     inputHargaEmas,
     syncHargaEmas,
     deleteHargaEmas,
@@ -1475,23 +1473,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     updateHewanQurban,
     deleteHewanQurban,
     daftarTabunganQurban,
-    cairkanPendaftaranQurban,
-    lunasPendaftaranQurban,
+daftarQurbanAdmin,
+  lunasPendaftaranQurban,
     lunasQurban,
     deletePendaftaranQurban,
     createSetoranUser,
-    updateEmasGoal,
+    buatSetoranBerkala,
     hariRayaStatus,
-    refreshHariRaya,
-    setTargetHariRaya,
+    setTargetHariRayaAdmin,
+    cairkanTabunganAdmin,
+    buatTabunganBerjangkaAdmin,
     cairkanHariRaya,
     createPenarikanUser,
     createPenarikanEmas,
-    ajukanBatalEmas,
     tukarEmas,
-    buatSetoranBerkala,
     batalkanSetoranBerkala,
-    cairkanDana,
     inputTransaksiCash,
     verifikasiTransaksi,
     tolakTransaksi,
@@ -1507,7 +1503,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     tolakAngsuranGadai,
     tabunganBerjangka,
     fetchTabunganBerjangka,
-    buatTabunganBerjangka,
     setorTabunganBerjangka,
     cairkanTabunganBerjangka,
     batalTabunganBerjangka,

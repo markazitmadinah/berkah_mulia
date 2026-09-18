@@ -23,6 +23,7 @@ import { AdminDashboard } from './components/admin/AdminDashboard';
 import { AdminUserManagement } from './components/admin/AdminUserManagement';
 import { AdminJenisTabungan } from './components/admin/AdminJenisTabungan';
 import { AdminHargaEmas } from './components/admin/AdminHargaEmas';
+import { AdminHargaHariIni } from './components/admin/AdminHargaHariIni';
 import { AdminQurban } from './components/admin/AdminQurban';
 import { AdminTransaksi } from './components/admin/AdminTransaksi';
 import { AdminPembayaranHarian } from './components/admin/AdminPembayaranHarian';
@@ -30,6 +31,7 @@ import { AdminRekeningBank } from './components/admin/AdminRekeningBank';
 import { AdminNotifikasi } from './components/admin/AdminNotifikasi';
 import { AdminAuditLog } from './components/admin/AdminAuditLog';
 import { AdminProfilNasabah } from './components/admin/AdminProfilNasabah';
+import { AdminManagementJenis } from './components/admin/AdminManagementJenis';
 import { AdminGadai } from './components/admin/AdminGadai';
 import { UserGadai } from './components/user/UserGadai';
 
@@ -43,7 +45,6 @@ import { CashTransaksiModal } from './components/modals/CashTransaksiModal';
 import { UserFormModal } from './components/modals/UserFormModal';
 import { UserDetailModal } from './components/modals/UserDetailModal';
 import { ImportUserModal } from './components/modals/ImportUserModal';
-import { JenisTabunganModal } from './components/modals/JenisTabunganModal';
 import { HargaEmasModal } from './components/modals/HargaEmasModal';
 import { PeriodeQurbanModal } from './components/modals/PeriodeQurbanModal';
 import { HewanQurbanModal } from './components/modals/HewanQurbanModal';
@@ -51,10 +52,10 @@ import { RekeningBankModal } from './components/modals/RekeningBankModal';
 import { ExportModal } from './components/modals/ExportModal';
 
 
-import { Transaksi, User, JenisTabungan, HargaEmasHarian, PeriodeQurban, HewanQurban, RekeningBank } from './types';
+import { Transaksi, TransaksiFilters, User, JenisTabungan, HargaEmasHarian, PeriodeQurban, HewanQurban, RekeningBank } from './types';
 
 const MainLayout: React.FC = () => {
-  const { currentUser, activeTab, setActiveTab, loading, transaksi, uploadBuktiTransaksi, jenisTabungan } = useApp();
+  const { currentUser, activeTab, setActiveTab, loading, transaksi, uploadBuktiTransaksi } = useApp();
 
   // Mobile sidebar drawer state
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -83,17 +84,26 @@ const MainLayout: React.FC = () => {
   const [isCashOpen, setIsCashOpen] = useState(false);
   const [cashInitialUserId, setCashInitialUserId] = useState<number | undefined>();
   const [cashInitialJenisId, setCashInitialJenisId] = useState<number | undefined>();
+  const [cashInitialBerjangkaId, setCashInitialBerjangkaId] = useState<number | undefined>();
+  const [cashInitialKonfigurasiId, setCashInitialKonfigurasiId] = useState<number | undefined>();
+  const [cashInitialNominal, setCashInitialNominal] = useState<number | undefined>();
   const [cashRefreshKey, setCashRefreshKey] = useState(0);
 
-  const openCashFor = (userId: number, jenisTabunganId: number) => {
+  const openCashFor = (userId: number | undefined, jenisTabunganId: number, berjangkaId?: number, konfigurasiId?: number, nominal?: number) => {
     setCashInitialUserId(userId);
     setCashInitialJenisId(jenisTabunganId);
+    setCashInitialBerjangkaId(berjangkaId);
+    setCashInitialKonfigurasiId(konfigurasiId);
+    setCashInitialNominal(nominal);
     setIsCashOpen(true);
   };
 
   const openCashModal = () => {
     setCashInitialUserId(undefined);
     setCashInitialJenisId(undefined);
+    setCashInitialBerjangkaId(undefined);
+    setCashInitialKonfigurasiId(undefined);
+    setCashInitialNominal(undefined);
     setIsCashOpen(true);
   };
 
@@ -110,10 +120,10 @@ const MainLayout: React.FC = () => {
   const [isUserDetailOpen, setIsUserDetailOpen] = useState(false);
   const [isImportUserOpen, setIsImportUserOpen] = useState(false);
   const [profilUserId, setProfilUserId] = useState<number | null>(null);
+  const [profilBackTab, setProfilBackTab] = useState<'users' | 'kelola-jenis'>('users');
+  const [kelolaJenis, setKelolaJenis] = useState<JenisTabungan | null>(null);
 
   // Product & Gold modals
-  const [isJenisModalOpen, setIsJenisModalOpen] = useState(false);
-  const [jenisToEdit, setJenisToEdit] = useState<JenisTabungan | null>(null);
   const [isHargaModalOpen, setIsHargaModalOpen] = useState(false);
   const [hargaToEdit, setHargaToEdit] = useState<HargaEmasHarian | null>(null);
 
@@ -129,9 +139,11 @@ const MainLayout: React.FC = () => {
 
   // Export modal (nasabah / transaksi)
   const [exportType, setExportType] = useState<'nasabah' | 'transaksi'>('nasabah');
+  const [exportFilters, setExportFilters] = useState<TransaksiFilters | undefined>(undefined);
   const [isExportOpen, setIsExportOpen] = useState(false);
-  const openExport = (type: 'nasabah' | 'transaksi') => {
+  const openExport = (type: 'nasabah' | 'transaksi', filters?: TransaksiFilters) => {
     setExportType(type);
+    setExportFilters(filters);
     setIsExportOpen(true);
   };
 
@@ -173,7 +185,13 @@ const MainLayout: React.FC = () => {
 
   const handleOpenProfilNasabah = (user: User) => {
     setProfilUserId(user.id);
+    setProfilBackTab(activeTab === 'kelola-jenis' ? 'kelola-jenis' : 'users');
     setActiveTab('profil-nasabah');
+  };
+
+  const handleOpenKelolaJenis = (jenis: JenisTabungan) => {
+    setKelolaJenis(jenis);
+    setActiveTab('kelola-jenis');
   };
 
   useEffect(() => {
@@ -181,11 +199,6 @@ const MainLayout: React.FC = () => {
   }, [activeTab]);
 
   // Product & Gold Handlers
-  const handleOpenEditJenis = (item: JenisTabungan) => {
-    setJenisToEdit(item);
-    setIsJenisModalOpen(true);
-  };
-
   const handleOpenInputHarga = () => {
     setHargaToEdit(null);
     setIsHargaModalOpen(true);
@@ -343,12 +356,21 @@ return (
                 {activeTab === 'profil-nasabah' && (
                   <AdminProfilNasabah
                     initialUserId={profilUserId ?? undefined}
-                    onBack={() => setActiveTab('users')}
+                    onBack={() => setActiveTab(profilBackTab)}
                   />
                 )}
                 {activeTab === 'jenis-tabungan' && (
                   <AdminJenisTabungan
-                    onOpenEditModal={handleOpenEditJenis}
+                    onOpenKelola={handleOpenKelolaJenis}
+                  />
+                )}
+                {activeTab === 'kelola-jenis' && kelolaJenis && (
+                  <AdminManagementJenis
+                    jenis={kelolaJenis}
+                    onBack={() => setActiveTab('jenis-tabungan')}
+                    onOpenCash={openCashFor}
+                    onOpenProfilNasabah={handleOpenProfilNasabah}
+                    refreshKey={cashRefreshKey}
                   />
                 )}
                 {activeTab === 'harga-emas' && (
@@ -357,6 +379,7 @@ return (
                     onOpenEditHargaModal={handleOpenEditHarga}
                   />
                 )}
+                {activeTab === 'harga-hari-ini' && <AdminHargaHariIni />}
                 {activeTab === 'qurban' && (
                   <AdminQurban
                     onOpenCreatePeriode={handleOpenCreatePeriode}
@@ -370,7 +393,7 @@ return (
                     onOpenCashModal={openCashModal}
                     onOpenDetailTransaksi={handleOpenDetailTrx}
                     onOpenRejectModal={handleOpenRejectTrx}
-                    onOpenExportModal={() => openExport('transaksi')}
+                    onOpenExportModal={(filters) => openExport('transaksi', filters)}
                   />
                 )}
                 {activeTab === 'pembayaran-harian' && (
@@ -432,6 +455,9 @@ return (
         }}
         initialUserId={cashInitialUserId}
         initialJenisId={cashInitialJenisId}
+        initialBerjangkaId={cashInitialBerjangkaId}
+        initialKonfigurasiId={cashInitialKonfigurasiId}
+        initialNominal={cashInitialNominal}
       />
 
       <UserFormModal
@@ -455,12 +481,7 @@ return (
         type={exportType}
         isOpen={isExportOpen}
         onClose={() => setIsExportOpen(false)}
-      />
-
-      <JenisTabunganModal
-        isOpen={isJenisModalOpen}
-        onClose={() => setIsJenisModalOpen(false)}
-        itemToEdit={jenisToEdit}
+        filters={exportFilters}
       />
 
       <HargaEmasModal

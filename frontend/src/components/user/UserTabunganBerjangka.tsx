@@ -3,9 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { formatRupiah, parseRupiah, fmtRupiahTyping, fmtRupiahBlur } from '../../utils/format';
 import {
   Wallet,
-  Plus,
   Calendar,
-  Target,
   Clock,
   Repeat,
   ArrowDownLeft,
@@ -52,98 +50,6 @@ const STATUS_CFG: Record<string, { label: string; cls: string; icon: React.React
     cls: 'bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800',
     icon: <Hourglass className="w-3 h-3" />
   },
-};
-
-// ─── Modal Buat Tabungan Berjangka ───────────────────────────
-const CreateBerjangkaModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-  const { buatTabunganBerjangka, showToast } = useApp();
-  const [target, setTarget] = useState('');
-  const [durasi, setDurasi] = useState('12');
-  const [frekuensi, setFrekuensi] = useState<FrekuensiSetoran>('bulanan');
-  const [catatan, setCatatan] = useState('');
-
-  const targetN = parseRupiah(target);
-  const durasiN = parseInt(durasi) || 0;
-
-  const totalPeriode = frekuensi === 'harian' ? durasiN * 30 : frekuensi === 'mingguan' ? durasiN * 4 : durasiN;
-  const perPeriode = totalPeriode > 0 ? Math.ceil((targetN / totalPeriode) * 100) / 100 : 0;
-
-  const submit = () => {
-    if (targetN < 50000) return showToast('Target minimal Rp 50.000.', 'error');
-    if (durasiN < 1 || durasiN > 120) return showToast('Durasi harus antara 1–120 bulan.', 'error');
-    buatTabunganBerjangka({ target_nominal: targetN, durasi_bulan: durasiN, frekuensi_setor: frekuensi, catatan: catatan || undefined });
-    onClose();
-  };
-
-  const iCls = 'w-full py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400/50';
-  const lCls = 'block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1';
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl">
-        <div className="p-5 sm:p-6">
-          <div className="flex items-start justify-between gap-3 mb-5">
-            <div>
-              <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-                <Target className="w-5 h-5 text-indigo-500" /> Buat Tabungan Berjangka
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Tentukan target nominal, durasi, dan jadwal setoran berkala.</p>
-            </div>
-            <button onClick={onClose} className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 cursor-pointer">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          <div className="space-y-3">
-            <div>
-              <label className={lCls}>Target Nominal (Rp)</label>
-              <input type="text" inputMode="decimal" value={fmtRupiahTyping(target)} onChange={e => setTarget(fmtRupiahTyping(e.target.value))} onBlur={() => setTarget(fmtRupiahBlur(target))} placeholder="Contoh: 5.000.000,00" className={iCls} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={lCls}>Durasi (bulan)</label>
-                <input type="number" inputMode="numeric" min={1} max={120} value={durasi} onChange={e => setDurasi(e.target.value)} className={iCls} />
-              </div>
-              <div>
-                <label className={lCls}>Frekuensi Setor</label>
-                <select value={frekuensi} onChange={e => setFrekuensi(e.target.value as FrekuensiSetoran)} className={iCls}>
-                  <option value="harian">Harian</option>
-                  <option value="mingguan">Mingguan</option>
-                  <option value="bulanan">Bulanan</option>
-                </select>
-              </div>
-            </div>
-            <div>
-              <label className={lCls}>Catatan (opsional)</label>
-              <input value={catatan} onChange={e => setCatatan(e.target.value)} placeholder="Tujuan tabungan, misal: Biaya Pendidikan" className={iCls} />
-            </div>
-          </div>
-
-          {/* Preview */}
-          {targetN > 0 && durasiN > 0 && (
-            <div className="rounded-2xl p-4 mt-4 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-300 mb-2">Pratinjau Rencana</div>
-              <div className="grid grid-cols-2 gap-2 text-[11px]">
-                <div><span className="text-indigo-500">Target:</span> <b className="text-indigo-900 dark:text-indigo-100">{formatRupiah(targetN)}</b></div>
-                <div><span className="text-indigo-500">Durasi:</span> <b className="text-indigo-900 dark:text-indigo-100">{durasiN} bulan</b></div>
-                <div><span className="text-indigo-500">Periode:</span> <b className="text-indigo-900 dark:text-indigo-100">{totalPeriode}× {frekuensi}</b></div>
-                <div><span className="text-indigo-500">Per Periode:</span> <b className="text-indigo-900 dark:text-indigo-100">±{formatRupiah(perPeriode)}</b></div>
-              </div>
-            </div>
-          )}
-
-          <div className="flex items-center justify-end gap-2 mt-5">
-            <button onClick={onClose} className="px-4 py-2 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold cursor-pointer">
-              Batal
-            </button>
-            <button onClick={submit} className="px-4 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/25 cursor-pointer">
-              Ajukan Tabungan
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 };
 
 // ─── Modal Setor Khusus Tabungan Berjangka ─────────────────────
@@ -429,7 +335,6 @@ const CairkanBerjangkaModal: React.FC<{ tb: TabunganBerjangka; onClose: () => vo
 // ─── Main Component ──────────────────────────────────────────
 export const UserTabunganBerjangka: React.FC<UserTabunganBerjangkaProps> = () => {
   const { tabunganBerjangka, fetchTabunganBerjangka, batalTabunganBerjangka } = useApp();
-  const [showCreate, setShowCreate] = useState(false);
   const [confirmBatalId, setConfirmBatalId] = useState<number | null>(null);
   const [setorTargetTb, setSetorTargetTb] = useState<TabunganBerjangka | null>(null);
   const [cairkanTargetTb, setCairkanTargetTb] = useState<TabunganBerjangka | null>(null);
@@ -439,7 +344,6 @@ export const UserTabunganBerjangka: React.FC<UserTabunganBerjangkaProps> = () =>
   }, []);
 
   const items = tabunganBerjangka?.items ?? [];
-  const dapatMembuat = tabunganBerjangka?.dapat_membuat ?? true;
   const slotTersedia = tabunganBerjangka?.slot_tersedia ?? 5;
 
   const handleBatal = (id: number) => {
@@ -466,38 +370,9 @@ export const UserTabunganBerjangka: React.FC<UserTabunganBerjangkaProps> = () =>
             Belum Ada Tabungan Berjangka
           </h1>
           <p className="text-xs md:text-sm text-slate-600 dark:text-slate-300 mt-1 max-w-xl">
-            Buat tabungan berjangka dengan target nominal dan durasi waktu tertentu. Setoran berkala sesuai jadwal yang Anda tentukan sendiri. <b>Dana hanya dapat ditarik jika sudah mencapai goal dan melewati tanggal jatuh tempo.</b>
+            Buat tabungan berjangka dengan target nominal dan durasi waktu tertentu. Pembuatan tabungan berjangka dilakukan oleh admin kasir. Silakan hubungi pihak koperasi untuk membuat tabungan berjangka baru.
           </p>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="mt-4 inline-flex items-center gap-1.5 px-5 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-extrabold shadow-lg shadow-indigo-600/25 cursor-pointer transition-all active:scale-95"
-          >
-            <Plus className="w-4 h-4" /> Buat Tabungan Berjangka
-          </button>
         </div>
-
-        <div className="rounded-3xl p-8 bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 shadow-sm text-center space-y-3">
-          <div className="w-16 h-16 rounded-3xl bg-indigo-50 dark:bg-indigo-950/50 flex items-center justify-center mx-auto">
-            <Target className="w-8 h-8 text-indigo-500" />
-          </div>
-          <h3 className="font-extrabold text-base text-slate-900 dark:text-white">Ketentuan Penarikan Tabungan Berjangka</h3>
-          <div className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto space-y-2 text-left bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200/60 dark:border-slate-700/50">
-            <p className="flex items-start gap-2">
-              <Lock className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-              <span><b>Dana Terkunci:</b> Tabungan berjangka tidak dapat ditarik sewaktu-waktu (terpisah dari Tabungan Mandiri).</span>
-            </p>
-            <p className="flex items-start gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
-              <span><b>Syarat 1 — Mencapai Goal:</b> Total nominal yang terkumpul harus telah mencapai atau melampaui target yang ditentukan.</span>
-            </p>
-            <p className="flex items-start gap-2">
-              <Calendar className="w-4 h-4 text-indigo-500 flex-shrink-0 mt-0.5" />
-              <span><b>Syarat 2 — Jatuh Tempo Tiba:</b> Tanggal saat penarikan harus sudah mencapai atau melewati tanggal jatuh tempo periode tabungan.</span>
-            </p>
-          </div>
-        </div>
-
-        {showCreate && <CreateBerjangkaModal onClose={() => { setShowCreate(false); fetchTabunganBerjangka(); }} />}
       </div>
     );
   }
@@ -522,14 +397,6 @@ export const UserTabunganBerjangka: React.FC<UserTabunganBerjangkaProps> = () =>
             Simpanan dengan target nominal dan durasi waktu tertentu. <b>Hanya bisa ditarik jika sudah mencapai goal dalam jangka waktu yang ditentukan.</b>
           </p>
         </div>
-        {dapatMembuat && (
-          <button
-            onClick={() => setShowCreate(true)}
-            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold shadow-lg shadow-indigo-600/25 cursor-pointer transition-all active:scale-95 flex-shrink-0"
-          >
-            <Plus className="w-4 h-4" /> Buat Baru
-          </button>
-        )}
       </div>
 
       {/* Cards */}
@@ -546,7 +413,6 @@ export const UserTabunganBerjangka: React.FC<UserTabunganBerjangkaProps> = () =>
         ))}
       </div>
 
-      {showCreate && <CreateBerjangkaModal onClose={() => { setShowCreate(false); fetchTabunganBerjangka(); }} />}
       {setorTargetTb && <SetorBerjangkaModal tb={setorTargetTb} onClose={() => { setSetorTargetTb(null); fetchTabunganBerjangka(); }} />}
       {cairkanTargetTb && <CairkanBerjangkaModal tb={cairkanTargetTb} onClose={() => { setCairkanTargetTb(null); fetchTabunganBerjangka(); }} />}
     </div>

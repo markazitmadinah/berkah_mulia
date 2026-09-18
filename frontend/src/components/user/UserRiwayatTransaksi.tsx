@@ -25,24 +25,16 @@ export const UserRiwayatTransaksi: React.FC<UserRiwayatTransaksiProps> = ({
   onOpenDetailTransaksi,
   onOpenUploadBukti
 }) => {
-  const { userTransaksi, searchQuery } = useApp();
+  const { userTransaksi } = useApp();
 
   const [filterTipe, setFilterTipe] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
 
   const filteredTransactions = userTransaksi.filter((trx) => {
-    const q = searchQuery.toLowerCase();
-    const matchesSearch =
-      trx.nomor_referensi.toLowerCase().includes(q) ||
-      trx.jenis_tabungan_nama?.toLowerCase().includes(q) ||
-      (trx.nomor_gadai && trx.nomor_gadai.toLowerCase().includes(q)) ||
-      (trx.catatan_admin && trx.catatan_admin.toLowerCase().includes(q)) ||
-      trx.nominal.toString().includes(searchQuery);
-
     const matchesTipe = filterTipe === 'all' || trx.tipe_tabungan === filterTipe;
     const matchesStatus = filterStatus === 'all' || trx.status_verifikasi === filterStatus;
 
-    return matchesSearch && matchesTipe && matchesStatus;
+    return matchesTipe && matchesStatus;
   });
 
   return (

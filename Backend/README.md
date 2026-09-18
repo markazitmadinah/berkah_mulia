@@ -139,7 +139,6 @@ app/
     Middleware/   # EnsureUserIsActive, RoleMiddleware, SecurityHeaders
   Models/         # 11 Eloquent models with relations
   Observers/      # TransaksiObserver (auto-update qurban progress)
-  Policies/       # TransaksiPolicy, PendaftaranQurbanPolicy
   Services/       # Business logic (EmasConversion, QurbanTarget, Progress, Transaksi)
   Traits/         # ApiResponse trait
 routes/

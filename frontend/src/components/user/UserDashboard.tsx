@@ -6,6 +6,7 @@ import { CountUp } from '../ui/CountUp';
 import { PriceChart, buildGoldChart } from '../ui/PriceChart';
 import { QurbanIcon } from '../QurbanIcon';
 import { formatRupiah } from '../../utils/format';
+import { MARKUP_1_5_GRAM, hargaJualPerGram } from '../../utils/hargaJual';
 import {
   Coins,
   ArrowUpRight,
@@ -86,7 +87,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   };
 
   const fmtNomorAnggota = (na: string) =>
-    /^\d{16}$/.test(na) ? na.replace(/(\d{4})(?=\d)/g, '$1 ').trim() : na;
+    /^\d{10}$/.test(na) ? na.replace(/(\d{4})(?=\d)/g, '$1 ').trim() : na;
 
   // Garis horizontal background kartu, dihasilkan dari digit harga emas
   // (bukan random), agar menyesuaikan harga emas aktif.
@@ -116,7 +117,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const fmtMonth = (k: string) => new Date(k + '-01T00:00:00').toLocaleDateString('id-ID', { month: 'short', year: 'numeric' });
   const formatChartLabel = (d: string) => timeframe === '1Y' ? fmtMonth(d) : fmtDate(d);
 
-  const { points: chartPoints, basePrice } = buildGoldChart(hargaEmas, timeframe);
+  // Chart pakai harga jual (acuan + markup 1–5 gram) agar konsisten dengan Harga Emas Hari Ini
+  const hargaJualHistory = hargaEmas.map(h => ({ ...h, harga_per_gram: h.harga_per_gram + MARKUP_1_5_GRAM }));
+  const { points: chartPoints, basePrice } = buildGoldChart(hargaJualHistory, timeframe);
 
   const lastPrice = chartPoints[chartPoints.length - 1]?.value ?? null;
   const pctChange = basePrice && lastPrice ? ((lastPrice - basePrice) / basePrice) * 100 : null;
@@ -291,7 +294,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                 <p className="text-[9px] font-mono tracking-widest text-emerald-400/90">NO. ANGGOTA</p>
                 <div className="flex items-center gap-2 pt-0.5">
                   <span className="text-base sm:text-xl font-mono font-bold tracking-widest text-white">
-                    {showNomorAnggota ? fmtNomorAnggota(currentUser.nomor_anggota) : '•••• •••• •••• ••••'}
+                    {showNomorAnggota ? fmtNomorAnggota(currentUser.nomor_anggota) : '•••• •••• ••'}
                   </span>
                   <button
                     type="button"
@@ -442,10 +445,10 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           {/* Current Prices Buy & Sell */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 py-4">
             <div className="flex items-center justify-between sm:block gap-3">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Harga Beli (Buy)</p>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Harga Jual Emas (per gram)</p>
               <div className="flex items-baseline gap-1 sm:mt-1">
                 <span className="text-lg sm:text-xl lg:text-2xl font-extrabold text-slate-900 dark:text-white truncate">
-                  Rp <CountUp value={activeHargaEmas ? activeHargaEmas.harga_per_gram : 1200000} />
+                  Rp <CountUp value={hargaJualPerGram(activeHargaEmas ? activeHargaEmas.harga_per_gram : 1200000, 0)} />
                 </span>
                 <span className="text-xs text-slate-400 whitespace-nowrap">/g</span>
               </div>

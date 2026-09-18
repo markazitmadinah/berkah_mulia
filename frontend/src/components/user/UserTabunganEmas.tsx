@@ -1,6 +1,7 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
 import { formatRupiah } from '../../utils/format';
+import { hargaJualTiers } from '../../utils/hargaJual';
 import {
   Coins,
   ShieldCheck,
@@ -20,7 +21,6 @@ export const UserTabunganEmas: React.FC<UserTabunganEmasProps> = ({ onOpenSetorE
     userEmasRupiahTotal,
     userEmasGoal,
     activeHargaEmas,
-    hargaEmas,
     setActiveTab
   } = useApp();
 
@@ -79,27 +79,27 @@ export const UserTabunganEmas: React.FC<UserTabunganEmasProps> = ({ onOpenSetorE
           </div>
         </div>
 
-        {/* Harga Acuan Hari Ini */}
+        {/* Harga Jual Hari Ini */}
         <div className="rounded-3xl p-6 bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 shadow-sm flex flex-col justify-between">
           <div>
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Harga Acuan Emas Hari Ini</span>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Harga Jual Emas Hari Ini</span>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 self-start sm:self-auto">
                 {activeHargaEmas?.tanggal || 'Update Terkini'}
               </span>
             </div>
             <div className="flex items-baseline gap-1.5 sm:gap-2 mt-2">
               <span className="text-xl sm:text-2xl lg:text-3xl font-extrabold text-slate-900 dark:text-white whitespace-nowrap">
-                Rp {formatRupiah(activeHargaEmas ? activeHargaEmas.harga_per_gram : 1200000)}
+                Rp {formatRupiah(hargaJualTiers(activeHargaEmas ? activeHargaEmas.harga_per_gram : 1200000)[0].harga_jual)}
               </span>
               <span className="text-xs sm:text-sm font-bold text-slate-400 whitespace-nowrap">/ gram</span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              {activeHargaEmas?.catatan || 'Harga resmi acuan dasar konversi setoran harian'}
+              {activeHargaEmas?.catatan || 'Harga jual bertingkat sesuai gramasi setoran'}
             </p>
           </div>
 
-          <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+          <div className="mt-4 pt-2 flex items-center justify-between">
             <button
               onClick={() => setActiveTab('harga-hari-ini')}
               className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"

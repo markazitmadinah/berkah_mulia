@@ -48,7 +48,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     approveGadai,
     lunasQurban,
     setActiveTab,
-    activeHargaEmas,
     showToast
   } = useApp();
 

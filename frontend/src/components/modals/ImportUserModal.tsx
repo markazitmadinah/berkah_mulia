@@ -76,7 +76,7 @@ export const ImportUserModal: React.FC<ImportUserModalProps> = ({
               {fileName || 'Pilih File .xlsx atau .csv'}
             </span>
             <span className="text-slate-400 mt-1 block">
-              Gunakan file template yang sudah disediakan (nama, email, no. HP, no. anggota 16 digit, alamat, dll.)
+              Gunakan file template yang sudah disediakan (nama, email, no. HP, no. anggota 10 digit, alamat, dll.)
             </span>
             <input
               type="file"

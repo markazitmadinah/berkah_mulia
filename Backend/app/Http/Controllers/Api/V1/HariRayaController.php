@@ -11,6 +11,7 @@ use App\Models\JenisTabungan;
 use App\Models\Transaksi;
 use App\Models\User;
 use App\Models\UserTabunganTarget;
+use Illuminate\Validation\Rule;
 use App\Services\TransaksiService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -30,6 +31,40 @@ class HariRayaController extends Controller
             ->where('sub_jenis', SubJenisTabungan::HariRaya)
             ->aktif()
             ->first();
+    }
+
+    /**
+     * Hash target + frekuensi (opsional) ke record user_tabungan_target.
+     * nominal_per_periode otomatis dari target jika tidak diserahkan.
+     */
+    private function simpanTarget(User $user, JenisTabungan $jenis, Request $request, float $target): UserTabunganTarget
+    {
+        $frekuensi = $request->input('frekuensi_setor') ?: 'bulanan';
+        $nominal = $request->filled('nominal_per_periode') ? (float) $request->nominal_per_periode : null;
+
+        if ($nominal === null || $nominal <= 0) {
+            $deadline = $jenis->deadline ?? now()->addMonths(12);
+            $mulai = now()->startOfDay();
+            $akhir = $deadline->copy()->startOfDay();
+            $hari = (int) max(1, $mulai->diffInDays($akhir));
+
+            $totalPeriode = match ($frekuensi) {
+                'harian' => $hari,
+                'mingguan' => max(1, intdiv($hari, 7)),
+                default => max(1, $mulai->diffInMonths($akhir)),
+            };
+
+            $nominal = round(ceil($target / $totalPeriode * 100) / 100, 2);
+        }
+
+        return UserTabunganTarget::updateOrCreate(
+            ['user_id' => $user->id, 'jenis_tabungan_id' => $jenis->id],
+            [
+                'target_nominal' => $target,
+                'frekuensi_setor' => $frekuensi,
+                'nominal_per_periode' => $nominal,
+            ]
+        );
     }
 
     private function saldo(User $user, JenisTabungan $jenis): float
@@ -60,11 +95,11 @@ class HariRayaController extends Controller
 
     private function statusPayload(JenisTabungan $jenis, User $user, float $saldo): array
     {
-        $target = UserTabunganTarget::where('user_id', $user->id)
+        $targetRow = UserTabunganTarget::where('user_id', $user->id)
             ->where('jenis_tabungan_id', $jenis->id)
-            ->value('target_nominal');
+            ->first();
 
-        $target = $target !== null ? (int) $target : 0;
+        $target = $targetRow ? (int) $targetRow->target_nominal : 0;
 
         return [
             'jenis_tabungan_id' => $jenis->id,
@@ -73,6 +108,13 @@ class HariRayaController extends Controller
             'hari_raya' => $jenis->deadline?->toDateString(),
             'target' => $target,
             'terkumpul' => round($saldo, 2),
+            'frekuensi' => $targetRow ? [
+                'frekuensi_setor' => $targetRow->frekuensi_setor ?: 'bulanan',
+                'frekuensi_label' => $targetRow->frekuensiLabel() ?: 'Bulanan',
+                'nominal_per_periode' => $targetRow->nominal_per_periode,
+                'sisa_pembayaran' => $targetRow->sisaPembayaran($saldo),
+            ] : null,
+            'sisa_nominal' => max(0, $target - $saldo),
             'persentase' => $target > 0 ? round(($saldo / $target) * 100, 2) : null,
             'masa_pencairan' => $this->masaPencairanDibuka($jenis),
         ];
@@ -89,7 +131,7 @@ class HariRayaController extends Controller
         return $this->successResponse($this->statusPayload($jenis, $request->user(), $this->saldo($request->user(), $jenis)));
     }
 
-    public function updateTarget(Request $request): JsonResponse
+    public function updateTargetAdmin(Request $request): JsonResponse
     {
         $jenis = $this->resolveJenis();
 
@@ -98,15 +140,17 @@ class HariRayaController extends Controller
         }
 
         $request->validate([
+            'user_id' => 'required|exists:users,id',
             'target_nominal' => 'required|numeric|min:10000|max:100000000000',
+            'frekuensi_setor' => 'nullable|string|in:harian,mingguan,bulanan',
+            'nominal_per_periode' => 'nullable|numeric|min:1000',
         ]);
 
-        UserTabunganTarget::updateOrCreate(
-            ['user_id' => $request->user()->id, 'jenis_tabungan_id' => $jenis->id],
-            ['target_nominal' => (float) $request->target_nominal]
-        );
+        $user = User::findOrFail($request->user_id);
 
-        return $this->successResponse($this->statusPayload($jenis, $request->user(), $this->saldo($request->user(), $jenis)), 'Target tabungan hari raya berhasil disimpan.');
+        $this->simpanTarget($user, $jenis, $request, (float) $request->target_nominal);
+
+        return $this->successResponse($this->statusPayload($jenis, $user, $this->saldo($user, $jenis)), 'Target tabungan hari raya untuk ' . $user->name . ' berhasil disimpan.');
     }
 
     public function cairkan(Request $request): JsonResponse

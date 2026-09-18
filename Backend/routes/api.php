@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\V1\Admin\RekeningBankController as AdminRekeningBan
 use App\Http\Controllers\Api\V1\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Api\V1\Admin\AuditLogController;
 use App\Http\Controllers\Api\V1\Admin\TabunganBerjangkaController as AdminTabunganBerjangkaController;
+use App\Http\Controllers\Api\V1\Admin\PencairanController;
 use App\Http\Controllers\Api\V1\JenisTabunganController;
 use App\Http\Controllers\Api\V1\EmasController;
 use App\Http\Controllers\Api\V1\KonfigurasiSetoranEmasController;
@@ -91,9 +92,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::post('/emas/tarik', [EmasController::class, 'tarik']);
         Route::post('/emas/tukar', [EmasController::class, 'tukar']);
         Route::post('/emas/batal', [EmasController::class, 'batal']);
-        Route::put('/emas/goal', [EmasController::class, 'updateGoal']);
         Route::get('/emas/setoran-berkala', [KonfigurasiSetoranEmasController::class, 'index']);
-        Route::post('/emas/setoran-berkala', [KonfigurasiSetoranEmasController::class, 'store']);
         Route::post('/emas/setoran-berkala/{konfigurasi}/batalkan', [KonfigurasiSetoranEmasController::class, 'batalkan']);
         Route::post('/emas/dana/cair', [KonfigurasiSetoranEmasController::class, 'cairkanDana']);
 
@@ -102,16 +101,14 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::post('/tabungan-pribadi/tarik', [TabunganPribadiController::class, 'tarik']);
         Route::get('/tabungan-pribadi/progress', [TabunganPribadiController::class, 'progress']);
 
-        // Tabungan Berjangka — user buat & kelola
+        // Tabungan Berjangka — dibuat admin; user setor/cairkan/batal
         Route::get('/tabungan-berjangka', [TabunganBerjangkaController::class, 'index']);
-        Route::post('/tabungan-berjangka', [TabunganBerjangkaController::class, 'store']);
         Route::post('/tabungan-berjangka/{tabunganBerjangka}/setor', [TabunganBerjangkaController::class, 'setor']);
         Route::post('/tabungan-berjangka/{tabunganBerjangka}/cairkan', [TabunganBerjangkaController::class, 'cairkan']);
         Route::post('/tabungan-berjangka/{tabunganBerjangka}/batal', [TabunganBerjangkaController::class, 'batal']);
 
-        // Tabungan Hari Raya — target user sendiri + pencairan 1 minggu sebelum hari raya
+        // Tabungan Hari Raya — status & pencairan (target ditetapkan admin)
         Route::get('/tabungan-hari-raya/status', [HariRayaController::class, 'status']);
-        Route::put('/tabungan-hari-raya/target', [HariRayaController::class, 'updateTarget']);
         Route::post('/tabungan-hari-raya/cairkan', [HariRayaController::class, 'cairkan']);
 
         // Qurban — User
@@ -150,6 +147,8 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::get('/users/{user}/produk', [AdminUserController::class, 'produk']);
         Route::post('/users', [AdminUserController::class, 'store']);
         Route::put('/users/{user}', [AdminUserController::class, 'update']);
+        Route::put('/users/{user}/target-emas', [AdminUserController::class, 'updateTargetEmas']);
+        Route::get('/users/{user}/rencana-emas', [AdminUserController::class, 'rencanaEmas']);
         Route::delete('/users/{user}', [AdminUserController::class, 'destroy']);
         Route::post('/users/{user}/suspend', [AdminUserController::class, 'suspend']);
         Route::post('/users/{user}/activate', [AdminUserController::class, 'activate']);
@@ -163,10 +162,14 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         // Harga Emas
         Route::get('/emas/harga-terkini', [HargaEmasController::class, 'hargaTerkini']);
         Route::get('/emas/harga-riwayat', [HargaEmasController::class, 'hargaRiwayat']);
+        Route::get('/emas/harga-hari-ini', [EmasController::class, 'hargaHariIni']);
         Route::post('/emas/harga', [HargaEmasController::class, 'store']);
         Route::post('/emas/harga/sync', [HargaEmasController::class, 'syncDariLogamMulia']);
         Route::put('/emas/harga/{hargaEmas}', [HargaEmasController::class, 'update']);
         Route::delete('/emas/harga/{hargaEmas}', [HargaEmasController::class, 'destroy']);
+
+        // Rencana setoran berkala emas — hanya admin yang membuat atas nama nasabah
+        Route::post('/emas/setoran-berkala', [KonfigurasiSetoranEmasController::class, 'store']);
 
         // Qurban — Admin
         Route::get('/qurban/periode', [AdminQurbanController::class, 'listPeriode']);
@@ -177,9 +180,13 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::put('/qurban/hewan/{hewan}', [AdminQurbanController::class, 'updateHewan']);
         Route::delete('/qurban/hewan/{hewan}', [AdminQurbanController::class, 'destroyHewan']);
         Route::get('/qurban/pendaftaran', [AdminQurbanController::class, 'listPendaftaran']);
+        Route::post('/qurban/pendaftaran', [AdminQurbanController::class, 'storePendaftaran']);
         Route::post('/qurban/{pendaftaran}/cairkan', [AdminQurbanController::class, 'cairkan']);
         Route::post('/qurban/{pendaftaran}/lunas', [AdminQurbanController::class, 'lunas']);
         Route::delete('/qurban/pendaftaran/{pendaftaran}', [AdminQurbanController::class, 'destroyPendaftaran']);
+
+        // Tabungan Hari Raya — Admin
+        Route::put('/tabungan-hari-raya/target', [HariRayaController::class, 'updateTargetAdmin']);
 
         // Transaksi — Admin
         Route::get('/pembayaran-harian/tunggakan', [PembayaranHarianController::class, 'tunggakan']);
@@ -199,6 +206,9 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
 
         // Dashboard — Admin
         Route::get('/dashboard', [AdminDashboardController::class, 'index']);
+
+        // Monitoring tabungan — Admin
+        Route::get('/monitoring-tabungan', [AdminUserController::class, 'monitoring']);
 
         // Gadai Emas — Admin (modul utama)
         Route::get('/gadai', [AdminGadaiController::class, 'index']);
@@ -226,8 +236,10 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::post('/tabungan-berjangka/{tabunganBerjangka}/tolak', [AdminTabunganBerjangkaController::class, 'tolak']);
         Route::post('/tabungan-berjangka/{tabunganBerjangka}/verifikasi-pembatalan', [AdminTabunganBerjangkaController::class, 'verifikasiPembatalan']);
 
-        // Audit Logs
-        Route::get('/audit-logs', [AuditLogController::class, 'index']);
-        Route::delete('/audit-logs', [AuditLogController::class, 'destroy']);
+        // Pencairan tabungan langsung oleh admin (emas, mandiri, hari raya, berjangka)
+        Route::post('/tabungan/{user}/cairkan', [PencairanController::class, 'cairkan']);
+
+// Audit Logs
+Route::get('/audit-logs', [AuditLogController::class, 'index']);
     });
 });

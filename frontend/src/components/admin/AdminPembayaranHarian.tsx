@@ -17,7 +17,7 @@ import {
 import { PembayaranHarianItem, TunggakanSetoranItem } from '../../types';
 
 interface AdminPembayaranHarianProps {
-  onOpenCash: (userId: number, jenisTabunganId: number) => void;
+  onOpenCash: (userId: number, jenisTabunganId: number, berjangkaId?: number, konfigurasiId?: number, nominal?: number) => void;
   refreshKey?: number;
 }
 
@@ -71,8 +71,10 @@ export const AdminPembayaranHarian: React.FC<AdminPembayaranHarianProps> = ({ on
       fetchPembayaranHarian(tanggal);
       return () => clearPembayaranHarian();
     }
-    fetchTunggakanSetoran();
-    return () => clearTunggakanSetoran();
+    if (mode === 'tunggakan') {
+      fetchTunggakanSetoran();
+      return () => clearTunggakanSetoran();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, tanggal, refreshKey]);
 
@@ -307,9 +309,6 @@ export const AdminPembayaranHarian: React.FC<AdminPembayaranHarianProps> = ({ on
       ) : filtered.length === 0 ? (
         <div className="rounded-3xl p-10 bg-white dark:bg-slate-800/90 border border-slate-100 dark:border-slate-800 text-center">
           <CalendarCheck className="w-10 h-10 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
-          <p className="text-sm font-semibold text-slate-400 dark:text-slate-500">
-            Tidak ada jadwal setoran berkala yang jatuh pada tanggal ini.
-          </p>
         </div>
       ) : (
         <div className="flex flex-col gap-3.5">
@@ -374,7 +373,7 @@ export const AdminPembayaranHarian: React.FC<AdminPembayaranHarianProps> = ({ on
                   </button>
                 ) : (
                   <button
-                    onClick={() => onOpenCash(item.user_id, item.jenis_tabungan_id)}
+                    onClick={() => onOpenCash(item.user_id, item.jenis_tabungan_id, undefined, item.konfigurasi_id, item.nominal_per_periode)}
                     disabled={!bayar}
                     className={`py-2 px-3.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-colors cursor-pointer ${
                       bayar

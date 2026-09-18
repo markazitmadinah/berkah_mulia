@@ -35,9 +35,15 @@ class TransaksiExport implements
 {
     private array $filters;
 
-    public function __construct(?string $status = null, ?string $metode = null, ?string $search = null)
-    {
-        $this->filters = compact('status', 'metode', 'search');
+    public function __construct(
+        ?string $status = null,
+        ?string $metode = null,
+        ?string $search = null,
+        ?string $tanggalAwal = null,
+        ?string $tanggalAkhir = null,
+        ?string $tipe = null
+    ) {
+        $this->filters = compact('status', 'metode', 'search', 'tanggalAwal', 'tanggalAkhir', 'tipe');
     }
 
     public function title(): string
@@ -55,12 +61,25 @@ class TransaksiExport implements
         if ($this->filters['metode']) {
             $query->where('metode_pembayaran', $this->filters['metode']);
         }
+        if ($this->filters['tipe']) {
+            $query->when(
+                $this->filters['tipe'] === 'gadai',
+                fn ($q) => $q->whereNotNull('gadai_id'),
+                fn ($q) => $q->whereHas('jenisTabungan', fn ($jq) => $jq->where('tipe', $this->filters['tipe']))
+            );
+        }
         if ($this->filters['search']) {
             $search = $this->filters['search'];
             $query->where(function ($q) use ($search) {
                 $q->where('nomor_referensi', 'like', "%{$search}%")
                     ->orWhereHas('user', fn ($uq) => $uq->where('name', 'like', "%{$search}%"));
             });
+        }
+        if ($this->filters['tanggalAwal']) {
+            $query->whereDate('tanggal_transaksi', '>=', $this->filters['tanggalAwal']);
+        }
+        if ($this->filters['tanggalAkhir']) {
+            $query->whereDate('tanggal_transaksi', '<=', $this->filters['tanggalAkhir']);
         }
 
         return $query;

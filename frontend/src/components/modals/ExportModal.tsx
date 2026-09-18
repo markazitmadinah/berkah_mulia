@@ -3,6 +3,8 @@ import { useApp } from '../../context/AppContext';
 import { X, FileSpreadsheet, FileText, CheckCircle2 } from 'lucide-react';
 import { exportTablePdf } from '../../utils/exportPdf';
 import { formatRupiah } from '../../utils/format';
+import { filterTransaksi } from '../../utils/rekapTransaksi';
+import { TransaksiFilters } from '../../types';
 
 type ExportType = 'nasabah' | 'transaksi';
 type ExportFormat = 'pdf' | 'xlsx';
@@ -11,6 +13,7 @@ interface ExportModalProps {
   type: ExportType;
   isOpen: boolean;
   onClose: () => void;
+  filters?: TransaksiFilters;
 }
 
 const ROLE_LABEL: Record<string, string> = {
@@ -36,7 +39,7 @@ const VERIF_LABEL: Record<string, string> = {
   ditolak: 'Ditolak',
 };
 
-export const ExportModal: React.FC<ExportModalProps> = ({ type, isOpen, onClose }) => {
+export const ExportModal: React.FC<ExportModalProps> = ({ type, isOpen, onClose, filters }) => {
   const { users, transaksi, exportUsers, exportTransaksi } = useApp();
   const [format, setFormat] = useState<ExportFormat>('pdf');
   const [submitting, setSubmitting] = useState(false);
@@ -45,7 +48,15 @@ export const ExportModal: React.FC<ExportModalProps> = ({ type, isOpen, onClose 
 
   const isNasabah = type === 'nasabah';
   const today = new Date().toISOString().slice(0, 10);
-  const filename = `${isNasabah ? 'data_nasabah' : 'transaksi'}_berkah_mulia_${today}`;
+  const filename = `${isNasabah ? 'data_nasabah' : 'pembukuan_transaksi'}_berkah_mulia_${today}`;
+
+  const filteredTransaksi = isNasabah ? [] : filterTransaksi(transaksi, filters || {});
+
+  const rangeText = !isNasabah
+    ? (filters?.tanggal_awal || filters?.tanggal_akhir)
+      ? `${filters?.tanggal_awal || '…'} s/d ${filters?.tanggal_akhir || '…'}`
+      : ''
+    : '';
 
   const buildNasabahRows = () =>
     users.map((u) => ({
@@ -61,25 +72,39 @@ export const ExportModal: React.FC<ExportModalProps> = ({ type, isOpen, onClose 
     }));
 
   const buildTransaksiRows = () =>
-    transaksi.map((t) => ({
+    filteredTransaksi.map((t) => ({
       no: '',
       ref: t.nomor_referensi,
       nasabah: t.user_name || '-',
       produk: t.jenis_tabungan_nama || '-',
       jenis: JENIS_LABEL[t.jenis_transaksi] || t.jenis_transaksi,
-      nominal: `Rp ${formatRupiah(t.nominal)}`,
+      nominal: t.jenis_transaksi === 'setor' ? `+ Rp ${formatRupiah(t.nominal)}` : `- Rp ${formatRupiah(t.nominal)}`,
       gram: t.unit_didapat ?? 0,
       metode: METODE_LABEL[t.metode_pembayaran] || t.metode_pembayaran,
       tanggal: t.tanggal_transaksi || '-',
       status: VERIF_LABEL[t.status_verifikasi] || t.status_verifikasi,
     }));
 
+  const buildSummary = () => {
+    const verified = filteredTransaksi.filter((t) => t.status_verifikasi === 'terverifikasi');
+    const masuk = verified.filter((t) => t.jenis_transaksi === 'setor').reduce((a, t) => a + t.nominal, 0);
+    const keluar = verified.filter((t) => t.jenis_transaksi === 'tarik').reduce((a, t) => a + t.nominal, 0);
+    const summary = [
+      { label: 'Uang Masuk', value: `Rp ${formatRupiah(masuk)}` },
+      { label: 'Uang Keluar', value: `Rp ${formatRupiah(keluar)}` },
+      { label: 'Selisih Kas', value: `Rp ${formatRupiah(masuk - keluar)}` },
+      { label: 'Jumlah Transaksi', value: String(filteredTransaksi.length) },
+    ];
+    if (rangeText) summary.push({ label: 'Periode', value: rangeText });
+    return summary;
+  };
+
   const handleExport = async () => {
     setSubmitting(true);
     try {
       if (format === 'xlsx') {
         if (isNasabah) await exportUsers();
-        else await exportTransaksi();
+        else await exportTransaksi(filters);
       } else {
         if (isNasabah) {
           exportTablePdf(
@@ -101,8 +126,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({ type, isOpen, onClose 
           );
         } else {
           exportTablePdf(
-            'Laporan Rekapitulasi Transaksi',
-            `Rekapitulasi mutasi transaksi — ${transaksi.length} transaksi tercatat`,
+            'Pembukuan Transaksi Koperasi',
+            `Rekap mutasi transaksi ${rangeText ? `— periode ${rangeText} · ` : '— '}${filteredTransaksi.length} transaksi tercatat`,
             `${filename}.pdf`,
             [
               { header: 'No', dataKey: 'no' },
@@ -116,7 +141,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({ type, isOpen, onClose 
               { header: 'Tanggal', dataKey: 'tanggal' },
               { header: 'Status', dataKey: 'status' },
             ],
-            buildTransaksiRows()
+            buildTransaksiRows(),
+            buildSummary()
           );
         }
       }
@@ -132,7 +158,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ type, isOpen, onClose 
         <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-2xl w-full max-w-md sm:my-8 max-h-[92vh] overflow-y-auto animate-in zoom-in-95 duration-200">
           <div className="flex items-center justify-between p-6 border-b border-slate-100 dark:border-slate-700">
             <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
-              Export {isNasabah ? 'Data Nasabah' : 'Transaksi'}
+              Export {isNasabah ? 'Data Nasabah' : 'Pembukuan Transaksi'}
             </h3>
             <button
               onClick={onClose}
@@ -169,14 +195,16 @@ export const ExportModal: React.FC<ExportModalProps> = ({ type, isOpen, onClose 
               >
                 <FileSpreadsheet className={`w-7 h-7 ${format === 'xlsx' ? 'text-emerald-600' : 'text-slate-400'}`} />
                 <span className={`font-bold ${format === 'xlsx' ? 'text-emerald-700' : 'text-slate-600 dark:text-slate-300'}`}>Export XLSX</span>
-                <span className="text-[10px] text-slate-400">Buka di Excel</span>
+                <span className="text-[10px] text-slate-400">Buka di Excel (2 sheet)</span>
               </button>
             </div>
 
-            <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 flex items-center gap-2 text-slate-600 dark:text-slate-300">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+            <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 flex items-start gap-2 text-slate-600 dark:text-slate-300">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
               <span>
-                {isNasabah ? `${users.length} nasabah` : `${transaksi.length} transaksi`} akan diexport
+                {isNasabah
+                  ? `${users.length} nasabah akan diexport`
+                  : `${filteredTransaksi.length} transaksi akan diexport${rangeText ? ` (periode ${rangeText})` : ' (semua periode)'}`}
               </span>
             </div>
 

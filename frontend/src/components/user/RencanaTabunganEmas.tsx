@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { formatRupiah } from '../../utils/format';
+import { hargaJualPerGram } from '../../utils/hargaJual';
 import {
   AlertTriangle,
   Banknote,
   CalendarClock,
   Coins,
-  CornerDownLeft,
   Plus,
   Target,
   X
@@ -23,33 +23,11 @@ const FREK_LABEL: Record<FrekuensiSetoran, string> = {
   bulanan: 'per bulan'
 };
 
-// Nominal setoran = rupiah utuh (tanpa desimal). Abaikan semua pemisah
-// (titik ribuan maupun koma) agar "170.000"/"170,000" selalu = 170000,
-// bukan 170 — sumber bug "durasi menabung puluhan ribu hari".
-const toNominal = (s: string | number): number => {
-  const n = Number(String(s).replace(/[^\d]/g, ''));
-  return Number.isFinite(n) ? n : 0;
-};
-
-const formatNominalInput = (s: string) => {
-  const n = toNominal(s);
-  return n > 0 ? n.toLocaleString('id-ID', { maximumFractionDigits: 0 }) : '';
-};
-
-const tambahPeriode = (tgl: Date, count: number, frek: FrekuensiSetoran): string => {
-  const d = new Date(tgl);
-  if (frek === 'bulanan') d.setMonth(d.getMonth() + count);
-  else if (frek === 'mingguan') d.setDate(d.getDate() + 7 * count);
-  else d.setDate(d.getDate() + count);
-  return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
-};
-
 type KeluarMode = 'cair' | null;
 
 export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpenSetor }) => {
   const {
     setoranBerkala,
-    buatSetoranBerkala,
     batalkanSetoranBerkala,
     userEmasGoal,
     userEmasGramTotal,
@@ -59,13 +37,6 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
     activeHargaEmas,
     showToast
   } = useApp();
-
-  const [kGoal, setKGoal] = useState('');
-  const [kNominal, setKNominal] = useState('');
-  const [kFrek, setKFrek] = useState<FrekuensiSetoran>('harian');
-  const [kDurasi, setKDurasi] = useState('');
-  const [kSource, setKSource] = useState<'nominal' | 'durasi'>('nominal');
-  const [formBaruOpen, setFormBaruOpen] = useState(false);
 
   const [keluarMode, setKeluarMode] = useState<KeluarMode>(null);
   const [tukarOpen, setTukarOpen] = useState(false);
@@ -84,63 +55,10 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
   const [rekCatatan, setRekCatatan] = useState('');
 
   const items = setoranBerkala?.items ?? [];
-  const dapatMembuat = setoranBerkala?.dapat_membuat ?? true;
 
   const activeHarga = activeHargaEmas ? activeHargaEmas.harga_per_gram : 1200000;
 
   const goalTercapai = userEmasGoal != null && userEmasGramTotal >= userEmasGoal;
-
-  // --- Form buat rencana: nilai saat ini ---
-  const goalVal = kGoal ? Number(kGoal) : 0;
-  // goalTotal HANYA pakai goalVal (gram diisi user). Tidak fallback ke userEmasGoal
-  // karena userEmasGoal adalah akumulasi goal seluruh rencana (bisa campur satuan).
-  const goalTotal = goalVal > 0 ? goalVal : 0;
-  const nominalVal = toNominal(kNominal);
-  const durasiVal = Number(kDurasi) || 0;
-
-  // Dua arah: isi nominal => durasi sampai target; isi durasi => nominal per periode.
-  // Semua dalam satuan GRAM untuk goal, RUPIAH untuk nominal, PERIODE (hari/minggu/bulan) untuk durasi.
-  const durasiDariNominal = (goal: number, nom: number): number =>
-    goal > 0 && nom > 0 && activeHarga > 0 ? Math.ceil((goal * activeHarga) / nom) : 0;
-  const nominalDariDurasi = (goal: number, dur: number): number =>
-    goal > 0 && dur > 0 && activeHarga > 0 ? Math.ceil((goal * activeHarga) / dur) : 0;
-
-  // Sumber terakhir yang diedit menentukan pasangan yang dipakai.
-  const nominalDipakai = kSource === 'durasi' ? nominalDariDurasi(goalTotal, durasiVal) : nominalVal;
-  const durasiDipakai = kSource === 'durasi' ? durasiVal : durasiDariNominal(goalTotal, nominalVal);
-
-  // gram per periode = goal (gram) / jumlah periode
-  const gramPerPeriode = durasiDipakai > 0 && goalTotal > 0 ? goalTotal / durasiDipakai : 0;
-  // biaya riil per periode = gramPerPeriode * harga saat ini
-  const biayaPeriode = activeHarga > 0 && gramPerPeriode > 0 ? Math.ceil(gramPerPeriode * activeHarga) : 0;
-  const tanggalSelesai = durasiDipakai > 0 && goalTotal > 0
-    ? tambahPeriode(new Date(), Math.max(0, durasiDipakai - 1), kFrek)
-    : '';
-
-  const onChangeGoal = (raw: string) => {
-    setKGoal(raw);
-    if (kSource === 'durasi') {
-      const n = nominalDariDurasi(Number(raw) || 0, Number(kDurasi) || 0);
-      if (n > 0) setKNominal(formatNominalInput(String(n)));
-    } else {
-      const d = durasiDariNominal(Number(raw) || 0, toNominal(kNominal));
-      if (d > 0) setKDurasi(String(d));
-    }
-  };
-
-  const onChangeNominal = (raw: string) => {
-    setKNominal(formatNominalInput(raw));
-    setKSource('nominal');
-    const d = durasiDariNominal(goalTotal, toNominal(raw));
-    if (d > 0) setKDurasi(String(d));
-  };
-
-  const onChangeDurasi = (raw: string) => {
-    setKDurasi(raw);
-    setKSource('durasi');
-    const n = nominalDariDurasi(goalTotal, Number(raw) || 0);
-    if (n > 0) setKNominal(formatNominalInput(String(n)));
-  };
 
   const resetKeluar = () => {
     setKeluarMode(null);
@@ -149,28 +67,12 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
     setRekCatatan('');
   };
 
-  const handleBuat = () => {
-    if (goalVal <= 0) {
-      showToast('Isi target rencana ini: berapa gram emas yang ingin dicapai.', 'error');
+  const handleSetor = (nominal?: number, konfigurasiId?: number) => {
+    if (items.length === 0) {
+      showToast('Belum ada rencana menabung aktif. Hubungi admin untuk membuatkan rencana Anda.', 'error');
       return;
     }
-    if (nominalDipakai < 10000) {
-      showToast('Nominal pembayaran minimal Rp 10.000.', 'error');
-      return;
-    }
-    if (durasiDipakai < 1) {
-      showToast('Isi berapa lama menabung (jumlah periode).', 'error');
-      return;
-    }
-    buatSetoranBerkala({
-      nominal_per_periode: nominalDipakai,
-      target_gram_total: goalVal,
-      frekuensi_setor: kFrek,
-      durasi_periode: durasiDipakai
-    });
-    setKGoal('');
-    setKNominal('');
-    setKDurasi('');
+    onOpenSetor(nominal, konfigurasiId);
   };
 
   const handleKeluar = (e: React.FormEvent) => {
@@ -192,8 +94,8 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
   const handleBatalRencana = (e: React.FormEvent) => {
     e.preventDefault();
     if (!batalPlan) return;
-    const nilaiGram = batalPlan.gram * activeHarga;
-    const refund = Math.round(nilaiGram - Math.round(nilaiGram * 0.10) + batalPlan.dana);
+    const total = batalPlan.gram * activeHarga + batalPlan.dana;
+    const refund = Math.round(total - Math.round(total * 0.10));
     if (refund > 0 && (!rekNo.trim() || !rekNama.trim())) {
       showToast('Isi nomor rekening dan atas nama penerima.', 'error');
       return;
@@ -204,14 +106,6 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
     batalkanSetoranBerkala(batalPlan.id, payload);
     setBatalPlan(null);
     resetKeluar();
-  };
-
-  const handleSetor = (nominal?: number, konfigurasiId?: number) => {
-    if (items.length === 0) {
-      showToast('Buat rencana menabung dulu — di dalamnya Anda set target & pembayaran sekaligus.', 'error');
-      return;
-    }
-    onOpenSetor(nominal, konfigurasiId);
   };
 
   const inputCls =
@@ -245,6 +139,12 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
             const gram = p?.rekap.gram_terkumpul ?? 0;
             const pctGram = targetTotal && targetTotal > 0 ? Math.min(100, (gram / targetTotal) * 100) : 0;
             const totalPeriode = k.durasi_periode || 0;
+            const nominalSetor = p?.rekap.nominal_total_setor ?? 0;
+            const targetNominal = totalPeriode > 0 ? nominalPlan * totalPeriode : 0;
+            const pctPeriode = targetNominal > 0
+              ? Math.min(100, Math.max(0, (nominalSetor / targetNominal) * 100))
+              : pctGram;
+            const sisaPeriode = p?.sisa_periode != null ? Number(p.sisa_periode) : null;
             return (
               <div key={k.id} className="rounded-2xl border border-amber-200/60 dark:border-amber-800/40 bg-amber-50/40 dark:bg-amber-950/10 p-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -325,9 +225,24 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
                   );
                 })()}
 
-                {/* Progress: satu (gram) menuju target rencana ini */}
+                {/* Progress: pembayaran periode (nominal) + capaian gram */}
                 <div className="mt-3">
-                  {targetTotal && targetTotal > 0 ? (
+                  {totalPeriode > 0 ? (
+                    <div>
+                      <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
+                        <span>Cicilan dibayar {sisaPeriode != null ? `${totalPeriode - sisaPeriode} dari ${totalPeriode}` : '—'}×</span>
+                        {sisaPeriode != null && <span className="text-amber-700 dark:text-amber-300">{pctPeriode.toFixed(1)}%</span>}
+                      </div>
+                      <div className="h-2.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                        <div className="h-full rounded-full bg-gradient-to-r from-amber-500 to-emerald-500 transition-all duration-500" style={{ width: `${pctPeriode}%` }} />
+                      </div>
+                      {targetTotal && targetTotal > 0 && (
+                        <p className="mt-1.5 text-[10px] text-slate-400">
+                          Gram terkumpul {gram.toFixed(4)} dari {targetTotal} gr
+                        </p>
+                      )}
+                    </div>
+                  ) : targetTotal && targetTotal > 0 ? (
                     <div>
                       <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
                         <span>Gram terkumpul {gram.toFixed(4)} dari {targetTotal} gr</span>
@@ -373,151 +288,6 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
         </div>
       )}
 
-      {/* Slot buat rencana — tersisa bila < 5; terbuka lagi bila satu selesai */}
-      <div className={`${items.length > 0 ? 'mt-5 pt-5 border-t border-slate-100 dark:border-slate-800' : 'mt-5'}`}>
-        {dapatMembuat && (
-          <>
-            <button
-              type="button"
-              onClick={() => setFormBaruOpen(!formBaruOpen)}
-              className="w-full flex items-center justify-between py-3 px-4 rounded-2xl border border-dashed border-amber-300 dark:border-amber-700/60 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/20 transition-colors cursor-pointer"
-            >
-              <span className="flex items-center gap-2 text-xs font-extrabold">
-                <Plus className="w-4 h-4" />
-                {items.length === 0 ? 'Mulai Menabung Emas' : 'Tambah Rencana Lagi'}
-              </span>
-              <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                Slot tersedia: {5 - items.length} dari 5
-              </span>
-            </button>
-
-            {formBaruOpen && (
-              <div className="space-y-4 pt-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Rencana Pembayaran Baru</span>
-                <p className="mt-1 text-sm font-extrabold text-slate-900 dark:text-white">
-                  {items.length === 0 ? 'Mulai Menabung Emas' : 'Tambah Rencana Lagi — isi target rencana ini sendiri'}
-                </p>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  {`Isi salah satu — kolom lain otomatis menghitung sampai target tercapai.`}
-                </p>
-              </div>
-            </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className={labelCls}>Target rencana ini (gram)</label>
-            <input
-              type="number" min={0.01} step="any"
-              value={kGoal}
-              onChange={(e) => onChangeGoal(e.target.value)}
-              placeholder="Contoh: 10 — atau 5 untuk rencana kedua"
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <label className={labelCls}>Nominal pembayaran</label>
-            <input
-              type="text" inputMode="decimal"
-              value={kNominal}
-              onChange={(e) => onChangeNominal(e.target.value)}
-              onBlur={() => setKNominal(formatNominalInput(kNominal))}
-              placeholder="Contoh: 15.000,50"
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <label className={labelCls}>
-              Berapa lama (jumlah {kFrek === 'harian' ? 'hari' : kFrek === 'mingguan' ? 'minggu' : 'bulan'})
-              {goalTotal > 0 && durasiDipakai > 0 && (
-                <span className="ml-1.5 font-normal text-amber-600 dark:text-amber-400">
-                  ≈ {gramPerPeriode.toFixed(4)} gr/{kFrek === 'harian' ? 'hari' : kFrek === 'mingguan' ? 'minggu' : 'bulan'}
-                </span>
-              )}
-            </label>
-            <input
-              type="number" min={1}
-              value={kDurasi}
-              onChange={(e) => onChangeDurasi(e.target.value)}
-              placeholder="Terisi otomatis dari nominal"
-              className={inputCls}
-            />
-          </div>
-        </div>
-        <p className="text-[10px] text-slate-400 -mt-2">
-          Menggunakan harga acuan Rp {formatRupiah(activeHarga)}/gr — isi nominal → durasi terhitung, isi durasi → nominal menyesuaikan.
-        </p>
-
-        <div>
-          <label className={labelCls}>Bayar</label>
-          <div className="grid grid-cols-3 gap-1.5">
-            {(['harian', 'mingguan', 'bulanan'] as FrekuensiSetoran[]).map((f) => (
-              <button
-                key={f}
-                type="button"
-                onClick={() => setKFrek(f)}
-                className={`py-2.5 rounded-xl text-[11px] font-extrabold border transition-all cursor-pointer ${
-                  kFrek === f
-                    ? 'bg-amber-500 border-amber-500 text-white shadow-sm shadow-amber-500/25'
-                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-amber-300'
-                }`}
-              >
-                {f === 'harian' ? 'Harian' : f === 'mingguan' ? 'Mingguan' : 'Bulanan'}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {durasiDipakai > 0 && (goalTotal > 0 || nominalDipakai > 0) && (
-          <div className="p-4 rounded-2xl border border-emerald-200/70 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-950/20 space-y-1.5 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
-            <p className="flex items-center gap-1.5"><CornerDownLeft className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              Bayar <strong>Rp {formatRupiah(nominalDipakai)}</strong> {FREK_LABEL[kFrek]} selama <strong>{durasiDipakai}x</strong>
-            </p>
-            {goalTotal > 0 && (
-              <p>
-                Setiap {FREK_LABEL[kFrek].replace('per ', '')} ≈ <strong className="text-amber-700 dark:text-amber-300">{gramPerPeriode.toFixed(4)} gram</strong>
-                {' '}• total target <strong>{goalTotal} gram</strong>
-              </p>
-            )}
-            {tanggalSelesai && (
-              <p className="flex items-center gap-1.5"><CalendarClock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                Target {goalTotal} gr tercapai sekitar <strong>{tanggalSelesai}</strong>
-              </p>
-            )}
-            {nominalDipakai > 0 && biayaPeriode > 0 && (
-              <p className={biayaPeriode > nominalDipakai ? 'text-rose-600 dark:text-rose-400' : 'text-slate-500 dark:text-slate-400'}>
-                {biayaPeriode > nominalDipakai
-                  ? `Biaya ${gramPerPeriode.toFixed(4)}gr (Rp ${formatRupiah(Math.round(biayaPeriode))}) melebihi setoran — kelebihannya menunggu di saldo dana.`
-                  : `Biaya ${gramPerPeriode.toFixed(4)}gr saat ini ≈ Rp ${formatRupiah(Math.round(biayaPeriode))}`}
-              </p>
-            )}
-          </div>
-        )}
-
-        <div className="flex items-center justify-end">
-          <button
-            type="button"
-            onClick={handleBuat}
-            className="py-2.5 px-6 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 active:scale-95 text-white text-xs font-extrabold shadow-md shadow-amber-500/25 cursor-pointer"
-          >
-            {items.length === 0 ? 'Aktifkan Rencana' : 'Buat Rencana Baru'}
-          </button>
-        </div>
-              </div>
-            )}
-            </>
-        )}
-        {!dapatMembuat && (
-          <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-center">
-            <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200">Slot rencana penuh (maksimal 5).</p>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-              Selesaikan atau batalkan salah satu rencana untuk membuka slot baru nabung lagi.
-            </p>
-          </div>
-        )}
-      </div>
-
       {/* Aksi keluar */}
       {goalTercapai && (
         <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-2.5">
@@ -545,10 +315,10 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
             <div className="flex items-center justify-between p-6 border-b border-slate-100 dark:border-slate-700">
               <div>
                 <h3 className="font-extrabold text-lg text-slate-900 dark:text-white">
-                  Cairkan Emas
+                  Cairkan Emas (Full)
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Goal tercapai — saldo emas penuh diubah jadi rupiah.
+                  Goal tercapai — saldo emas penuh dicairkan dengan potongan 10%.
                 </p>
               </div>
               <button onClick={resetKeluar} className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer">
@@ -559,13 +329,17 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
             <form onSubmit={handleKeluar} className="p-6 space-y-4">
               <div className="p-4 rounded-2xl border bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800/40">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300">
-                  Nilai Pencairan
+                  Perkiraan Diterima
                 </span>
                 <p className="text-xl font-extrabold mt-0.5 text-amber-700 dark:text-amber-300">
-                  Rp {formatRupiah(userEmasRupiahTotal)}
+                  Rp {formatRupiah(Math.round(userEmasRupiahTotal - userEmasRupiahTotal * 0.10))}
                 </p>
-                <span className="text-[11px] text-amber-700/80 dark:text-amber-300/70">
-                  Kurs acuan Rp {formatRupiah(activeHarga)} / gram
+                <div className="mt-1.5 space-y-0.5 text-[11px] text-amber-700/80 dark:text-amber-300/70">
+                  <p>Nilai emas: Rp {formatRupiah(userEmasRupiahTotal)}</p>
+                  <p>Potongan 10%: −Rp {formatRupiah(Math.round(userEmasRupiahTotal * 0.10))}</p>
+                </div>
+                <span className="block mt-1 text-[11px] text-amber-700/70 dark:text-amber-300/60">
+                  Kurs acuan Rp {formatRupiah(activeHarga)} / gram · saldo dana (jika ada) ikut dicairkan & dipotong 10%.
                 </span>
               </div>
 
@@ -625,9 +399,10 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
               <div className="p-4 rounded-2xl border border-rose-50 dark:border-rose-950/40 bg-rose-50 dark:bg-rose-950/40">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-rose-800 dark:text-rose-300">Rincian Refund</span>
                 {(() => {
-                  const nilaiGram = batalPlan.gram * activeHarga;
-                  const penalti = Math.round(nilaiGram * 0.10);
-                  const refund = Math.round(nilaiGram - penalti + batalPlan.dana);
+                  const nilaiGram = batalPlan.gram * (batalPlan.gram > 0 ? hargaJualPerGram(activeHarga, batalPlan.gram) : 0);
+                  const total = nilaiGram + batalPlan.dana;
+                  const penalti = Math.round(total * 0.10);
+                  const refund = Math.round(total - penalti);
                   return (
                     <>
                       {refund > 0 ? (
@@ -635,10 +410,10 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
                           <p className="text-xl font-extrabold mt-0.5 text-rose-700 dark:text-rose-300">Rp {formatRupiah(refund)}</p>
                           <div className="mt-2 space-y-1 text-[11px] text-rose-700/80 dark:text-rose-300/70">
                             <p>Saldo emas rencana ini: {batalPlan.gram.toFixed(4)} gr ≈ Rp {formatRupiah(Math.round(nilaiGram))}</p>
-                            <p>Potongan 10% (dari emas): −Rp {formatRupiah(penalti)}</p>
-                            <p>Saldo dana rencana ini: +Rp {formatRupiah(batalPlan.dana)}</p>
+                            <p>Saldo dana rencana ini: Rp {formatRupiah(batalPlan.dana)}</p>
+                            <p>Potongan 10% (dari total): −Rp {formatRupiah(penalti)}</p>
                           </div>
-                          <span className="text-[11px] text-rose-700/80 dark:text-rose-300/70">Kurs acuan Rp {formatRupiah(activeHarga)} / gram</span>
+                          <span className="text-[11px] text-rose-700/80 dark:text-rose-300/70">Harga jual Rp {formatRupiah(batalPlan.gram > 0 ? hargaJualPerGram(activeHarga, batalPlan.gram) : 0)} / gram</span>
                         </>
                       ) : (
                         <p className="mt-0.5 text-sm font-semibold text-slate-500 dark:text-slate-400">
@@ -651,8 +426,8 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
               </div>
 
               {(() => {
-                const nilaiGram = batalPlan.gram * activeHarga;
-                const refund = Math.round(nilaiGram - Math.round(nilaiGram * 0.10) + batalPlan.dana);
+                const total = batalPlan.gram * activeHarga + batalPlan.dana;
+                const refund = Math.round(total - Math.round(total * 0.10));
                 return refund > 0 && (
                   <>
                     <div>

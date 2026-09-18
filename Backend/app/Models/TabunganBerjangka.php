@@ -101,12 +101,18 @@ class TabunganBerjangka extends Model
             ->where('jenis_transaksi', 'setor')
             ->sum('nominal');
 
+        // Penarikan terverifikasi (pencairan/batal) mengurangi saldo tersedia.
+        $tarik = (float) Transaksi::where('tabungan_berjangka_id', $this->id)
+            ->where('status_verifikasi', 'terverifikasi')
+            ->where('jenis_transaksi', 'tarik')
+            ->sum('nominal');
+
         if ($nominalDirect > 0) {
-            return $nominalDirect;
+            return max(0, $nominalDirect - $tarik);
         }
 
         // 2. Fallback untuk transaksi terdahulu berdasarkan waktu dan jenis_tabungan_id
-        return (float) Transaksi::where('user_id', $this->user_id)
+        $nominalFallback = (float) Transaksi::where('user_id', $this->user_id)
             ->whereNull('tabungan_berjangka_id')
             ->where('jenis_tabungan_id', $this->jenis_tabungan_id)
             ->where('status_verifikasi', 'terverifikasi')
@@ -114,6 +120,8 @@ class TabunganBerjangka extends Model
             ->when($this->tanggal_mulai, fn ($q) => $q->where('created_at', '>=', $this->tanggal_mulai))
             ->when($this->tanggal_jatuh_tempo, fn ($q) => $q->where('created_at', '<=', $this->tanggal_jatuh_tempo->endOfDay()))
             ->sum('nominal');
+
+        return max(0, $nominalFallback - $tarik);
     }
 
     public function isJatuhTempo(): bool

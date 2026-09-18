@@ -28,7 +28,7 @@ class JenisTabunganController extends Controller
             $query->where('status_aktif', $request->boolean('status_aktif'));
         }
 
-        $perPage = min($request->input('per_page', 15), 100);
+        $perPage = min($request->input('per_page', 15), 1000);
         $items = $query->latest()->paginate($perPage);
 
         return response()->json([

@@ -133,26 +133,34 @@ class GadaiController extends Controller
             ->milikUser($request->user()->id)
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
             ->latest()
-            ->paginate(min((int) ($request->per_page ?? 25), 100));
+            ->paginate(min((int) ($request->per_page ?? 25), 1000));
 
         $items = collect($gadai->items())->map(fn (Gadai $g) => [
             'id' => $g->id,
             'nomor_gadai' => $g->nomor_gadai,
             'jenis_emas' => $g->jenis_emas,
             'berat_gram' => (float) $g->berat_gram,
+            'kadar' => (float) $g->kadar,
             'berat_bersih_gram' => (float) $g->berat_bersih_gram,
+            'harga_acuan' => (float) $g->harga_acuan,
             'nilai_taksiran' => (float) $g->nilai_taksiran,
             'besaran_gadai' => (float) $g->besaran_gadai,
             'persen_gadai' => (float) $g->persen_gadai,
             'nominal_angkuran' => (float) $g->nominal_angkuran,
+            'bunga_persen' => (float) $g->bunga_persen,
+            'tipe_bunga' => $g->tipe_bunga,
             'frekuensi_bayar' => $g->frekuensi_bayar,
             'tenor_satuan' => $g->tenor_satuan,
+            'toleransi_hari' => (int) $g->toleransi_hari,
+            'tanggal_aju' => $g->tanggal_aju?->toDateString(),
             'tanggal_aktif' => $g->tanggal_aktif?->toDateString(),
             'tanggal_jatuh_tempo' => $g->tanggal_jatuh_tempo?->toDateString(),
+            'tanggal_lunas' => $g->tanggal_lunas?->toDateString(),
             'total_dibayar' => (float) $g->total_dibayar,
             'sisa_pokok' => $g->sisaPokok(),
             'status' => $g->status->value,
             'status_label' => $g->status->label(),
+            'catatan' => $g->catatan,
             'created_at' => $g->created_at?->toISOString(),
         ]);
 
@@ -190,6 +198,8 @@ class GadaiController extends Controller
             'persen_gadai' => (float) $gadai->persen_gadai,
             'besaran_gadai' => (float) $gadai->besaran_gadai,
             'nominal_angkuran' => (float) $gadai->nominal_angkuran,
+            'bunga_persen' => (float) $gadai->bunga_persen,
+            'tipe_bunga' => $gadai->tipe_bunga,
             'frekuensi_bayar' => $gadai->frekuensi_bayar,
             'tenor_satuan' => $gadai->tenor_satuan,
             'tanggal_aju' => $gadai->tanggal_aju?->toDateString(),

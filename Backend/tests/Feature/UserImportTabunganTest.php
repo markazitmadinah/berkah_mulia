@@ -22,7 +22,7 @@ class UserImportTabunganTest extends ApiTestCase
         $hr = JenisTabungan::where('kode', 'tabungan-hari-raya')->first();
 
         $head = implode(',', [
-            'Nama Lengkap', 'Email', 'No. Handphone', 'Nomor Anggota (16 digit)', 'Alamat', 'Password', 'Peran', 'Status',
+            'Nama Lengkap', 'Email', 'No. Handphone', 'Nomor Anggota (10 digit)', 'Alamat', 'Password', 'Peran', 'Status',
             "{$mandiri->nama} - Target", "{$mandiri->nama} - Saldo Awal",
             "{$hr->nama} - Target", "{$hr->nama} - Saldo Awal",
         ]);
@@ -45,7 +45,7 @@ class UserImportTabunganTest extends ApiTestCase
 
         $file = UploadedFile::fake()->createWithContent(
             'nasabah_tabungan.csv',
-            $this->csvAdaTabungan('import.satu@gmail.com', '1000000000000016')
+            $this->csvAdaTabungan('import.satu@gmail.com', '1000000016')
         );
 
         $this->post('/api/v1/admin/users/import', ['file' => $file])
@@ -100,14 +100,14 @@ class UserImportTabunganTest extends ApiTestCase
 
         $import1 = UploadedFile::fake()->createWithContent(
             'a.csv',
-            $this->csvAdaTabungan('import.dua@gmail.com', '1000000000000017', '1000000', '500000')
+            $this->csvAdaTabungan('import.dua@gmail.com', '1000000017', '1000000', '500000')
         );
         $this->post('/api/v1/admin/users/import', ['file' => $import1])->assertOk();
 
         // Import ulang dengan target & dana baru → di-update, bukan duplikat.
         $import2 = UploadedFile::fake()->createWithContent(
             'b.csv',
-            $this->csvAdaTabungan('import.dua@gmail.com', '1000000000000017', '2000000', '750000')
+            $this->csvAdaTabungan('import.dua@gmail.com', '1000000017', '2000000', '750000')
         );
         $this->post('/api/v1/admin/users/import', ['file' => $import2])
             ->assertOk()
@@ -146,14 +146,14 @@ class UserImportTabunganTest extends ApiTestCase
 
         $import1 = UploadedFile::fake()->createWithContent(
             'a.csv',
-            $this->csvAdaTabungan('import.tiga@gmail.com', '1000000000000018', '1000000', '500000')
+            $this->csvAdaTabungan('import.tiga@gmail.com', '1000000018', '1000000', '500000')
         );
         $this->post('/api/v1/admin/users/import', ['file' => $import1])->assertOk();
 
         // Set ulang dana jadi 0 → catatan saldo awal dihapus (target tetap).
         $import2 = UploadedFile::fake()->createWithContent(
             'b.csv',
-            $this->csvAdaTabungan('import.tiga@gmail.com', '1000000000000018', '1000000', '0')
+            $this->csvAdaTabungan('import.tiga@gmail.com', '1000000018', '1000000', '0')
         );
         $this->post('/api/v1/admin/users/import', ['file' => $import2])
             ->assertOk()
@@ -188,8 +188,8 @@ $user = User::where('email', 'import.tiga@gmail.com')->firstOrFail();
         $this->seedBase();
         $this->actingAsAdmin();
 
-        $csv = "Nama Lengkap,Email,No. Handphone,Nomor Anggota (16 digit),Alamat,Password,Peran,Status\n"
-            . "Nasabah Polos,nasabah.polos@gmail.com,081295000002,1000000000000019,Jl. Kosong,password123,Nasabah,Aktif\n";
+        $csv = "Nama Lengkap,Email,No. Handphone,Nomor Anggota (10 digit),Alamat,Password,Peran,Status\n"
+            . "Nasabah Polos,nasabah.polos@gmail.com,081295000002,1000000019,Jl. Kosong,password123,Nasabah,Aktif\n";
 
         $file = UploadedFile::fake()->createWithContent('polos.csv', $csv);
 
@@ -216,6 +216,6 @@ $user = User::where('email', 'import.tiga@gmail.com')->firstOrFail();
         $this->assertContains('Tabungan Berjangka - Saldo Awal', $headings);
 
         // Kolom wajib dasar tetap ada.
-        $this->assertContains('Nomor Anggota (16 digit)', $headings);
+        $this->assertContains('Nomor Anggota (10 digit)', $headings);
     }
 }

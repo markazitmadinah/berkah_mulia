@@ -42,15 +42,25 @@ class TabunganHariRayaTest extends ApiTestCase
             ->assertJsonPath('data.masa_pencairan', false);
     }
 
-    public function test_user_set_target_dan_progress_tercermin(): void
+    public function test_user_set_target_ditolak_target_hanya_admin(): void
     {
         $this->seedBase();
-        $user = $this->actingAsUser();
+        $this->actingAsUser();
+
+        $this->putJson('/api/v1/tabungan-hari-raya/target', ['target_nominal' => 1000000])
+            ->assertNotFound();
+    }
+
+    public function test_admin_set_target_dan_progress_tercermin(): void
+    {
+        $this->seedBase();
+        $user = $this->createUser();
         $jenis = $this->jenisHariRaya();
         $this->buatSetor($user, $jenis, 400000);
         $jenis->update(['deadline' => now()->addMonths(2)->toDateString()]);
 
-        $this->putJson('/api/v1/tabungan-hari-raya/target', ['target_nominal' => 1000000])
+        $this->actingAsAdmin();
+        $this->putJson('/api/v1/admin/tabungan-hari-raya/target', ['user_id' => $user->id, 'target_nominal' => 1000000])
             ->assertOk()
             ->assertJsonPath('data.target', 1000000)
             ->assertJsonPath('data.terkumpul', 400000)
@@ -106,10 +116,61 @@ class TabunganHariRayaTest extends ApiTestCase
     public function test_target_validasi_minimum(): void
     {
         $this->seedBase();
-        $this->actingAsUser();
+        $user = $this->createUser();
+        $this->actingAsAdmin();
 
-        $this->putJson('/api/v1/tabungan-hari-raya/target', ['target_nominal' => 5000])
+        $this->putJson('/api/v1/admin/tabungan-hari-raya/target', ['user_id' => $user->id, 'target_nominal' => 5000])
             ->assertStatus(422);
+    }
+
+    public function test_target_dengan_frekuensi_menghitung_sisa_pembayaran(): void
+    {
+        $this->seedBase();
+        $user = $this->createUser();
+        $jenis = $this->jenisHariRaya();
+        $jenis->update(['deadline' => now()->addMonths(2)->toDateString()]);
+        $this->buatSetor($user, $jenis, 300000);
+
+        $this->actingAsAdmin();
+        $this->putJson('/api/v1/admin/tabungan-hari-raya/target', [
+            'user_id' => $user->id,
+            'target_nominal' => 1000000,
+            'frekuensi_setor' => 'bulanan',
+            'nominal_per_periode' => 100000,
+        ])->assertOk()
+            ->assertJsonPath('data.frekuensi.frekuensi_setor', 'bulanan')
+            ->assertJsonPath('data.frekuensi.nominal_per_periode', '100000.00')
+            ->assertJsonPath('data.frekuensi.sisa_pembayaran', 7);
+
+        $this->assertDatabaseHas('user_tabungan_target', [
+            'user_id' => $user->id,
+            'jenis_tabungan_id' => $jenis->id,
+            'target_nominal' => 1000000,
+            'frekuensi_setor' => 'bulanan',
+            'nominal_per_periode' => '100000.00',
+        ]);
+    }
+
+    public function test_admin_set_target_hari_raya_dengan_frekuensi(): void
+    {
+        $this->seedBase();
+        $user = $this->createUser();
+        $this->actingAsAdmin();
+        $jenis = $this->jenisHariRaya();
+
+        $this->putJson('/api/v1/admin/tabungan-hari-raya/target', [
+            'user_id' => $user->id,
+            'target_nominal' => 2000000,
+            'frekuensi_setor' => 'mingguan',
+        ])->assertOk()
+            ->assertJsonPath('data.frekuensi.frekuensi_setor', 'mingguan')
+            ->assertJsonStructure(['data' => ['frekuensi' => ['nominal_per_periode', 'sisa_pembayaran']]]);
+
+        $this->assertDatabaseHas('user_tabungan_target', [
+            'user_id' => $user->id,
+            'jenis_tabungan_id' => $jenis->id,
+            'frekuensi_setor' => 'mingguan',
+        ]);
     }
 
     public function test_setor_tanpa_target_hari_raya_ditolak(): void
@@ -131,14 +192,16 @@ class TabunganHariRayaTest extends ApiTestCase
         $this->assertDatabaseCount('transaksi', 0);
     }
 
-    public function test_setor_hari_raya_berhasil_setelah_target_diatur(): void
+    public function test_setor_hari_raya_berhasil_setelah_target_diatur_admin(): void
     {
         $this->seedBase();
-        $this->actingAsUser();
+        $user = $this->actingAsUser();
         $jenis = $this->jenisHariRaya();
 
-        $this->putJson('/api/v1/tabungan-hari-raya/target', ['target_nominal' => 1000000])->assertOk();
+        $this->actingAsAdmin();
+        $this->putJson('/api/v1/admin/tabungan-hari-raya/target', ['user_id' => $user->id, 'target_nominal' => 1000000])->assertOk();
 
+        \Laravel\Sanctum\Sanctum::actingAs($user);
         $this->postSetor('/api/v1/tabungan-pribadi/setor', [
             'nominal' => 150000,
             'jenis_tabungan_id' => $jenis->id,
