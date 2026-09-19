@@ -6,7 +6,7 @@ use App\Exports\UsersTemplate;
 use App\Models\JenisTabungan;
 use App\Models\Transaksi;
 use App\Models\User;
-use App\Models\UserTabunganTarget;
+use App\Services\ProgressCalculatorService;
 use Illuminate\Http\UploadedFile;
 use Tests\ApiTestCase;
 
@@ -86,7 +86,7 @@ class UserImportTabunganTest extends ApiTestCase
         ]);
 
         // Terintegrasi dengan tabungan: saldo & target tampil di progress.
-        $progress = app(\App\Services\ProgressCalculatorService::class)->getProgress($user, $mandiri);
+        $progress = app(ProgressCalculatorService::class)->getProgress($user, $mandiri);
         $this->assertEquals(500000, $progress['saldo']);
         $this->assertEquals(1000000, $progress['target']);
     }
@@ -159,7 +159,7 @@ class UserImportTabunganTest extends ApiTestCase
             ->assertOk()
             ->assertJsonPath('data.tabungan.saldo_awal_dihapus', 2);
 
-$user = User::where('email', 'import.tiga@gmail.com')->firstOrFail();
+        $user = User::where('email', 'import.tiga@gmail.com')->firstOrFail();
 
         // Catatan saldo awal dihapus (soft delete) — query Eloquent (default) tak menampilkannya lagi,
         // tapi rekam jejak tetap ada agar audit jelas.
@@ -189,7 +189,7 @@ $user = User::where('email', 'import.tiga@gmail.com')->firstOrFail();
         $this->actingAsAdmin();
 
         $csv = "Nama Lengkap,Email,No. Handphone,Nomor Anggota (10 digit),Alamat,Password,Peran,Status\n"
-            . "Nasabah Polos,nasabah.polos@gmail.com,081295000002,1000000019,Jl. Kosong,password123,Nasabah,Aktif\n";
+            ."Nasabah Polos,nasabah.polos@gmail.com,081295000002,1000000019,Jl. Kosong,password123,Nasabah,Aktif\n";
 
         $file = UploadedFile::fake()->createWithContent('polos.csv', $csv);
 
@@ -206,7 +206,7 @@ $user = User::where('email', 'import.tiga@gmail.com')->firstOrFail();
     {
         $this->seedBase();
 
-        $headings = (new UsersTemplate())->headings();
+        $headings = (new UsersTemplate)->headings();
 
         $this->assertContains('Tabungan Mandiri - Target', $headings);
         $this->assertContains('Tabungan Mandiri - Saldo Awal', $headings);
@@ -217,5 +217,130 @@ $user = User::where('email', 'import.tiga@gmail.com')->firstOrFail();
 
         // Kolom wajib dasar tetap ada.
         $this->assertContains('Nomor Anggota (10 digit)', $headings);
+    }
+
+    public function test_import_laporan_memprioritaskan_nomor_anggota_daripada_nama(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+        $user = $this->createUser([
+            'name' => 'Nama Di Database',
+            'email' => 'identitas@example.com',
+            'phone' => '081295009988',
+            'nomor_anggota' => '1000000088',
+        ]);
+
+        $csv = "Nama Nasabah,Nomor Anggota,Tanggal Pembayaran,Tabungan Mandiri\n"
+            ."Nama Berbeda,1000000088,2026-09-10,150000\n";
+        $file = UploadedFile::fake()->createWithContent('laporan.csv', $csv);
+
+        $this->post('/api/v1/admin/users/import-laporan', ['file' => $file])
+            ->assertOk()
+            ->assertJsonPath('data.user_dibuat', 0)
+            ->assertJsonPath('data.transaksi_dibuat', 1);
+
+        $this->assertDatabaseHas('transaksi', [
+            'user_id' => $user->id,
+            'nominal' => 150000,
+            'tanggal_transaksi' => '2026-09-10 00:00:00',
+        ]);
+    }
+
+    public function test_import_laporan_melewati_nama_ambigu_tanpa_identitas_unik(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+        $this->createUser(['name' => 'Nama Sama', 'email' => 'sama1@example.com', 'phone' => '081295001111']);
+        $this->createUser(['name' => 'Nama Sama', 'email' => 'sama2@example.com', 'phone' => '081295002222']);
+
+        $csv = "Nama Nasabah,Tanggal Pembayaran,Tabungan Mandiri\n"
+            ."Nama Sama,2026-09-10,150000\n";
+        $file = UploadedFile::fake()->createWithContent('laporan-ambigu.csv', $csv);
+
+        $this->post('/api/v1/admin/users/import-laporan', ['file' => $file])
+            ->assertOk()
+            ->assertJsonPath('data.user_dibuat', 0)
+            ->assertJsonPath('data.transaksi_dibuat', 0)
+            ->assertJsonPath('data.row_dilewati', 1);
+
+        $this->assertDatabaseCount('transaksi', 0);
+    }
+
+    public function test_import_laporan_menolak_histori_jika_saldo_awal_sudah_ada(): void
+    {
+        $this->seedBase();
+        $admin = $this->actingAsAdmin();
+        $user = $this->createUser([
+            'name' => 'Konflik Saldo',
+            'phone' => '081295003333',
+            'nomor_anggota' => '1000000087',
+        ]);
+        $mandiri = JenisTabungan::where('kode', 'tabungan-pribadi')->first();
+
+        Transaksi::create([
+            'nomor_referensi' => Transaksi::generateNomorReferensi(),
+            'user_id' => $user->id,
+            'jenis_tabungan_id' => $mandiri->id,
+            'jenis_transaksi' => 'setor',
+            'nominal' => 500000,
+            'metode_pembayaran' => 'cash',
+            'status_verifikasi' => 'terverifikasi',
+            'diverifikasi_oleh' => $admin->id,
+            'diverifikasi_pada' => now(),
+            'catatan_admin' => 'Saldo awal dari import (SALDO_AWAL_IMPORT).',
+            'tanggal_transaksi' => '2026-09-01',
+        ]);
+
+        $csv = "Nama Nasabah,Nomor Anggota,Tanggal Pembayaran,Tabungan Mandiri\n"
+            ."Konflik Saldo,1000000087,2026-09-10,150000\n";
+        $file = UploadedFile::fake()->createWithContent('laporan-konflik.csv', $csv);
+
+        $this->post('/api/v1/admin/users/import-laporan', ['file' => $file])
+            ->assertOk()
+            ->assertJsonPath('data.transaksi_dibuat', 0)
+            ->assertJsonPath('data.row_dilewati', 1);
+
+        $this->assertSame(0, Transaksi::where('catatan_admin', 'like', '%IMPORT_LAPORAN_HARIAN%')->count());
+    }
+
+    public function test_import_saldo_awal_menolak_jika_histori_laporan_sudah_ada(): void
+    {
+        $this->seedBase();
+        $admin = $this->actingAsAdmin();
+        $user = $this->createUser([
+            'name' => 'Konflik Histori',
+            'email' => 'konflik.histori@gmail.com',
+            'phone' => '081295004444',
+            'nomor_anggota' => '1000000086',
+        ]);
+        $mandiri = JenisTabungan::where('kode', 'tabungan-pribadi')->first();
+
+        Transaksi::create([
+            'nomor_referensi' => Transaksi::generateNomorReferensi(),
+            'user_id' => $user->id,
+            'jenis_tabungan_id' => $mandiri->id,
+            'jenis_transaksi' => 'setor',
+            'nominal' => 150000,
+            'metode_pembayaran' => 'cash',
+            'status_verifikasi' => 'terverifikasi',
+            'diverifikasi_oleh' => $admin->id,
+            'diverifikasi_pada' => now(),
+            'catatan_admin' => 'Data historis dari laporan harian (IMPORT_LAPORAN_HARIAN).',
+            'tanggal_transaksi' => '2026-09-10',
+        ]);
+
+        $file = UploadedFile::fake()->createWithContent(
+            'saldo-setelah-histori.csv',
+            $this->csvAdaTabungan('konflik.histori@gmail.com', '1000000086', '1000000', '500000')
+        );
+
+        $this->post('/api/v1/admin/users/import', ['file' => $file])
+            ->assertOk()
+            ->assertJsonPath('data.tabungan.saldo_awal_dicatat', 1);
+
+        $this->assertSame(0, Transaksi::where('user_id', $user->id)
+            ->where('jenis_tabungan_id', $mandiri->id)
+            ->where('catatan_admin', 'like', '%SALDO_AWAL_IMPORT%')
+            ->count());
     }
 }

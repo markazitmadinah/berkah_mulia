@@ -163,6 +163,8 @@ export interface Transaksi {
   nomor_referensi: string;
   user_id: number;
   user_name?: string;
+  user_phone?: string;
+  user_nomor_anggota?: string;
   jenis_tabungan_id?: number | null;
   jenis_tabungan_nama?: string;
   tipe_tabungan?: TipeTabungan | 'gadai';
@@ -198,6 +200,8 @@ export interface TransaksiFilters {
   status?: string;
   metode?: string;
   tipe?: string;
+  jenis_tabungan_id?: number;
+  search?: string;
 }
 
 export type RekapPeriod = 'harian' | 'mingguan' | 'bulanan';

@@ -117,6 +117,7 @@ const MainLayout: React.FC = () => {
   // User management modals
   const [isUserFormOpen, setIsUserFormOpen] = useState(false);
   const [userToEdit, setUserToEdit] = useState<User | null>(null);
+  const [isLegacyUserMode, setIsLegacyUserMode] = useState(false);
   const [selectedUserDetail, setSelectedUserDetail] = useState<User | null>(null);
   const [isUserDetailOpen, setIsUserDetailOpen] = useState(false);
   const [isImportUserOpen, setIsImportUserOpen] = useState(false);
@@ -171,6 +172,13 @@ const MainLayout: React.FC = () => {
   // User Management Handlers
   const handleOpenCreateUser = () => {
     setUserToEdit(null);
+    setIsLegacyUserMode(false);
+    setIsUserFormOpen(true);
+  };
+
+  const handleOpenCreateLegacyUser = () => {
+    setUserToEdit(null);
+    setIsLegacyUserMode(true);
     setIsUserFormOpen(true);
   };
 
@@ -347,6 +355,7 @@ return (
                 {activeTab === 'users' && (
                   <AdminUserManagement
                     onOpenCreateUser={handleOpenCreateUser}
+                    onOpenCreateLegacyUser={handleOpenCreateLegacyUser}
                     onOpenEditUser={handleOpenEditUser}
                     onOpenDetailUser={handleOpenDetailUser}
                     onOpenImportModal={() => setIsImportUserOpen(true)}
@@ -463,8 +472,9 @@ return (
 
       <UserFormModal
         isOpen={isUserFormOpen}
-        onClose={() => setIsUserFormOpen(false)}
+        onClose={() => { setIsUserFormOpen(false); setIsLegacyUserMode(false); }}
         userToEdit={userToEdit}
+        legacyMode={isLegacyUserMode}
       />
 
       <UserDetailModal

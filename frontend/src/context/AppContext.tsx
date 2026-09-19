@@ -206,8 +206,11 @@ interface AppContextType {
   importUsers: (file: File) => Promise<void>;
   importLaporanHarian: (file: File) => Promise<void>;
   downloadUserTemplate: () => Promise<void>;
+  downloadLaporanHarianTemplate: () => Promise<void>;
   exportUsers: () => Promise<void>;
   exportTransaksi: (filters?: TransaksiFilters) => Promise<void>;
+  fetchTransaksiForExport: (filters?: TransaksiFilters) => Promise<Transaksi[]>;
+  fetchUsersForExport: () => Promise<User[]>;
 
   createJenisTabungan: (data: Record<string, unknown>) => void;
   updateJenisTabungan: (id: number, data: Record<string, unknown>) => void;
@@ -262,6 +265,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 const EMPTY_USER: User = {
   id: 0,
   name: '',
+  username: '',
   email: '',
   phone: '',
   role: 'user',
@@ -323,6 +327,8 @@ const normTransaksi = (t: unknown): Transaksi => {
     nomor_referensi: x.nomor_referensi || `TRX-${x.id}`,
     user_id: x.user_id,
     user_name: x.user?.name || x.user_name,
+    user_phone: x.user?.phone || x.user_phone,
+    user_nomor_anggota: x.user?.nomor_anggota || x.user_nomor_anggota,
     jenis_tabungan_id: jt.id ?? x.jenis_tabungan_id ?? undefined,
     jenis_tabungan_nama: jt.nama || (isGadai ? `Angsuran Gadai${nomorGadai ? ` (${nomorGadai})` : ''}` : (x.jenis_tabungan_nama || 'Transaksi')),
     tipe_tabungan: jt.tipe || (isGadai ? 'gadai' : x.tipe_tabungan),
@@ -959,6 +965,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         throw e;
       });
 
+  const downloadLaporanHarianTemplate = () =>
+    downloadFile('/admin/users/import-laporan/template', 'template_import_laporan_harian.xlsx')
+      .then(() => showToast('Template laporan harian berhasil diunduh!'))
+      .catch((e: { message?: string }) => {
+        showToast(e?.message || 'Gagal mengunduh template.', 'error');
+        throw e;
+      });
+
   const exportUsers = () =>
     downloadFile(`/admin/users/export`, `data_nasabah_berkah_mulia_${new Date().toISOString().slice(0, 10)}.xlsx`)
       .then(() => showToast('Data nasabah berhasil diexport!'))
@@ -968,13 +982,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
 
   const exportTransaksi = (filters: TransaksiFilters = {}) => {
-    const params = new URLSearchParams();
-    if (filters.tanggal_awal) params.set('tanggal_awal', filters.tanggal_awal);
-    if (filters.tanggal_akhir) params.set('tanggal_akhir', filters.tanggal_akhir);
-    if (filters.status && filters.status !== 'all') params.set('status', filters.status);
-    if (filters.metode && filters.metode !== 'all') params.set('metode', filters.metode);
-    if (filters.tipe && filters.tipe !== 'all') params.set('tipe', filters.tipe);
-
+    const params = buildTransaksiFilterParams(filters);
     const qs = params.toString();
     return downloadFile(`/admin/transaksi/export${qs ? `?${qs}` : ''}`, `pembukuan_transaksi_koperasi_berkah_mulia_${new Date().toISOString().slice(0, 10)}.xlsx`)
       .then(() => showToast('Data pembukuan transaksi berhasil diexport!'))
@@ -982,6 +990,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         showToast(e?.message || 'Gagal mengexport transaksi.', 'error');
         throw e;
       });
+  };
+
+  const buildTransaksiFilterParams = (filters: TransaksiFilters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.tanggal_awal) params.set('tanggal_awal', filters.tanggal_awal);
+    if (filters.tanggal_akhir) params.set('tanggal_akhir', filters.tanggal_akhir);
+    if (filters.status && filters.status !== 'all') params.set('status', filters.status);
+    if (filters.metode && filters.metode !== 'all') params.set('metode', filters.metode);
+    if (filters.tipe && filters.tipe !== 'all') params.set('tipe', filters.tipe);
+    if (filters.jenis_tabungan_id) params.set('jenis_tabungan_id', String(filters.jenis_tabungan_id));
+    if (filters.search?.trim()) params.set('search', filters.search.trim());
+    return params;
+  };
+
+  const fetchTransaksiForExport = async (filters: TransaksiFilters = {}): Promise<Transaksi[]> => {
+    const base = buildTransaksiFilterParams(filters);
+    const all: Transaksi[] = [];
+    let page = 1;
+    let lastPage = 1;
+
+    do {
+      const params = new URLSearchParams(base);
+      params.set('page', String(page));
+      params.set('per_page', '1000');
+      const res = await api.get<Transaksi[]>(`/admin/transaksi?${params.toString()}`);
+      all.push(...res.data.map(normTransaksi));
+      lastPage = Number(res.meta?.last_page || 1);
+      page += 1;
+    } while (page <= lastPage);
+
+    return all;
+  };
+
+  const fetchUsersForExport = async (): Promise<User[]> => {
+    const all: User[] = [];
+    let page = 1;
+    let lastPage = 1;
+
+    do {
+      const res = await api.get<User[]>(`/admin/users?page=${page}&per_page=1000`);
+      all.push(...res.data.map(normUser));
+      lastPage = Number(res.meta?.last_page || 1);
+      page += 1;
+    } while (page <= lastPage);
+
+    return all;
   };
 
   // ─── Admin: Jenis Tabungan ────────────────────────────────
@@ -1480,8 +1534,11 @@ setActiveTab,
     importUsers,
     importLaporanHarian,
     downloadUserTemplate,
+    downloadLaporanHarianTemplate,
     exportUsers,
     exportTransaksi,
+    fetchTransaksiForExport,
+    fetchUsersForExport,
     createJenisTabungan,
     updateJenisTabungan,
 toggleStatusJenisTabungan,

@@ -84,6 +84,11 @@ class User extends Authenticatable
         return $this->hasMany(UserTabunganTarget::class);
     }
 
+    public function tabunganBerjangka(): HasMany
+    {
+        return $this->hasMany(TabunganBerjangka::class);
+    }
+
     // ─── Helpers ───────────────────────────────────────────────
 
     public function isAdmin(): bool

@@ -18,32 +18,18 @@ use Maatwebsite\Excel\Concerns\WithTitle;
 use Maatwebsite\Excel\Events\AfterSheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Color;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-class TransaksiExport implements
-    FromQuery,
-    WithHeadings,
-    WithMapping,
-    WithColumnFormatting,
-    ShouldAutoSize,
-    WithStyles,
-    WithEvents,
-    WithTitle,
-    WithStrictNullComparison
+class TransaksiExport implements FromQuery, ShouldAutoSize, WithColumnFormatting, WithEvents, WithHeadings, WithMapping, WithStrictNullComparison, WithStyles, WithTitle
 {
     private array $filters;
 
-    public function __construct(
-        ?string $status = null,
-        ?string $metode = null,
-        ?string $search = null,
-        ?string $tanggalAwal = null,
-        ?string $tanggalAkhir = null,
-        ?string $tipe = null
-    ) {
-        $this->filters = compact('status', 'metode', 'search', 'tanggalAwal', 'tanggalAkhir', 'tipe');
+    public function __construct(array $filters = [])
+    {
+        $this->filters = $filters;
     }
 
     public function title(): string
@@ -61,36 +47,9 @@ class TransaksiExport implements
             'pendaftaranQurban.hewanQurban',
             'tabunganBerjangka',
             'gadai',
-        ])->latest();
+        ]);
 
-        if ($this->filters['status']) {
-            $query->where('status_verifikasi', $this->filters['status']);
-        }
-        if ($this->filters['metode']) {
-            $query->where('metode_pembayaran', $this->filters['metode']);
-        }
-        if ($this->filters['tipe']) {
-            $query->when(
-                $this->filters['tipe'] === 'gadai',
-                fn ($q) => $q->whereNotNull('gadai_id'),
-                fn ($q) => $q->whereHas('jenisTabungan', fn ($jq) => $jq->where('tipe', $this->filters['tipe']))
-            );
-        }
-        if ($this->filters['search']) {
-            $search = $this->filters['search'];
-            $query->where(function ($q) use ($search) {
-                $q->where('nomor_referensi', 'like', "%{$search}%")
-                    ->orWhereHas('user', fn ($uq) => $uq->where('name', 'like', "%{$search}%")->orWhere('nomor_anggota', 'like', "%{$search}%"));
-            });
-        }
-        if ($this->filters['tanggalAwal']) {
-            $query->whereDate('tanggal_transaksi', '>=', $this->filters['tanggalAwal']);
-        }
-        if ($this->filters['tanggalAkhir']) {
-            $query->whereDate('tanggal_transaksi', '<=', $this->filters['tanggalAkhir']);
-        }
-
-        return $query;
+        return $query->filterAdmin($this->filters)->latest();
     }
 
     public function headings(): array
@@ -126,11 +85,11 @@ class TransaksiExport implements
 
         $detailProgram = '-';
         if ($row->pendaftaranQurban) {
-            $detailProgram = 'Qurban ' . ($row->pendaftaranQurban->hewanQurban?->jenis_hewan ?? 'Hewan') . ' (' . $row->pendaftaranQurban->jumlah_hewan . ' ekor)';
+            $detailProgram = 'Qurban '.($row->pendaftaranQurban->hewanQurban?->jenis_hewan ?? 'Hewan').' ('.$row->pendaftaranQurban->jumlah_hewan.' ekor)';
         } elseif ($row->tabunganBerjangka) {
-            $detailProgram = 'Berjangka ' . $row->tabunganBerjangka->durasi_bulan . ' Bln (' . ($row->tabunganBerjangka->frekuensiLabel() ?: $row->tabunganBerjangka->frekuensi_setor) . ')';
+            $detailProgram = 'Berjangka '.$row->tabunganBerjangka->durasi_bulan.' Bln ('.($row->tabunganBerjangka->frekuensiLabel() ?: $row->tabunganBerjangka->frekuensi_setor).')';
         } elseif ($row->gadai) {
-            $detailProgram = 'Gadai ' . ($row->gadai->nomor_gadai ?? '-');
+            $detailProgram = 'Gadai '.($row->gadai->nomor_gadai ?? '-');
         } elseif ($row->konfigurasi_id) {
             $detailProgram = 'Tabungan Emas Rutin';
         }
@@ -138,7 +97,7 @@ class TransaksiExport implements
         $rekening = '-';
         if (($row->metode_pembayaran?->value ?? (string) $row->metode_pembayaran) === 'transfer') {
             $rekening = $row->rekeningBank
-                ? ($row->rekeningBank->nama_bank . ' - ' . $row->rekeningBank->nomor_rekening . ' a.n ' . $row->rekeningBank->atas_nama)
+                ? ($row->rekeningBank->nama_bank.' - '.$row->rekeningBank->nomor_rekening.' a.n '.$row->rekeningBank->atas_nama)
                 : 'Transfer Bank';
         } elseif (($row->metode_pembayaran?->value ?? (string) $row->metode_pembayaran) === 'cash') {
             $rekening = 'Kas Kantor / Tunai';
@@ -172,9 +131,13 @@ class TransaksiExport implements
      * Cegah formula injection: teks yang diawali =,+,-,@ dikencingi tanda kutip
      * supaya Excel memperlakukannya sebagai teks, bukan formula.
      */
-    private function safeCell(string $value): string
+    private function safeCell(?string $value): string
     {
-        return in_array($value[0] ?? '', ['=', '+', '-', '@'], true) ? "'" . $value : $value;
+        if ($value === null || $value === '') {
+            return '-';
+        }
+
+        return in_array($value[0] ?? '', ['=', '+', '-', '@'], true) ? "'".$value : $value;
     }
 
     public function columnFormats(): array
@@ -219,7 +182,7 @@ class TransaksiExport implements
                 for ($row = 2; $row <= $highest; $row++) {
                     if ($row % 2 === 0) {
                         $sheet->getStyle("A{$row}:{$lastCol}{$row}")
-                            ->getFill()->setFillType(Fill::FILL_SOLID)->setStartColor(new \PhpOffice\PhpSpreadsheet\Style\Color('FFF1F5F9'));
+                            ->getFill()->setFillType(Fill::FILL_SOLID)->setStartColor(new Color('FFF1F5F9'));
                     }
                 }
 

@@ -17,20 +17,12 @@ use Maatwebsite\Excel\Concerns\WithTitle;
 use Maatwebsite\Excel\Events\AfterSheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Color;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-class UsersExport implements
-    FromQuery,
-    WithHeadings,
-    WithMapping,
-    WithColumnFormatting,
-    ShouldAutoSize,
-    WithStyles,
-    WithEvents,
-    WithTitle,
-    WithStrictNullComparison
+class UsersExport implements FromQuery, ShouldAutoSize, WithColumnFormatting, WithEvents, WithHeadings, WithMapping, WithStrictNullComparison, WithStyles, WithTitle
 {
     private array $filters;
 
@@ -64,7 +56,8 @@ class UsersExport implements
                 $q->where('name', 'like', "%{$search}%")
                     ->orWhere('username', 'like', "%{$search}%")
                     ->orWhere('email', 'like', "%{$search}%")
-                    ->orWhere('nomor_anggota', 'like', "%{$search}%");
+                    ->orWhere('nomor_anggota', 'like', "%{$search}%")
+                    ->orWhere('phone', 'like', "%{$search}%");
             });
         }
 
@@ -102,15 +95,17 @@ class UsersExport implements
             ->reduce(function ($carry, $t) {
                 $isSetor = ($t->jenis_transaksi?->value ?? (string) $t->jenis_transaksi) === 'setor';
                 $nominal = (float) ($t->nominal ?? 0);
+
                 return $carry + ($isSetor ? $nominal : -$nominal);
             }, 0);
 
         // Hitung total gram emas dari transaksi terverifikasi
         $saldoGram = (float) $user->transaksi
-            ->filter(fn ($t) => ($t->status_verifikasi?->value ?? (string) $t->status_verifikasi) === 'terverifikasi' && !empty($t->unit_didapat))
+            ->filter(fn ($t) => ($t->status_verifikasi?->value ?? (string) $t->status_verifikasi) === 'terverifikasi' && ! empty($t->unit_didapat))
             ->reduce(function ($carry, $t) {
                 $isSetor = ($t->jenis_transaksi?->value ?? (string) $t->jenis_transaksi) === 'setor';
                 $gram = (float) ($t->unit_didapat ?? 0);
+
                 return $carry + ($isSetor ? $gram : -$gram);
             }, 0);
 
@@ -124,9 +119,9 @@ class UsersExport implements
         if ($berjangkaCount > 0) {
             $programList[] = "Berjangka ({$berjangkaCount})";
         }
-        $programStr = !empty($programList) ? implode(', ', $programList) : 'Simpanan Reguler';
+        $programStr = ! empty($programList) ? implode(', ', $programList) : 'Simpanan Reguler';
 
-        $isLengkap = !empty($user->phone) && !empty($user->address);
+        $isLengkap = ! empty($user->phone) && ! empty($user->address);
 
         return [
             $no,
@@ -150,9 +145,13 @@ class UsersExport implements
      * Cegah formula injection: teks yang diawali =,+,-,@ dikencingi tanda kutip
      * supaya Excel memperlakukannya sebagai teks, bukan formula.
      */
-    private function safeCell(string $value): string
+    private function safeCell(?string $value): string
     {
-        return in_array($value[0] ?? '', ['=', '+', '-', '@'], true) ? "'" . $value : $value;
+        if ($value === null || $value === '') {
+            return '-';
+        }
+
+        return in_array($value[0] ?? '', ['=', '+', '-', '@'], true) ? "'".$value : $value;
     }
 
     public function columnFormats(): array
@@ -198,7 +197,7 @@ class UsersExport implements
                 for ($row = 2; $row <= $highest; $row++) {
                     if ($row % 2 === 0) {
                         $sheet->getStyle("A{$row}:{$lastCol}{$row}")
-                            ->getFill()->setFillType(Fill::FILL_SOLID)->setStartColor(new \PhpOffice\PhpSpreadsheet\Style\Color('FFF1F5F9'));
+                            ->getFill()->setFillType(Fill::FILL_SOLID)->setStartColor(new Color('FFF1F5F9'));
                     }
                 }
 

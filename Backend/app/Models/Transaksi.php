@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\JenisTransaksi;
 use App\Enums\MetodePembayaran;
 use App\Enums\StatusVerifikasi;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -124,6 +125,43 @@ class Transaksi extends Model
         return $query->where('user_id', $userId);
     }
 
+    /**
+     * Filter bersama untuk daftar admin dan seluruh sheet export.
+     */
+    public function scopeFilterAdmin(Builder $query, array $filters): Builder
+    {
+        $query
+            ->when($filters['status'] ?? null, fn (Builder $q, string $status) => $q->where('status_verifikasi', $status))
+            ->when($filters['metode'] ?? null, fn (Builder $q, string $metode) => $q->where('metode_pembayaran', $metode))
+            ->when($filters['jenis_tabungan_id'] ?? null, fn (Builder $q, $jenisId) => $q->where('jenis_tabungan_id', $jenisId))
+            ->when($filters['tipe'] ?? null, function (Builder $q, string $tipe) {
+                $q->when(
+                    $tipe === 'gadai',
+                    fn (Builder $subQuery) => $subQuery->whereNotNull('gadai_id'),
+                    fn (Builder $subQuery) => $subQuery->whereHas(
+                        'jenisTabungan',
+                        fn (Builder $jenisQuery) => $jenisQuery->where('tipe', $tipe)
+                    )
+                );
+            })
+            ->when($filters['tanggal_awal'] ?? null, fn (Builder $q, string $tanggal) => $q->whereDate('tanggal_transaksi', '>=', $tanggal))
+            ->when($filters['tanggal_akhir'] ?? null, fn (Builder $q, string $tanggal) => $q->whereDate('tanggal_transaksi', '<=', $tanggal));
+
+        if (! empty($filters['search'])) {
+            $search = str_replace(['%', '_'], ['\\%', '\\_'], trim((string) $filters['search']));
+            $query->where(function (Builder $q) use ($search) {
+                $q->where('nomor_referensi', 'like', "%{$search}%")
+                    ->orWhereHas('user', function (Builder $userQuery) use ($search) {
+                        $userQuery->where('name', 'like', "%{$search}%")
+                            ->orWhere('nomor_anggota', 'like', "%{$search}%")
+                            ->orWhere('phone', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        return $query;
+    }
+
     // ─── Helpers ───────────────────────────────────────────────
 
     /**
@@ -133,7 +171,7 @@ class Transaksi extends Model
     public static function generateNomorReferensi(): string
     {
         do {
-            $nomor = 'TRX-' . now()->format('Ymd') . '-' . strtoupper(bin2hex(random_bytes(3)));
+            $nomor = 'TRX-'.now()->format('Ymd').'-'.strtoupper(bin2hex(random_bytes(3)));
         } while (static::where('nomor_referensi', $nomor)->exists());
 
         return $nomor;

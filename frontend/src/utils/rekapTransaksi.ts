@@ -35,6 +35,17 @@ export function filterTransaksi(list: Transaksi[], f: TransaksiFilters): Transak
     if (f.status && f.status !== 'all' && t.status_verifikasi !== f.status) return false;
     if (f.metode && f.metode !== 'all' && t.metode_pembayaran !== f.metode) return false;
     if (f.tipe && f.tipe !== 'all' && t.tipe_tabungan !== f.tipe) return false;
+    if (f.jenis_tabungan_id && t.jenis_tabungan_id !== f.jenis_tabungan_id) return false;
+    if (f.search?.trim()) {
+      const search = f.search.trim().toLowerCase();
+      const haystack = [
+        t.nomor_referensi,
+        t.user_name,
+        t.user_phone,
+        t.user_nomor_anggota,
+      ].filter(Boolean).join(' ').toLowerCase();
+      if (!haystack.includes(search)) return false;
+    }
     if (f.tanggal_awal && t.tanggal_transaksi < f.tanggal_awal) return false;
     if (f.tanggal_akhir && t.tanggal_transaksi > f.tanggal_akhir) return false;
     return true;

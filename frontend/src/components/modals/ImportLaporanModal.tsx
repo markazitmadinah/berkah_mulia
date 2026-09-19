@@ -8,7 +8,8 @@ import {
   CheckCircle2,
   AlertTriangle,
   Info,
-  Users
+  Users,
+  Download
 } from 'lucide-react';
 
 interface ImportLaporanModalProps {
@@ -17,7 +18,7 @@ interface ImportLaporanModalProps {
 }
 
 export const ImportLaporanModal: React.FC<ImportLaporanModalProps> = ({ isOpen, onClose }) => {
-  const { importLaporanHarian } = useApp();
+  const { importLaporanHarian, downloadLaporanHarianTemplate } = useApp();
   const fileRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
@@ -89,6 +90,16 @@ export const ImportLaporanModal: React.FC<ImportLaporanModalProps> = ({ isOpen, 
         </div>
 
         <div className="p-6 space-y-5">
+          {/* Tombol unduh template */}
+          <button
+            type="button"
+            onClick={() => downloadLaporanHarianTemplate()}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-dashed border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/20 hover:bg-emerald-100 dark:hover:bg-emerald-950/40 font-bold text-xs transition-all cursor-pointer"
+          >
+            <Download className="w-4 h-4" />
+            Unduh Template Laporan Harian (.xlsx)
+          </button>
+
           {/* Info box */}
           <div className="flex items-start gap-3 p-4 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/50">
             <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />

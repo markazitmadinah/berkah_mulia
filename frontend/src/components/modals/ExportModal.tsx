@@ -40,7 +40,7 @@ const VERIF_LABEL: Record<string, string> = {
 };
 
 export const ExportModal: React.FC<ExportModalProps> = ({ type, isOpen, onClose, filters }) => {
-  const { users, transaksi, exportUsers, exportTransaksi } = useApp();
+  const { users, transaksi, exportUsers, exportTransaksi, fetchTransaksiForExport, fetchUsersForExport } = useApp();
   const [format, setFormat] = useState<ExportFormat>('pdf');
   const [submitting, setSubmitting] = useState(false);
 
@@ -58,8 +58,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({ type, isOpen, onClose,
       : ''
     : '';
 
-  const buildNasabahRows = () =>
-    users.map((u) => ({
+  const buildNasabahRows = (source = users) =>
+    source.map((u) => ({
       no: '',
       anggota: u.nomor_anggota || '-',
       username: u.username || '-',
@@ -72,8 +72,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({ type, isOpen, onClose,
       created: u.created_at?.slice(0, 10) || '-',
     }));
 
-  const buildTransaksiRows = () =>
-    filteredTransaksi.map((t) => ({
+  const buildTransaksiRows = (source = filteredTransaksi) =>
+    source.map((t) => ({
       no: '',
       ref: t.nomor_referensi,
       nasabah: t.user_name || '-',
@@ -86,15 +86,15 @@ export const ExportModal: React.FC<ExportModalProps> = ({ type, isOpen, onClose,
       status: VERIF_LABEL[t.status_verifikasi] || t.status_verifikasi,
     }));
 
-  const buildSummary = () => {
-    const verified = filteredTransaksi.filter((t) => t.status_verifikasi === 'terverifikasi');
+  const buildSummary = (source = filteredTransaksi) => {
+    const verified = source.filter((t) => t.status_verifikasi === 'terverifikasi');
     const masuk = verified.filter((t) => t.jenis_transaksi === 'setor').reduce((a, t) => a + t.nominal, 0);
     const keluar = verified.filter((t) => t.jenis_transaksi === 'tarik').reduce((a, t) => a + t.nominal, 0);
     const summary = [
       { label: 'Uang Masuk', value: `Rp ${formatRupiah(masuk)}` },
       { label: 'Uang Keluar', value: `Rp ${formatRupiah(keluar)}` },
       { label: 'Selisih Kas', value: `Rp ${formatRupiah(masuk - keluar)}` },
-      { label: 'Jumlah Transaksi', value: String(filteredTransaksi.length) },
+      { label: 'Jumlah Transaksi', value: String(source.length) },
     ];
     if (rangeText) summary.push({ label: 'Periode', value: rangeText });
     return summary;
@@ -108,27 +108,30 @@ export const ExportModal: React.FC<ExportModalProps> = ({ type, isOpen, onClose,
         else await exportTransaksi(filters);
       } else {
         if (isNasabah) {
+          const pdfUsers = await fetchUsersForExport();
           exportTablePdf(
             'Laporan Data Nasabah',
-            `Rekapitulasi nasabah & anggota — ${users.length} nasabah terdaftar`,
+            `Rekapitulasi nasabah & anggota — ${pdfUsers.length} nasabah terdaftar`,
             `${filename}.pdf`,
             [
               { header: 'No', dataKey: 'no' },
               { header: 'No Anggota', dataKey: 'anggota' },
               { header: 'Username', dataKey: 'username' },
               { header: 'Nama Lengkap', dataKey: 'name' },
+              { header: 'Email', dataKey: 'email' },
               { header: 'No. HP', dataKey: 'phone' },
               { header: 'Alamat', dataKey: 'alamat' },
               { header: 'Peran', dataKey: 'role' },
               { header: 'Status', dataKey: 'status' },
               { header: 'Terdaftar', dataKey: 'created' },
             ],
-            buildNasabahRows()
+            buildNasabahRows(pdfUsers)
           );
         } else {
+          const pdfTransactions = await fetchTransaksiForExport(filters);
           exportTablePdf(
             'Pembukuan Transaksi Koperasi',
-            `Rekap mutasi transaksi ${rangeText ? `— periode ${rangeText} · ` : '— '}${filteredTransaksi.length} transaksi tercatat`,
+            `Rekap mutasi transaksi ${rangeText ? `— periode ${rangeText} · ` : '— '}${pdfTransactions.length} transaksi tercatat`,
             `${filename}.pdf`,
             [
               { header: 'No', dataKey: 'no' },
@@ -142,8 +145,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({ type, isOpen, onClose,
               { header: 'Tanggal', dataKey: 'tanggal' },
               { header: 'Status', dataKey: 'status' },
             ],
-            buildTransaksiRows(),
-            buildSummary()
+            buildTransaksiRows(pdfTransactions),
+            buildSummary(pdfTransactions)
           );
         }
       }
@@ -204,8 +207,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({ type, isOpen, onClose,
               <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
               <span>
                 {isNasabah
-                  ? `${users.length} nasabah akan diexport`
-                  : `${filteredTransaksi.length} transaksi akan diexport${rangeText ? ` (periode ${rangeText})` : ' (semua periode)'}`}
+                  ? 'Seluruh data nasabah akan diexport'
+                  : `Seluruh transaksi sesuai filter akan diexport${rangeText ? ` (periode ${rangeText})` : ' (semua periode)'}`}
               </span>
             </div>
 

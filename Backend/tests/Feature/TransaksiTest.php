@@ -5,10 +5,12 @@ namespace Tests\Feature;
 use App\Enums\JenisTransaksi;
 use App\Enums\StatusVerifikasi;
 use App\Enums\SubJenisTabungan;
+use App\Exports\TransaksiExport;
+use App\Exports\TransaksiRekapExport;
+use App\Models\HewanQurban;
 use App\Models\JenisTabungan;
 use App\Models\PendaftaranQurban;
 use App\Models\PeriodeQurban;
-use App\Models\HewanQurban;
 use App\Models\TabunganBerjangka;
 use App\Models\Transaksi;
 use Tests\ApiTestCase;
@@ -18,7 +20,7 @@ class TransaksiTest extends ApiTestCase
     private function createPendingTransaksi(int $userId, int $jenisId, int $nominal = 100000, $pendaftaranId = null): Transaksi
     {
         return Transaksi::create([
-            'nomor_referensi' => 'TRX-' . strtoupper(uniqid()),
+            'nomor_referensi' => 'TRX-'.strtoupper(uniqid()),
             'user_id' => $userId,
             'jenis_tabungan_id' => $jenisId,
             'pendaftaran_qurban_id' => $pendaftaranId,
@@ -192,7 +194,8 @@ class TransaksiTest extends ApiTestCase
         ])->assertStatus(201);
     }
 
-    public function test_cash_transaksi_berjangka_terhubung_akun_spesifik(): void    {
+    public function test_cash_transaksi_berjangka_terhubung_akun_spesifik(): void
+    {
         $this->seedBase();
         $admin = $this->actingAsAdmin();
         $user = $this->createUser();
@@ -262,7 +265,7 @@ class TransaksiTest extends ApiTestCase
         $this->createPendingTransaksi($user->id, $jenis->id, 250000)
             ->update(['tanggal_transaksi' => now()->subDays(30)->toDateString()]);
 
-        $this->getJson('/api/v1/admin/transaksi?per_page=50&tanggal_awal=' . now()->subDay()->toDateString() . '&tanggal_akhir=' . now()->addDay()->toDateString())
+        $this->getJson('/api/v1/admin/transaksi?per_page=50&tanggal_awal='.now()->subDay()->toDateString().'&tanggal_akhir='.now()->addDay()->toDateString())
             ->assertOk()
             ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('data.0.nomor_referensi', $trx->nomor_referensi);
@@ -281,9 +284,47 @@ class TransaksiTest extends ApiTestCase
         $this->createPendingTransaksi($user->id, $jenis->id, 75000)
             ->update(['tanggal_transaksi' => now()->subDays(7)->toDateString()]);
 
-        $res = $this->get('/api/v1/admin/transaksi/export?tanggal_awal=&tanggal_akhir=' . now()->toDateString());
+        $res = $this->get('/api/v1/admin/transaksi/export?tanggal_awal=&tanggal_akhir='.now()->toDateString());
         $res->assertStatus(200);
         $res->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         $this->assertStringContainsString('.xlsx', $res->headers->get('content-disposition'));
+    }
+
+    public function test_admin_filter_transaksi_jenis_search_dan_export_memakai_kriteria_yang_sama(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+        $user = $this->createUser([
+            'name' => 'Nasabah Filter',
+            'phone' => '081299991111',
+            'nomor_anggota' => '1000000099',
+        ]);
+        $jenis = JenisTabungan::where('kode', 'tabungan-pribadi')->first();
+        $jenisLain = JenisTabungan::where('kode', 'tabungan-hari-raya')->first();
+        $matched = $this->createPendingTransaksi($user->id, $jenis->id, 125000);
+        $this->createPendingTransaksi($user->id, $jenisLain->id, 250000);
+
+        $query = http_build_query([
+            'per_page' => 1000,
+            'jenis_tabungan_id' => $jenis->id,
+            'search' => '1000000099',
+        ]);
+
+        $this->getJson('/api/v1/admin/transaksi?'.$query)
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.id', $matched->id)
+            ->assertJsonPath('data.0.user_nomor_anggota', '1000000099');
+
+        $filters = [
+            'jenis_tabungan_id' => $jenis->id,
+            'search' => '1000000099',
+        ];
+        $this->assertSame([$matched->id], (new TransaksiExport($filters))->query()->pluck('id')->all());
+        $this->assertSame(1, (new TransaksiRekapExport($filters))->array()[1][4]);
+
+        $this->get('/api/v1/admin/transaksi/export?'.$query)
+            ->assertOk()
+            ->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     }
 }

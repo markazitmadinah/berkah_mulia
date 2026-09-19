@@ -14,9 +14,11 @@ use App\Exports\TransaksiRekapExport;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\TransaksiResource;
 use App\Models\AuditLog;
+use App\Models\HargaEmasHarian;
 use App\Models\JenisTabungan;
 use App\Models\KonfigurasiSetoranEmas;
 use App\Models\Notifikasi;
+use App\Models\PendaftaranQurban;
 use App\Models\TabunganBerjangka;
 use App\Models\Transaksi;
 use App\Models\User;
@@ -50,35 +52,22 @@ class TransaksiController extends Controller
             'status' => 'nullable|string|in:menunggu_verifikasi,terverifikasi,ditolak',
             'metode' => 'nullable|string|in:cash,transfer',
             'jenis_tabungan_id' => 'nullable|integer|exists:jenis_tabungan,id',
+            'tipe' => 'nullable|string|in:emas,pribadi,qurban,gadai',
             'tanggal_awal' => 'nullable|date',
             'tanggal_akhir' => 'nullable|date|after_or_equal:tanggal_awal',
             'search' => 'nullable|string|max:255',
         ]);
 
-        $query = Transaksi::with(['user', 'jenisTabungan', 'rekeningBank', 'gadai']);
-
-        if ($request->filled('status')) {
-            $query->where('status_verifikasi', $request->status);
-        }
-        if ($request->filled('metode')) {
-            $query->where('metode_pembayaran', $request->metode);
-        }
-        if ($request->filled('jenis_tabungan_id')) {
-            $query->where('jenis_tabungan_id', $request->jenis_tabungan_id);
-        }
-        if ($request->filled('tanggal_awal')) {
-            $query->whereDate('tanggal_transaksi', '>=', $request->tanggal_awal);
-        }
-        if ($request->filled('tanggal_akhir')) {
-            $query->whereDate('tanggal_transaksi', '<=', $request->tanggal_akhir);
-        }
-        if ($request->filled('search')) {
-            $search = str_replace(['%', '_'], ['\%', '\_'], $request->search);
-            $query->where(function ($q) use ($search) {
-                $q->where('nomor_referensi', 'like', "%{$search}%")
-                    ->orWhereHas('user', fn ($uq) => $uq->where('name', 'like', "%{$search}%"));
-            });
-        }
+        $query = Transaksi::with(['user', 'jenisTabungan', 'rekeningBank', 'gadai'])
+            ->filterAdmin($request->only([
+                'status',
+                'metode',
+                'jenis_tabungan_id',
+                'tipe',
+                'tanggal_awal',
+                'tanggal_akhir',
+                'search',
+            ]));
 
         $perPage = min($request->input('per_page', 15), 1000);
         $items = $query->latest()->paginate($perPage);
@@ -104,18 +93,28 @@ class TransaksiController extends Controller
         $request->validate([
             'status' => 'nullable|string|in:menunggu_verifikasi,terverifikasi,ditolak',
             'metode' => 'nullable|string|in:cash,transfer',
-            'tipe' => 'nullable|string',
+            'jenis_tabungan_id' => 'nullable|integer|exists:jenis_tabungan,id',
+            'tipe' => 'nullable|string|in:emas,pribadi,qurban,gadai',
             'search' => 'nullable|string|max:255',
             'tanggal_awal' => 'nullable|date',
             'tanggal_akhir' => 'nullable|date|after_or_equal:tanggal_awal',
         ]);
 
-        $filename = 'pembukuan_transaksi_koperasi_berkah_mulia_' . now()->format('Y-m-d') . '.xlsx';
+        $filters = $request->only([
+            'status',
+            'metode',
+            'jenis_tabungan_id',
+            'tipe',
+            'search',
+            'tanggal_awal',
+            'tanggal_akhir',
+        ]);
+        $filename = 'pembukuan_transaksi_koperasi_berkah_mulia_'.now()->format('Y-m-d').'.xlsx';
 
         return Excel::download(
             [
-                new TransaksiExport($request->status, $request->metode, $request->search, $request->tanggal_awal, $request->tanggal_akhir, $request->tipe),
-                new TransaksiRekapExport($request->status, $request->metode, $request->tanggal_awal, $request->tanggal_akhir, $request->tipe),
+                new TransaksiExport($filters),
+                new TransaksiRekapExport($filters),
             ],
             $filename
         );
@@ -237,8 +236,8 @@ class TransaksiController extends Controller
                     $transaksi->user,
                     'Rencana Setoran Dibuat Batal',
                     'Rencana setoran berkala Anda resmi dibatalkan. Refund sebesar Rp '
-                        . number_format((float) $transaksi->nominal, 0, ',', '.')
-                        . ' telah diproses.',
+                        .number_format((float) $transaksi->nominal, 0, ',', '.')
+                        .' telah diproses.',
                     TipeNotifikasi::Info,
                     ['konfigurasi_setoran_id' => $transaksi->konfigurasi_id, 'transaksi_id' => $transaksi->id]
                 );
@@ -257,9 +256,9 @@ class TransaksiController extends Controller
                 $transaksi->user,
                 'Transaksi Terverifikasi',
                 ($transaksi->jenis_transaksi === JenisTransaksi::Setor ? 'Setoran' : 'Pencairan')
-                    . ' ' . ($transaksi->jenisTabungan?->nama ?? '')
-                    . ' sebesar Rp ' . number_format((float) $transaksi->nominal, 0, ',', '.')
-                    . ' telah diverifikasi.',
+                    .' '.($transaksi->jenisTabungan?->nama ?? '')
+                    .' sebesar Rp '.number_format((float) $transaksi->nominal, 0, ',', '.')
+                    .' telah diverifikasi.',
                 TipeNotifikasi::Verifikasi,
                 ['transaksi_id' => $transaksi->id, 'jenis_transaksi' => $transaksi->jenis_transaksi]
             );
@@ -277,8 +276,8 @@ class TransaksiController extends Controller
                     $this->notif->kirim(
                         $transaksi->user,
                         'Target Tabungan Emas Tercapai!',
-                        'Selamat! Saldo emas Anda kini mencapai ' . number_format((float) $target, 6, ',', '.')
-                            . ' gram. Anda bisa melanjutkan menabung, menjual emas, atau menukarnya di toko.',
+                        'Selamat! Saldo emas Anda kini mencapai '.number_format((float) $target, 6, ',', '.')
+                            .' gram. Anda bisa melanjutkan menabung, menjual emas, atau menukarnya di toko.',
                         TipeNotifikasi::PengingatPencairan,
                         ['jenis_tabungan' => 'emas', 'target_gram' => (float) $target]
                     );
@@ -331,8 +330,8 @@ class TransaksiController extends Controller
             $transaksi->user,
             'Transaksi Ditolak',
             ($transaksi->jenis_transaksi === JenisTransaksi::Setor ? 'Setoran' : 'Pencairan')
-                . ' Anda sebesar Rp ' . number_format((float) $transaksi->nominal, 0, ',', '.')
-                . ' ditolak admin. Alasan: ' . $request->catatan_admin,
+                .' Anda sebesar Rp '.number_format((float) $transaksi->nominal, 0, ',', '.')
+                .' ditolak admin. Alasan: '.$request->catatan_admin,
             TipeNotifikasi::Verifikasi,
             ['transaksi_id' => $transaksi->id, 'jenis_transaksi' => $transaksi->jenis_transaksi]
         );
@@ -361,7 +360,7 @@ class TransaksiController extends Controller
         $jenis = JenisTabungan::findOrFail($request->jenis_tabungan_id);
 
         if ($request->filled('pendaftaran_qurban_id')) {
-            $penda = \App\Models\PendaftaranQurban::findOrFail($request->pendaftaran_qurban_id);
+            $penda = PendaftaranQurban::findOrFail($request->pendaftaran_qurban_id);
             if ($penda->user_id != $request->user_id) {
                 return $this->errorResponse('Pendaftaran qurban tidak cocok dengan nasabah yang dipilih.', 422, 'QURBAN_TIDAK_COCOK');
             }
@@ -373,7 +372,7 @@ class TransaksiController extends Controller
             }
             if ((float) $penda->nominal_per_periode > 0 && (float) $request->nominal < (float) $penda->nominal_per_periode) {
                 return $this->errorResponse(
-                    'Nominal minimal untuk target qurban ini adalah Rp ' . number_format((float) $penda->nominal_per_periode, 0, ',', '.') . ' (1 periode setoran ' . ($penda->frekuensiLabel() ?: 'bulanan') . ').',
+                    'Nominal minimal untuk target qurban ini adalah Rp '.number_format((float) $penda->nominal_per_periode, 0, ',', '.').' (1 periode setoran '.($penda->frekuensiLabel() ?: 'bulanan').').',
                     422,
                     'NOMINAL_KURANG_1_PERIODE'
                 );
@@ -381,7 +380,7 @@ class TransaksiController extends Controller
         }
 
         if ($request->filled('tabungan_berjangka_id')) {
-            $tb = \App\Models\TabunganBerjangka::findOrFail($request->tabungan_berjangka_id);
+            $tb = TabunganBerjangka::findOrFail($request->tabungan_berjangka_id);
             if ($tb->user_id != $request->user_id || $tb->jenis_tabungan_id != $request->jenis_tabungan_id) {
                 return $this->errorResponse('Tabungan berjangka tidak cocok dengan nasabah atau produk yang dipilih.', 422, 'BERJANGKA_TIDAK_COCOK');
             }
@@ -389,13 +388,13 @@ class TransaksiController extends Controller
 
         $konfigurasiDipilih = null;
         if ($request->filled('konfigurasi_id')) {
-            $konfigurasiDipilih = \App\Models\KonfigurasiSetoranEmas::findOrFail($request->konfigurasi_id);
+            $konfigurasiDipilih = KonfigurasiSetoranEmas::findOrFail($request->konfigurasi_id);
             if ($konfigurasiDipilih->user_id != $request->user_id || $konfigurasiDipilih->jenis_tabungan_id != $request->jenis_tabungan_id) {
                 return $this->errorResponse('Rencana setoran tidak cocok dengan nasabah atau produk yang dipilih.', 422, 'KONFIGURASI_TIDAK_COCOK');
             }
             if ($jenis->tipe === TipeTabungan::Emas && (float) $request->nominal < (float) $konfigurasiDipilih->nominal_per_periode) {
                 return $this->errorResponse(
-                    'Nominal minimal untuk rencana ini adalah Rp ' . number_format((float) $konfigurasiDipilih->nominal_per_periode, 0, ',', '.') . ' (1 periode setoran).',
+                    'Nominal minimal untuk rencana ini adalah Rp '.number_format((float) $konfigurasiDipilih->nominal_per_periode, 0, ',', '.').' (1 periode setoran).',
                     422,
                     'NOMINAL_KURANG_1_PERIODE'
                 );
@@ -428,7 +427,7 @@ class TransaksiController extends Controller
             // beli target gram penuh per periode bila mengikuti setoran rencana.
             if ($jenis->tipe === TipeTabungan::Emas) {
                 $user = User::findOrFail($request->user_id);
-                $harga = \App\Models\HargaEmasHarian::hargaTerkini();
+                $harga = HargaEmasHarian::hargaTerkini();
 
                 if (! $harga) {
                     abort(400, 'Harga emas belum diinput oleh admin. Silakan hubungi admin.');

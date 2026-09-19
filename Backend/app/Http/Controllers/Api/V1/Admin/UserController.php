@@ -2,17 +2,19 @@
 
 namespace App\Http\Controllers\Api\V1\Admin;
 
-use App\Enums\UserRole;
-use App\Enums\UserStatus;
 use App\Enums\StatusPendaftaranQurban;
 use App\Enums\TipeNotifikasi;
 use App\Enums\TipeTabungan;
+use App\Enums\UserRole;
+use App\Enums\UserStatus;
 use App\Exports\UsersExport;
 use App\Exports\UsersTemplate;
+use App\Exports\LaporanHarianTemplate;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\KonfigurasiSetoranEmasResource;
 use App\Http\Resources\TransaksiResource;
 use App\Http\Resources\UserResource;
+use App\Imports\LaporanHarianImport;
 use App\Imports\UsersImport;
 use App\Models\AuditLog;
 use App\Models\JenisTabungan;
@@ -28,6 +30,7 @@ use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Maatwebsite\Excel\Facades\Excel;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -178,6 +181,13 @@ class UserController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
+        $request->validate([
+            'status' => 'nullable|string|in:active,rejected,suspended',
+            'role' => 'nullable|string|in:admin,user',
+            'search' => 'nullable|string|max:255',
+            'per_page' => 'nullable|integer|min:1|max:1000',
+        ]);
+
         $query = User::query();
 
         if ($request->filled('status')) {
@@ -192,7 +202,10 @@ class UserController extends Controller
             $search = str_replace(['%', '_'], ['\%', '\_'], $request->search);
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%");
+                    ->orWhere('username', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('nomor_anggota', 'like', "%{$search}%")
+                    ->orWhere('phone', 'like', "%{$search}%");
             });
         }
 
@@ -348,6 +361,10 @@ class UserController extends Controller
             'status' => 'sometimes|string|in:active,suspended,rejected',
             'address' => 'nullable|string|max:500',
             'created_at' => 'sometimes|date',
+            // Saldo awal untuk user lama (migrasi data)
+            'saldo_awal' => 'sometimes|array',
+            'saldo_awal.*.jenis_tabungan_id' => 'required_with:saldo_awal|integer|exists:jenis_tabungan,id',
+            'saldo_awal.*.nominal' => 'required_with:saldo_awal|numeric|min:0',
         ]);
 
         $roleValue = $request->input('role', 'user');
@@ -377,6 +394,31 @@ class UserController extends Controller
 
         $user->save();
 
+        // Buat transaksi saldo awal untuk user lama (migrasi data)
+        if ($request->filled('saldo_awal')) {
+            foreach ($request->input('saldo_awal') as $saldo) {
+                $nominal = (float) ($saldo['nominal'] ?? 0);
+                if ($nominal <= 0) {
+                    continue;
+                }
+
+                Transaksi::create([
+                    'nomor_referensi' => Transaksi::generateNomorReferensi(),
+                    'user_id' => $user->id,
+                    'jenis_tabungan_id' => $saldo['jenis_tabungan_id'],
+                    'jenis_transaksi' => 'setor',
+                    'nominal' => $nominal,
+                    'metode_pembayaran' => 'cash',
+                    'status_verifikasi' => 'terverifikasi',
+                    'diverifikasi_oleh' => auth()->id(),
+                    'diverifikasi_pada' => now(),
+                    'catatan_admin' => 'Saldo awal migrasi data user lama (SALDO_AWAL_LEGACY).',
+                    'catatan_user' => 'Saldo awal dari data sebelumnya.',
+                    'tanggal_transaksi' => $request->input('created_at', now()->toDateString()),
+                ]);
+            }
+        }
+
         AuditLog::record('create', $user);
 
         return $this->createdResponse(new UserResource($user), 'Pengguna berhasil dibuat.');
@@ -392,8 +434,9 @@ class UserController extends Controller
             $base = 'user';
         }
         do {
-            $candidate = $base . rand(1000, 9999);
+            $candidate = $base.rand(1000, 9999);
         } while (User::where('username', $candidate)->exists());
+
         return $candidate;
     }
 
@@ -404,9 +447,9 @@ class UserController extends Controller
     {
         $request->validate([
             'name' => 'sometimes|string|max:255',
-            'email' => 'sometimes|email|unique:users,email,' . $user->id,
-            'phone' => 'sometimes|string|max:20|unique:users,phone,' . $user->id,
-            'nomor_anggota' => 'sometimes|string|regex:/^\d{10}$/|unique:users,nomor_anggota,' . $user->id,
+            'email' => 'sometimes|email|unique:users,email,'.$user->id,
+            'phone' => 'sometimes|string|max:20|unique:users,phone,'.$user->id,
+            'nomor_anggota' => 'sometimes|string|regex:/^\d{10}$/|unique:users,nomor_anggota,'.$user->id,
             'address' => 'nullable|string|max:500',
             'role' => 'sometimes|string|in:admin,user',
             'created_at' => 'sometimes|date',
@@ -535,7 +578,13 @@ class UserController extends Controller
      */
     public function export(Request $request): BinaryFileResponse
     {
-        $filename = 'data_nasabah_berkah_mulia_' . now()->format('Y-m-d') . '.xlsx';
+        $request->validate([
+            'status' => 'nullable|string|in:active,rejected,suspended',
+            'role' => 'nullable|string|in:admin,user',
+            'search' => 'nullable|string|max:255',
+        ]);
+
+        $filename = 'data_nasabah_berkah_mulia_'.now()->format('Y-m-d').'.xlsx';
 
         return Excel::download(
             new UsersExport($request->status, $request->role, $request->search),
@@ -548,7 +597,7 @@ class UserController extends Controller
      */
     public function importTemplate(): BinaryFileResponse
     {
-        return Excel::download(new UsersTemplate(), 'template_import_nasabah.xlsx');
+        return Excel::download(new UsersTemplate, 'template_import_nasabah.xlsx');
     }
 
     /**
@@ -560,38 +609,47 @@ class UserController extends Controller
             'file' => 'required|file|mimes:xlsx,csv|max:10240',
         ]);
 
-        $import = new UsersImport();
+        $import = new UsersImport;
         try {
             DB::transaction(function () use ($import, $request) {
                 Excel::import($import, $request->file('file'));
                 $import->prosesTabungan();
             });
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::error('Import user gagal: ' . $e->getMessage(), ['exception' => $e]);
+            Log::error('Import user gagal: '.$e->getMessage(), ['exception' => $e]);
+
             return $this->errorResponse('Import gagal. Tidak ada data yang diubah.', 500);
         }
 
         $tabungan = [
-            'target_diatur'      => $import->getTargetCount(),
+            'target_diatur' => $import->getTargetCount(),
             'saldo_awal_dicatat' => $import->getSaldoAwalCreatedCount(),
-            'saldo_awal_diubah'  => $import->getSaldoAwalChangedCount(),
+            'saldo_awal_diubah' => $import->getSaldoAwalChangedCount(),
             'saldo_awal_dihapus' => $import->getSaldoAwalRemovedCount(),
         ];
 
         AuditLog::record('import', $request->user(), [], [
             'jumlah_ditambahkan' => $import->getCreatedCount(),
-            'jumlah_diupdate'    => $import->getUpdatedCount(),
-            'jumlah_dilewati'    => $import->getSkippedCount(),
-            'tabungan'           => $tabungan,
+            'jumlah_diupdate' => $import->getUpdatedCount(),
+            'jumlah_dilewati' => $import->getSkippedCount(),
+            'tabungan' => $tabungan,
         ]);
 
         return $this->successResponse([
             'jumlah_ditambahkan' => $import->getCreatedCount(),
-            'jumlah_diupdate'    => $import->getUpdatedCount(),
-            'jumlah_dilewati'    => $import->getSkippedCount(),
-            'detail_dilewati'    => $import->getSkippedDetail(),
-            'tabungan'           => $tabungan,
+            'jumlah_diupdate' => $import->getUpdatedCount(),
+            'jumlah_dilewati' => $import->getSkippedCount(),
+            'detail_dilewati' => $import->getSkippedDetail(),
+            'tabungan' => $tabungan,
         ], "Import selesai. {$import->getCreatedCount()} ditambahkan, {$import->getUpdatedCount()} diupdate, {$import->getSkippedCount()} dilewati.");
+    }
+
+    /**
+     * GET /admin/users/import-laporan/template
+     */
+    public function importLaporanTemplate(): BinaryFileResponse
+    {
+        return Excel::download(new LaporanHarianTemplate, 'template_import_laporan_harian.xlsx');
     }
 
     /**
@@ -605,26 +663,27 @@ class UserController extends Controller
             'file' => 'required|file|mimes:xlsx,xls,csv|max:20480',
         ]);
 
-        $import = new \App\Imports\LaporanHarianImport();
+        $import = new LaporanHarianImport;
         try {
             DB::transaction(function () use ($import, $request) {
-                \Maatwebsite\Excel\Facades\Excel::import($import, $request->file('file'));
+                Excel::import($import, $request->file('file'));
             });
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::error('Import laporan harian gagal: ' . $e->getMessage(), ['exception' => $e]);
-            return $this->errorResponse('Import gagal: ' . $e->getMessage(), 500);
+            Log::error('Import laporan harian gagal: '.$e->getMessage(), ['exception' => $e]);
+
+            return $this->errorResponse('Import gagal: '.$e->getMessage(), 500);
         }
 
         AuditLog::record('import_laporan', $request->user(), [], [
-            'user_dibuat'       => $import->getUserDibuat(),
-            'transaksi_dibuat'  => $import->getTransaksiDibuat(),
+            'user_dibuat' => $import->getUserDibuat(),
+            'transaksi_dibuat' => $import->getTransaksiDibuat(),
         ]);
 
         return $this->successResponse([
-            'user_dibuat'       => $import->getUserDibuat(),
-            'transaksi_dibuat'  => $import->getTransaksiDibuat(),
-            'row_dilewati'      => $import->getRowDilewati(),
-            'detail_dilewati'   => $import->getSkippedDetail(),
+            'user_dibuat' => $import->getUserDibuat(),
+            'transaksi_dibuat' => $import->getTransaksiDibuat(),
+            'row_dilewati' => $import->getRowDilewati(),
+            'detail_dilewati' => $import->getSkippedDetail(),
         ], "Import laporan selesai. {$import->getUserDibuat()} user baru, {$import->getTransaksiDibuat()} transaksi dicatat.");
     }
 }

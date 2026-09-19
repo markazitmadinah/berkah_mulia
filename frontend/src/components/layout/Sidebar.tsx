@@ -24,10 +24,9 @@ import {
   CalendarCheck,
   Headphones,
   TrendingUp,
-  Banknote,
-  AlertCircle
+
 } from 'lucide-react';
-import { formatRupiah } from '../../utils/format';
+
 
 interface SidebarProps {
   isOpenMobile?: boolean;
@@ -291,70 +290,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </nav>
         </div>
 
-        {/* ── Shortcut Setor (khusus Nasabah) ── */}
-        {currentUser.role === 'user' && (() => {
-          // Hitung sisa angsuran per jenis tabungan dari data transaksi
-          const emasProgress = jenisTabungan.find(j => j.tipe === 'emas');
-          const hasTrx = transaksi.some(t => t.status_verifikasi === 'terverifikasi');
-
-          const pendingCount = transaksi.filter(t => t.status_verifikasi === 'menunggu_verifikasi').length;
-          const belumBayar = transaksi.filter(t => t.status_verifikasi === 'belum').length;
-
-          return (
-            <div className="mx-1 mb-3">
-              <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Setoran</p>
-              <div className="rounded-2xl bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-amber-950/30 dark:to-yellow-950/30 border border-amber-200/60 dark:border-amber-800/40 overflow-hidden">
-                {/* Header info sisa */}
-                <div className="px-3 pt-3 pb-2 space-y-1.5">
-                  {pendingCount > 0 && (
-                    <div className="flex items-center justify-between text-[10px]">
-                      <span className="text-amber-700 dark:text-amber-300 font-semibold flex items-center gap-1">
-                        <AlertCircle className="w-3 h-3" />
-                        Menunggu verifikasi
-                      </span>
-                      <span className="font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/50 px-2 py-0.5 rounded-full">
-                        {pendingCount}x
-                      </span>
-                    </div>
-                  )}
-                  {hasTrx ? (
-                    <div className="flex items-center justify-between text-[10px]">
-                      <span className="text-slate-500 dark:text-slate-400 font-semibold">Total transaksi</span>
-                      <span className="font-bold text-slate-700 dark:text-slate-200">
-                        {transaksi.filter(t => t.status_verifikasi === 'terverifikasi').length}x lunas
-                      </span>
-                    </div>
-                  ) : (
-                    <p className="text-[10px] text-slate-400">Belum ada setoran</p>
-                  )}
-                </div>
-
-                {/* Tombol setor */}
-                {emasProgress ? (
-                  <button
-                    onClick={() => {
-                      setActiveTab('emas');
-                      if (onCloseMobile) onCloseMobile();
-                    }}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 text-xs font-extrabold text-amber-700 dark:text-amber-300 bg-amber-100/80 dark:bg-amber-900/40 hover:bg-amber-200/80 dark:hover:bg-amber-800/50 transition-all cursor-pointer border-t border-amber-200/60 dark:border-amber-700/40"
-                  >
-                    <Banknote className="w-3.5 h-3.5" />
-                    Setor Tabungan
-                  </button>
-                ) : (
-                  <button
-                    disabled
-                    title="Aktifkan tabungan terlebih dahulu"
-                    className="w-full flex items-center justify-center gap-2 py-2.5 text-xs font-extrabold text-slate-400 dark:text-slate-500 bg-slate-100/80 dark:bg-slate-800/40 border-t border-slate-200/60 dark:border-slate-700/40 cursor-not-allowed"
-                  >
-                    <Banknote className="w-3.5 h-3.5" />
-                    Belum Ada Tabungan Aktif
-                  </button>
-                )}
-              </div>
-            </div>
-          );
-        })()}
 
         {/* Bottom Profile & Logout */}
         <div className="flex flex-col gap-3 pt-3 border-t border-slate-200/80 dark:border-slate-800 px-1 mt-2">

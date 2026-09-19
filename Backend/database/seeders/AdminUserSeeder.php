@@ -25,6 +25,7 @@ class AdminUserSeeder extends Seeder
             ['email' => $email],
             array_filter([
                 'name' => env('ADMIN_NAME') ?: 'Admin Berkah Mulia',
+                'username' => env('ADMIN_USERNAME') ?: 'admin',
                 'email' => $email,
                 'phone' => env('ADMIN_PHONE') ?: '081200000001',
                 'password' => $password, // auto-hashed via cast; null → password lama dipertahankan

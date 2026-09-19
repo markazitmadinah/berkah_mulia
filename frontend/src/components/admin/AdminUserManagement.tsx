@@ -17,11 +17,14 @@ import {
   UserCheck,
   Plus,
   UserRoundSearch,
-  ClipboardList
+  ClipboardList,
+  ChevronDown,
+  History
 } from 'lucide-react';
 import { User } from '../../types';
 interface AdminUserManagementProps {
   onOpenCreateUser: () => void;
+  onOpenCreateLegacyUser: () => void;
   onOpenEditUser: (user: User) => void;
   onOpenDetailUser: (user: User) => void;
   onOpenImportModal: () => void;
@@ -31,6 +34,7 @@ interface AdminUserManagementProps {
 
 export const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
   onOpenCreateUser,
+  onOpenCreateLegacyUser,
   onOpenEditUser,
   onOpenDetailUser,
   onOpenImportModal,
@@ -47,6 +51,7 @@ export const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
 
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterRole, setFilterRole] = useState<string>('all');
+  const [showAddDropdown, setShowAddDropdown] = useState(false);
 
   const filteredUsers = users.filter((u) => {
     const matchesStatus = filterStatus === 'all' || u.status === filterStatus;
@@ -77,13 +82,42 @@ export const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
 
         {/* Top Action Buttons */}
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={onOpenCreateUser}
-            className="py-2.5 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-blue-600/20 transition-all cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Tambah User</span>
-          </button>
+          {/* Dropdown Tambah User */}
+          <div className="relative" ref={null}>
+            <button
+              onClick={() => setShowAddDropdown(v => !v)}
+              className="py-2.5 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-blue-600/20 transition-all cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Tambah User</span>
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showAddDropdown ? 'rotate-180' : ''}`} />
+            </button>
+            {showAddDropdown && (
+              <div className="absolute left-0 top-full mt-1.5 z-30 w-56 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                <button
+                  onClick={() => { setShowAddDropdown(false); onOpenCreateUser(); }}
+                  className="w-full flex items-center gap-2.5 px-4 py-3 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors cursor-pointer text-left"
+                >
+                  <Plus className="w-4 h-4 text-blue-500" />
+                  <div>
+                    <p className="font-bold">User Baru</p>
+                    <p className="text-[10px] text-slate-400">Daftarkan nasabah baru</p>
+                  </div>
+                </button>
+                <div className="border-t border-slate-100 dark:border-slate-700" />
+                <button
+                  onClick={() => { setShowAddDropdown(false); onOpenCreateLegacyUser(); }}
+                  className="w-full flex items-center gap-2.5 px-4 py-3 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors cursor-pointer text-left"
+                >
+                  <History className="w-4 h-4 text-amber-500" />
+                  <div>
+                    <p className="font-bold">User Lama (Migrasi)</p>
+                    <p className="text-[10px] text-slate-400">Input progress tabungan sebelumnya</p>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
 
           <button
             onClick={onOpenImportModal}

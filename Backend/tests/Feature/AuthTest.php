@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Enums\UserStatus;
-use App\Models\User;
 use Illuminate\Support\Facades\Storage;
 use Tests\ApiTestCase;
 
@@ -25,32 +24,32 @@ class AuthTest extends ApiTestCase
     public function test_login_akun_rejected_tidak_membocorkan_status(): void
     {
         $this->seedBase();
-        $this->createUser([
+        $user = $this->createUser([
             'email' => 'reject@example.com',
             'status' => UserStatus::Rejected,
             'rejected_reason' => 'Dokumen tidak lengkap',
             'password' => 'password123',
         ]);
 
-        $this->postJson('/api/v1/auth/login', ['email' => 'reject@example.com', 'password' => 'password123'])
+        $this->postJson('/api/v1/auth/login', ['username' => $user->username, 'password' => 'password123'])
             ->assertStatus(401)->assertJsonPath('error_code', 'INVALID_CREDENTIALS');
     }
 
     public function test_login_akun_suspended_tidak_membocorkan_status(): void
     {
         $this->seedBase();
-        $this->createUser(['email' => 'susp@example.com', 'status' => UserStatus::Suspended, 'password' => 'password123']);
+        $user = $this->createUser(['email' => 'susp@example.com', 'status' => UserStatus::Suspended, 'password' => 'password123']);
 
-        $this->postJson('/api/v1/auth/login', ['email' => 'susp@example.com', 'password' => 'password123'])
+        $this->postJson('/api/v1/auth/login', ['username' => $user->username, 'password' => 'password123'])
             ->assertStatus(401)->assertJsonPath('error_code', 'INVALID_CREDENTIALS');
     }
 
     public function test_login_akun_aktif_berhasil_dan_mengembalikan_token(): void
     {
         $this->seedBase();
-        $this->createUser(['email' => 'aktif@example.com', 'password' => 'password123']);
+        $user = $this->createUser(['email' => 'aktif@example.com', 'password' => 'password123']);
 
-        $response = $this->postJson('/api/v1/auth/login', ['email' => 'aktif@example.com', 'password' => 'password123']);
+        $response = $this->postJson('/api/v1/auth/login', ['username' => $user->username, 'password' => 'password123']);
 
         $response->assertStatus(200)
             ->assertJsonPath('success', true)
@@ -61,9 +60,9 @@ class AuthTest extends ApiTestCase
     public function test_login_password_salah_401(): void
     {
         $this->seedBase();
-        $this->createUser(['email' => 'aktif@example.com', 'password' => 'password123']);
+        $user = $this->createUser(['email' => 'aktif@example.com', 'password' => 'password123']);
 
-        $this->postJson('/api/v1/auth/login', ['email' => 'aktif@example.com', 'password' => 'salah123'])
+        $this->postJson('/api/v1/auth/login', ['username' => $user->username, 'password' => 'salah123'])
             ->assertStatus(401)->assertJsonPath('error_code', 'INVALID_CREDENTIALS');
     }
 

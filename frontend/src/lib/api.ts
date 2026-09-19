@@ -133,6 +133,11 @@ export async function downloadFile(url: string, filename: string): Promise<void>
     throw new ApiError(message, res.status);
   }
 
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('application/json') || contentType.startsWith('text/')) {
+    throw new ApiError('Server tidak mengembalikan berkas unduhan yang valid.', res.status);
+  }
+
   const blob = await res.blob();
   const objectUrl = URL.createObjectURL(blob);
   const link = document.createElement('a');

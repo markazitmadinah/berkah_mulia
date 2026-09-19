@@ -5,6 +5,7 @@ namespace App\Exports;
 use App\Enums\JenisTransaksi;
 use App\Enums\StatusVerifikasi;
 use App\Models\Transaksi;
+use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromArray;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
@@ -14,31 +15,21 @@ use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithStyles;
 use Maatwebsite\Excel\Concerns\WithTitle;
 use Maatwebsite\Excel\Events\AfterSheet;
+use PhpOffice\PhpSpreadsheet\Shared\Date;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Color;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-class TransaksiRekapExport implements
-    FromArray,
-    WithHeadings,
-    WithColumnFormatting,
-    WithStyles,
-    WithEvents,
-    WithTitle,
-    ShouldAutoSize
+class TransaksiRekapExport implements FromArray, ShouldAutoSize, WithColumnFormatting, WithEvents, WithHeadings, WithStyles, WithTitle
 {
     private array $rows;
 
-    public function __construct(
-        ?string $status = null,
-        ?string $metode = null,
-        ?string $tanggalAwal = null,
-        ?string $tanggalAkhir = null,
-        ?string $tipe = null
-    ) {
-        $this->rows = $this->buildRekap($status, $metode, $tanggalAwal, $tanggalAkhir, $tipe);
+    public function __construct(array $filters = [])
+    {
+        $this->rows = $this->buildRekap($filters);
     }
 
     public function title(): string
@@ -51,29 +42,9 @@ class TransaksiRekapExport implements
         return ['Tanggal', 'Uang Masuk (Rp)', 'Uang Keluar (Rp)', 'Selisih (Rp)', 'Jumlah Transaksi'];
     }
 
-    private function buildRekap(?string $status, ?string $metode, ?string $tanggalAwal, ?string $tanggalAkhir, ?string $tipe): array
+    private function buildRekap(array $filters): array
     {
-        $query = Transaksi::with('jenisTabungan');
-
-        if ($status) {
-            $query->where('status_verifikasi', $status);
-        }
-        if ($metode) {
-            $query->where('metode_pembayaran', $metode);
-        }
-        if ($tipe) {
-            $query->when(
-                $tipe === 'gadai',
-                fn ($q) => $q->whereNotNull('gadai_id'),
-                fn ($q) => $q->whereHas('jenisTabungan', fn ($jq) => $jq->where('tipe', $tipe))
-            );
-        }
-        if ($tanggalAwal) {
-            $query->whereDate('tanggal_transaksi', '>=', $tanggalAwal);
-        }
-        if ($tanggalAkhir) {
-            $query->whereDate('tanggal_transaksi', '<=', $tanggalAkhir);
-        }
+        $query = Transaksi::with('jenisTabungan')->filterAdmin($filters);
 
         $perTanggal = $query->get()->groupBy(fn ($t) => $t->tanggal_transaksi->toDateString());
 
@@ -89,7 +60,7 @@ class TransaksiRekapExport implements
                     ->sum('nominal');
 
                 return [
-                    \PhpOffice\PhpSpreadsheet\Shared\Date::PHPToExcel(\Carbon\Carbon::parse($tanggal)),
+                    Date::PHPToExcel(Carbon::parse($tanggal)),
                     $masuk,
                     $keluar,
                     $masuk - $keluar,
@@ -155,7 +126,7 @@ class TransaksiRekapExport implements
 
                 $totalRow = $sheet->getStyle("A{$highest}:{$lastCol}{$highest}");
                 $totalRow->getFont()->setBold(true);
-                $totalRow->getFill()->setFillType(Fill::FILL_SOLID)->setStartColor(new \PhpOffice\PhpSpreadsheet\Style\Color('FFECFDF5'));
+                $totalRow->getFill()->setFillType(Fill::FILL_SOLID)->setStartColor(new Color('FFECFDF5'));
 
                 $sheet->getRowDimension(1)->setRowHeight(28);
             },

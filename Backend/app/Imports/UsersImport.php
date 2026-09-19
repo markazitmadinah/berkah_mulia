@@ -21,7 +21,7 @@ use Maatwebsite\Excel\Concerns\ToModel;
 use Maatwebsite\Excel\Concerns\WithCalculatedFormulas;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 
-class UsersImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithCalculatedFormulas
+class UsersImport implements SkipsEmptyRows, ToModel, WithCalculatedFormulas, WithHeadingRow
 {
     use Importable;
 
@@ -36,17 +36,25 @@ class UsersImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithCalcul
      * dilewati saat import agar template yang tidak diedit tidak menjadi data nyata.
      */
     public const CONTOH_EMAIL = 'nasabah.contoh@gmail.com';
+
     public const CONTOH_ANGGOTA = '1234567890';
 
     private array $created = [];
+
     private array $updated = [];
+
     private array $skipped = [];
+
     private array $pending = [];
 
     private int $rowCounter = 0;
+
     private int $targetDiatur = 0;
+
     private int $saldoDicatat = 0;
+
     private int $saldoDiubah = 0;
+
     private int $saldoDihapus = 0;
 
     public function isEmptyWhen(array $row): bool
@@ -62,6 +70,7 @@ class UsersImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithCalcul
                 return false;
             }
         }
+
         return true;
     }
 
@@ -71,6 +80,7 @@ class UsersImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithCalcul
         if (is_numeric($value)) {
             $value = number_format((float) $value, 0, '', '');
         }
+
         return preg_replace('/\D+/', '', $value);
     }
 
@@ -107,21 +117,22 @@ class UsersImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithCalcul
             $errors[] = 'Password minimal 8 karakter';
         }
         if ($errors) {
-            $this->skipped[] = 'Baris ' . $baris . ': ' . implode(' · ', $errors);
+            $this->skipped[] = 'Baris '.$baris.': '.implode(' · ', $errors);
+
             return null;
         }
 
         $existing = User::withTrashed()->where(function ($q) use ($email, $anggota) {
             $q->where('email', $email)
-              ->orWhere('nomor_anggota', $anggota);
+                ->orWhere('nomor_anggota', $anggota);
         })->first();
 
         try {
             if ($existing) {
                 $update = [
-                    'name'  => trim((string) $row['nama_lengkap']),
+                    'name' => trim((string) $row['nama_lengkap']),
                     'phone' => $phone,
-                    'role'  => $this->parseRole($row['peran'] ?? 'Nasabah'),
+                    'role' => $this->parseRole($row['peran'] ?? 'Nasabah'),
                 ];
 
                 if (! empty($row['alamat'])) {
@@ -145,9 +156,10 @@ class UsersImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithCalcul
 
                 // Tabungan ikut diproses untuk user yang diperbarui (set ulang dana).
                 $this->pending[] = [
-                    'email'   => $email,
+                    'email' => $email,
                     'anggota' => $anggota,
-                    'row'     => $row,
+                    'baris' => $baris,
+                    'row' => $row,
                 ];
 
                 return null;
@@ -155,32 +167,34 @@ class UsersImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithCalcul
 
             // forceFill: role/status/approved_by/approved_at tidak fillable (mass-assignment).
             $user = (new User)->forceFill([
-                'name'             => trim((string) $row['nama_lengkap']),
-                'username'         => $this->generateUniqueUsername(trim((string) $row['nama_lengkap'])),
-                'email'            => $email,
-                'phone'            => $phone,
-                'nomor_anggota'    => $anggota,
-                'address'          => !empty($row['alamat']) ? trim((string) $row['alamat']) : null,
-                'password'         => Hash::make((string) ($row['password'] ?? Str::random(12))),
-                'role'             => $this->parseRole($row['peran'] ?? 'Nasabah'),
-                'status'           => $this->parseStatus($row['status'] ?? 'Aktif'),
-                'approved_by'      => auth()->id(),
-                'approved_at'      => now(),
+                'name' => trim((string) $row['nama_lengkap']),
+                'username' => $this->generateUniqueUsername(trim((string) $row['nama_lengkap'])),
+                'email' => $email,
+                'phone' => $phone,
+                'nomor_anggota' => $anggota,
+                'address' => ! empty($row['alamat']) ? trim((string) $row['alamat']) : null,
+                'password' => Hash::make((string) ($row['password'] ?? Str::random(12))),
+                'role' => $this->parseRole($row['peran'] ?? 'Nasabah'),
+                'status' => $this->parseStatus($row['status'] ?? 'Aktif'),
+                'approved_by' => auth()->id(),
+                'approved_at' => now(),
             ]);
             $user->save();
             $this->created[] = $email;
 
             // Diproses setelah seluruh baris selesai diinsert agar user.id tersedia.
             $this->pending[] = [
-                'email'   => $email,
+                'email' => $email,
                 'anggota' => $anggota,
-                'row'     => $row,
+                'baris' => $baris,
+                'row' => $row,
             ];
 
             return $user;
         } catch (UniqueConstraintViolationException $e) {
-            $this->skipped[] = 'Baris ' . $baris
-                . ': Email, No. Handphone, atau Nomor Anggota sudah terdaftar pada user lain';
+            $this->skipped[] = 'Baris '.$baris
+                .': Email, No. Handphone, atau Nomor Anggota sudah terdaftar pada user lain';
+
             return null;
         }
     }
@@ -245,7 +259,7 @@ class UsersImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithCalcul
             $user = User::withTrashed()
                 ->where(function ($q) use ($item) {
                     $q->where('email', $item['email'])
-                      ->orWhere('nomor_anggota', $item['anggota']);
+                        ->orWhere('nomor_anggota', $item['anggota']);
                 })
                 ->first();
 
@@ -268,7 +282,7 @@ class UsersImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithCalcul
 
                 $saldo = $this->bersihNominal($row[$this->keySaldoAwal($jenis->nama)] ?? null);
                 if ($saldo !== null) {
-                    $this->aturSaldoAwal($user, $jenis->id, $saldo);
+                    $this->aturSaldoAwal($user, $jenis->id, $saldo, $item['baris']);
                 }
             }
         }
@@ -280,7 +294,7 @@ class UsersImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithCalcul
             ->where('jenis_tabungan_id', $jenisId)
             ->where('jenis_transaksi', JenisTransaksi::Setor->value)
             ->where('status_verifikasi', StatusVerifikasi::Terverifikasi->value)
-            ->where('catatan_admin', 'like', '%' . self::MARKER_SALDO_AWAL . '%')
+            ->where('catatan_admin', 'like', '%'.self::MARKER_SALDO_AWAL.'%')
             ->latest('id')
             ->first();
     }
@@ -291,9 +305,20 @@ class UsersImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithCalcul
      * - nilainya berubah → perbarui nominal (import ulang).
      * - diisi 0 → hapus catatan saldo awal.
      */
-    private function aturSaldoAwal(User $user, int $jenisId, int $saldo): void
+    private function aturSaldoAwal(User $user, int $jenisId, int $saldo, int $baris): void
     {
         $existing = $this->posisiSaldoAwal($user->id, $jenisId);
+
+        $memilikiHistori = Transaksi::milikUser($user->id)
+            ->where('jenis_tabungan_id', $jenisId)
+            ->where('catatan_admin', 'like', '%IMPORT_LAPORAN_HARIAN%')
+            ->exists();
+
+        if ($saldo > 0 && $memilikiHistori) {
+            $this->skipped[] = "Baris {$baris}: Saldo awal ditolak karena histori laporan harian untuk tabungan ini sudah ada.";
+
+            return;
+        }
 
         if ($existing) {
             if ($saldo === 0) {
@@ -312,18 +337,18 @@ class UsersImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithCalcul
         }
 
         Transaksi::create([
-            'nomor_referensi'    => Transaksi::generateNomorReferensi(),
-            'user_id'            => $user->id,
-            'jenis_tabungan_id'  => $jenisId,
-            'jenis_transaksi'    => JenisTransaksi::Setor->value,
-            'nominal'            => $saldo,
-            'metode_pembayaran'  => MetodePembayaran::Cash->value,
-            'status_verifikasi'  => StatusVerifikasi::Terverifikasi->value,
-            'diverifikasi_oleh'  => auth()->id(),
-            'diverifikasi_pada'  => now(),
-            'catatan_admin'      => 'Saldo awal dari import (' . self::MARKER_SALDO_AWAL . ').',
-            'catatan_user'       => 'Saldo awal tabungan dari data nasabah.',
-            'tanggal_transaksi'  => now()->toDateString(),
+            'nomor_referensi' => Transaksi::generateNomorReferensi(),
+            'user_id' => $user->id,
+            'jenis_tabungan_id' => $jenisId,
+            'jenis_transaksi' => JenisTransaksi::Setor->value,
+            'nominal' => $saldo,
+            'metode_pembayaran' => MetodePembayaran::Cash->value,
+            'status_verifikasi' => StatusVerifikasi::Terverifikasi->value,
+            'diverifikasi_oleh' => auth()->id(),
+            'diverifikasi_pada' => now(),
+            'catatan_admin' => 'Saldo awal dari import ('.self::MARKER_SALDO_AWAL.').',
+            'catatan_user' => 'Saldo awal tabungan dari data nasabah.',
+            'tanggal_transaksi' => now()->toDateString(),
         ]);
 
         $this->saldoDicatat++;
@@ -372,12 +397,14 @@ class UsersImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithCalcul
     private function parseRole(string $value): string
     {
         $value = Str::lower(trim($value));
+
         return str_contains($value, 'admin') ? UserRole::Admin->value : UserRole::User->value;
     }
 
     private function parseStatus(string $value): string
     {
         $value = Str::lower(trim($value));
+
         return match ($value) {
             'aktif', 'active' => UserStatus::Active->value,
             'ditolak', 'rejected' => UserStatus::Rejected->value,
@@ -393,8 +420,9 @@ class UsersImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithCalcul
             $base = 'user';
         }
         do {
-            $candidate = $base . rand(1000, 9999);
+            $candidate = $base.rand(1000, 9999);
         } while (User::where('username', $candidate)->exists());
+
         return $candidate;
     }
 }
