@@ -179,7 +179,7 @@ class UsersImport implements SkipsEmptyRows, ToModel, WithCalculatedFormulas, Wi
             return $user;
         } catch (UniqueConstraintViolationException $e) {
             $this->skipped[] = 'Baris '.$baris
-                .': Username/email/phone placeholder bentrok dengan user lain; import ulang.';
+                .': Username/phone placeholder bentrok dengan user lain; import ulang.';
 
             return null;
         }
@@ -625,6 +625,7 @@ class UsersImport implements SkipsEmptyRows, ToModel, WithCalculatedFormulas, Wi
             'aktif', 'active' => UserStatus::Active->value,
             'ditolak', 'rejected' => UserStatus::Rejected->value,
             'dibekukan', 'suspended' => UserStatus::Suspended->value,
+            'menunggu persetujuan', 'pending', 'inactive', 'belum aktif' => UserStatus::Inactive->value,
             default => UserStatus::Active->value,
         };
     }

@@ -1,7 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
-  X
+  X,
+  UserCheck,
+  Building2,
+  Phone,
+  MapPin,
+  History,
+  Coins
 } from 'lucide-react';
 import { User } from '../../types';
 
@@ -9,17 +15,24 @@ interface UserFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   userToEdit?: User | null;
+  legacyMode?: boolean;
+}
+
+interface SaldoAwalItem {
+  jenis_tabungan_id: number;
+  nama: string;
+  nominal: string;
 }
 
 export const UserFormModal: React.FC<UserFormModalProps> = ({
   isOpen,
   onClose,
-  userToEdit
+  userToEdit,
+  legacyMode = false
 }) => {
-  const { createUser, updateUser, showToast } = useApp();
+  const { createUser, updateUser, showToast, jenisTabungan } = useApp();
 
   const [name, setName] = useState<string>('');
-  const [email, setEmail] = useState<string>('');
   const [phone, setPhone] = useState<string>('');
   const [nomorAnggota, setNomorAnggota] = useState<string>('');
   const [tanggalBergabung, setTanggalBergabung] = useState<string>(new Date().toISOString().slice(0, 10));
@@ -29,13 +42,13 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   const [password, setPassword] = useState<string>('');
   const [passwordConfirm, setPasswordConfirm] = useState<string>('');
   const [showPasswordSection, setShowPasswordSection] = useState(false);
+  const [saldoAwal, setSaldoAwal] = useState<SaldoAwalItem[]>([]);
 
   const hariIni = () => new Date().toISOString().slice(0, 10);
 
   useEffect(() => {
     if (userToEdit) {
       setName(userToEdit.name);
-      setEmail(userToEdit.email);
       setPhone(userToEdit.phone);
       setNomorAnggota(userToEdit.nomor_anggota || '');
       setTanggalBergabung(userToEdit.created_at?.slice(0, 10) || hariIni());
@@ -45,9 +58,9 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       setPassword('');
       setPasswordConfirm('');
       setShowPasswordSection(false);
+      setSaldoAwal([]);
     } else {
       setName('');
-      setEmail('');
       setPhone('');
       setNomorAnggota('');
       setTanggalBergabung(hariIni());
@@ -57,8 +70,18 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       setPassword('');
       setPasswordConfirm('');
       setShowPasswordSection(false);
+      // Inisialisasi saldo awal dari jenis tabungan aktif saat legacy mode
+      if (legacyMode) {
+        setSaldoAwal(
+          jenisTabungan
+            .filter(j => j.status_aktif)
+            .map(j => ({ jenis_tabungan_id: j.id, nama: j.nama, nominal: '' }))
+        );
+      } else {
+        setSaldoAwal([]);
+      }
     }
-  }, [userToEdit, isOpen]);
+  }, [userToEdit, isOpen, legacyMode, jenisTabungan]);
 
   if (!isOpen) return null;
 
@@ -66,10 +89,6 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
     e.preventDefault();
     if (!name.trim()) {
       showToast('Nama lengkap wajib diisi', 'error');
-      return;
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      showToast('Alamat email tidak valid', 'error');
       return;
     }
     if (!phone.trim()) {
@@ -124,7 +143,6 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
     if (userToEdit) {
       updateUser(userToEdit.id, {
         name,
-        email,
         phone,
         nomor_anggota: nomorAnggota,
         role,
@@ -137,7 +155,6 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
     } else {
       createUser({
         name,
-        email,
         phone,
         nomor_anggota: nomorAnggota,
         role,
@@ -145,7 +162,18 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
         address,
         password,
         password_confirmation: passwordConfirm,
-        created_at: tanggalBergabung
+        created_at: tanggalBergabung,
+        // Kirim saldo awal jika ada dan bukan kosong
+        ...(legacyMode && saldoAwal.some(s => parseFloat(s.nominal) > 0)
+          ? {
+              saldo_awal: saldoAwal
+                .filter(s => parseFloat(s.nominal) > 0)
+                .map(s => ({
+                  jenis_tabungan_id: s.jenis_tabungan_id,
+                  nominal: parseFloat(s.nominal)
+                }))
+            }
+          : {})
       });
     }
 
@@ -188,35 +216,20 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                Alamat Email
-              </label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="nama@email.com"
-                className="w-full py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                Nomor Telepon / WhatsApp
-              </label>
-              <input
-                type="tel"
-                required
-                inputMode="numeric"
-                maxLength={15}
-                value={phone}
-                onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 15))}
-                placeholder="08123456789"
-                className="w-full py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none"
-              />
-            </div>
+          <div>
+            <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+              Nomor Telepon / WhatsApp
+            </label>
+            <input
+              type="tel"
+              required
+              inputMode="numeric"
+              maxLength={15}
+              value={phone}
+              onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 15))}
+              placeholder="08123456789"
+              className="w-full py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none"
+            />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

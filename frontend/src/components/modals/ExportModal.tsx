@@ -14,6 +14,8 @@ interface ExportModalProps {
   isOpen: boolean;
   onClose: () => void;
   filters?: TransaksiFilters;
+  aliran?: string;
+  periode?: string;
 }
 
 const ROLE_LABEL: Record<string, string> = {
@@ -64,7 +66,6 @@ export const ExportModal: React.FC<ExportModalProps> = ({ type, isOpen, onClose,
       anggota: u.nomor_anggota || '-',
       username: u.username || '-',
       name: u.name,
-      email: u.email,
       phone: u.phone || '-',
       alamat: u.address || '-',
       role: ROLE_LABEL[u.role] || u.role,
@@ -118,7 +119,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ type, isOpen, onClose,
               { header: 'No Anggota', dataKey: 'anggota' },
               { header: 'Username', dataKey: 'username' },
               { header: 'Nama Lengkap', dataKey: 'name' },
-              { header: 'Email', dataKey: 'email' },
+
               { header: 'No. HP', dataKey: 'phone' },
               { header: 'Alamat', dataKey: 'alamat' },
               { header: 'Peran', dataKey: 'role' },

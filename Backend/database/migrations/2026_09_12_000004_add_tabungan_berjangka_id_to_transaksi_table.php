@@ -8,13 +8,15 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('transaksi', function (Blueprint $table) {
-            $table->foreignId('tabungan_berjangka_id')
-                ->nullable()
-                ->after('pendaftaran_qurban_id')
-                ->constrained('tabungan_berjangka')
-                ->nullOnDelete();
-        });
+        if (!Schema::hasColumn('transaksi', 'tabungan_berjangka_id')) {
+            Schema::table('transaksi', function (Blueprint $table) {
+                $table->foreignId('tabungan_berjangka_id')
+                    ->nullable()
+                    ->after('pendaftaran_qurban_id')
+                    ->constrained('tabungan_berjangka')
+                    ->nullOnDelete();
+            });
+        }
     }
 
     public function down(): void

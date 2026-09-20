@@ -12,10 +12,12 @@ class UserSeeder extends Seeder
     public function run(): void
     {
         User::updateOrCreate(
-            ['email' => 'nasabah@berkahmulia.com'],
+            ['username' => 'nasabah1'],
             [
                 'name' => 'Nasabah Uji',
-                'email' => 'nasabah@berkahmulia.com',
+                'username' => 'nasabah1',
+                'nomor_anggota' => '1000000001',
+                'email' => 'nasabah1@berkahmulia.local',
                 'phone' => '081200000002',
                 'password' => 'password123',
                 'role' => UserRole::User,
@@ -26,10 +28,12 @@ class UserSeeder extends Seeder
         );
 
         User::updateOrCreate(
-            ['email' => 'nasabah2@berkahmulia.com'],
+            ['username' => 'nasabah2'],
             [
                 'name' => 'Nasabah Uji 2',
-                'email' => 'nasabah2@berkahmulia.com',
+                'username' => 'nasabah2',
+                'nomor_anggota' => '1000000002',
+                'email' => 'nasabah2@berkahmulia.local',
                 'phone' => '081200000003',
                 'password' => 'password123',
                 'role' => UserRole::User,

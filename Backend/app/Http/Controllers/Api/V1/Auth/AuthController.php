@@ -14,9 +14,7 @@ use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 class AuthController extends Controller
@@ -25,19 +23,17 @@ class AuthController extends Controller
 
     /**
      * POST /auth/login
-     * Reject login for rejected/suspended users with specific messages.
+     * Login hanya dengan username atau nomor anggota (10 digit) + password.
+     * Email tidak digunakan sebagai identifier login.
      */
     public function login(LoginRequest $request): JsonResponse
     {
         $identifier = trim($request->username);
 
         // Deteksi jenis identifier:
-        // 1. Format email → cari di kolom email (admin)
-        // 2. 10 digit angka → cari di nomor_anggota (nasabah)
-        // 3. Lainnya → cari di kolom username (nasabah)
-        if (filter_var($identifier, FILTER_VALIDATE_EMAIL)) {
-            $user = User::where('email', $identifier)->first();
-        } elseif (preg_match('/^\d{10}$/', $identifier)) {
+        // 1. 10 digit angka → cari di nomor_anggota (nasabah)
+        // 2. Lainnya → cari di kolom username (nasabah/admin)
+        if (preg_match('/^\d{10}$/', $identifier)) {
             $user = User::where('nomor_anggota', $identifier)->first();
         } else {
             $user = User::where('username', $identifier)->first();
@@ -48,9 +44,8 @@ class AuthController extends Controller
         }
 
         // Anti-enumeration: a non-active account returns the SAME generic 401 as
-        // a wrong password, so attackers cannot probe which emails exist or their
-        // exact status. Legitimate users are still notified via their registration
-        // email/notification; rejected reason stays internal.
+        // a wrong password, so attackers cannot probe which usernames exist or their
+        // exact status. Legitimate users are still notified via admin.
         if ($user->status !== UserStatus::Active) {
             return $this->errorResponse('Username/nomor anggota atau password salah.', 401, 'INVALID_CREDENTIALS');
         }
@@ -134,49 +129,6 @@ class AuthController extends Controller
         return $this->successResponse(new UserResource($user->fresh()), 'Profil berhasil diperbarui.');
     }
 
-    /**
-     * POST /auth/forgot-password
-     */
-    public function forgotPassword(Request $request): JsonResponse
-    {
-        $request->validate(['email' => 'required|email']);
-
-        // Always return success to prevent email enumeration — per anti-enumeration best practice.
-        Password::sendResetLink($request->only('email'));
-
-        return $this->successResponse(null, 'Jika email Anda terdaftar, link reset password telah dikirim.');
-    }
-
-    /**
-     * POST /auth/reset-password
-     */
-    public function resetPassword(Request $request): JsonResponse
-    {
-        $request->validate([
-            'token' => 'required',
-            'email' => 'required|email',
-            'password' => 'required|min:8|regex:/^(?=.*[a-zA-Z])(?=.*\d).+$/|confirmed',
-        ]);
-
-        $status = Password::reset(
-            $request->only('email', 'password', 'password_confirmation', 'token'),
-            function (User $user, string $password) {
-                $user->forceFill([
-                    'password' => $password,
-                    'remember_token' => Str::random(60),
-                ])->save();
-
-                // Revoke all tokens on password reset — per BAGIAN I poin 1
-                $user->tokens()->delete();
-            }
-        );
-
-        if ($status === Password::PASSWORD_RESET) {
-            return $this->successResponse(null, 'Password berhasil direset.');
-        }
-
-        return $this->errorResponse('Gagal mereset password. Token tidak valid atau sudah expired.', 400);
-    }
 
     /**
      * POST /auth/change-password

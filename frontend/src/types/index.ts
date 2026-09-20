@@ -21,7 +21,7 @@ export interface User {
   id: number;
   name: string;
   username: string;
-  email: string;
+  email?: string; // internal placeholder, not user-facing
   phone: string;
   nomor_anggota?: string;
   target_emas_gram?: number | null;
@@ -29,7 +29,6 @@ export interface User {
   status: UserStatus;
   address?: string;
   avatar_path?: string;
-  email_verified_at?: string;
   approved_by?: number;
   approved_at?: string;
   rejected_reason?: string;

@@ -353,7 +353,6 @@ class UserController extends Controller
     {
         $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email',
             'phone' => 'nullable|string|max:20|unique:users,phone',
             'nomor_anggota' => 'required|string|regex:/^\d{10}$/|unique:users,nomor_anggota',
             'password' => 'required|string|min:8',
@@ -376,7 +375,7 @@ class UserController extends Controller
         $user = new User([
             'name' => $request->name,
             'username' => $username,
-            'email' => $request->email,
+            'email' => 'user.' . $username . '@berkahmulia.local',
             'phone' => $request->phone,
             'nomor_anggota' => $request->nomor_anggota,
             'password' => $request->password,
@@ -447,7 +446,6 @@ class UserController extends Controller
     {
         $request->validate([
             'name' => 'sometimes|string|max:255',
-            'email' => 'sometimes|email|unique:users,email,'.$user->id,
             'phone' => 'sometimes|string|max:20|unique:users,phone,'.$user->id,
             'nomor_anggota' => 'sometimes|string|regex:/^\d{10}$/|unique:users,nomor_anggota,'.$user->id,
             'address' => 'nullable|string|max:500',
@@ -457,8 +455,8 @@ class UserController extends Controller
             'password_confirmation' => 'sometimes|string',
         ]);
 
-        $fillableFields = ['name', 'email', 'phone', 'nomor_anggota', 'address', 'created_at'];
-        $allFields = ['name', 'email', 'phone', 'nomor_anggota', 'address', 'role', 'created_at'];
+        $fillableFields = ['name', 'phone', 'nomor_anggota', 'address', 'created_at'];
+        $allFields = ['name', 'phone', 'nomor_anggota', 'address', 'role', 'created_at'];
         $oldValues = $user->only($allFields);
 
         $user->fill($request->only($fillableFields));
