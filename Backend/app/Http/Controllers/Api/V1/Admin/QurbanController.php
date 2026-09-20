@@ -272,19 +272,29 @@ class QurbanController extends Controller
 
     public function cairkan(Request $request, PendaftaranQurban $pendaftaran): JsonResponse
     {
-        if ($pendaftaran->status === StatusPendaftaranQurban::SudahDicairkan) {
-            return $this->errorResponse('Pendaftaran ini sudah dicairkan.', 409, 'CONFLICT');
-        }
+        // Semua cek status & nominal di dalam transaksi + lock baris, agar dua
+        // klik/submit paralel tidak menghasilkan pencairan ganda.
+        $result = DB::transaction(function () use ($pendaftaran) {
+            PendaftaranQurban::whereKey($pendaftaran->id)->lockForUpdate()->first();
+            $pendaftaran->refresh();
 
-        // Dana tidak boleh dicairkan sebelum target tercapai (atau sudah dinyatakan lunas).
-        if (! in_array($pendaftaran->status, [StatusPendaftaranQurban::TargetTercapai, StatusPendaftaranQurban::SudahLunas], true)) {
-            return $this->errorResponse('Dana qurban belum bisa dicairkan karena target belum tercapai.', 422, 'GOAL_NOT_REACHED');
-        }
+            if ($pendaftaran->status === StatusPendaftaranQurban::SudahDicairkan) {
+                return $this->errorResponse('Pendaftaran ini sudah dicairkan.', 409, 'CONFLICT');
+            }
 
-        $oldValues = ['status' => $pendaftaran->status->value, 'total_terkumpul' => $pendaftaran->total_terkumpul];
-        $nominal = (float) $pendaftaran->total_terkumpul;
+            // Dana tidak boleh dicairkan sebelum target tercapai (atau sudah dinyatakan
+            // lunas). siap_dicairkan = target tercapai lalu periode ditutup otomatis.
+            if (! in_array($pendaftaran->status, [
+                StatusPendaftaranQurban::TargetTercapai,
+                StatusPendaftaranQurban::SudahLunas,
+                StatusPendaftaranQurban::SiapDicairkan,
+            ], true)) {
+                return $this->errorResponse('Dana qurban belum bisa dicairkan karena target belum tercapai.', 422, 'GOAL_NOT_REACHED');
+            }
 
-        DB::transaction(function () use ($pendaftaran, $nominal) {
+            $oldValues = ['status' => $pendaftaran->status->value, 'total_terkumpul' => $pendaftaran->total_terkumpul];
+            $nominal = (float) $pendaftaran->total_terkumpul;
+
             // Catat pengeluaran sebagai transaksi tarik terverifikasi (jejak ledger),
             // bukan sekadar mengosongkan total_terkumpul.
             $this->catatPencairanQurban($pendaftaran, $nominal, 'Pencairan dana qurban oleh admin.');
@@ -295,9 +305,15 @@ class QurbanController extends Controller
                 'tanggal_dicairkan' => now()->toDateString(),
                 'dicairkan_oleh' => auth()->id(),
             ]);
+
+            AuditLog::record('cairkan', $pendaftaran, $oldValues, ['status' => 'sudah_dicairkan', 'total_terkumpul' => 0]);
+
+            return null;
         });
 
-        AuditLog::record('cairkan', $pendaftaran, $oldValues, ['status' => 'sudah_dicairkan', 'total_terkumpul' => 0]);
+        if ($result) {
+            return $result;
+        }
 
         return $this->successResponse(new PendaftaranQurbanResource($pendaftaran->fresh()->load(['user', 'hewanQurban'])), 'Pendaftaran qurban berhasil dicairkan.');
     }
@@ -308,7 +324,7 @@ class QurbanController extends Controller
             return $this->errorResponse('Pendaftaran ini sudah dinyatakan lunas.', 409, 'CONFLICT');
         }
 
-        if (! in_array($pendaftaran->status, [StatusPendaftaranQurban::TargetTercapai, StatusPendaftaranQurban::MenungguVerifikasi])) {
+        if (! in_array($pendaftaran->status, [StatusPendaftaranQurban::TargetTercapai, StatusPendaftaranQurban::MenungguVerifikasi, StatusPendaftaranQurban::SiapDicairkan])) {
             return $this->errorResponse('Nasabah belum mencapai target dana qurban, belum dapat dinyatakan lunas.', 422, 'GOAL_NOT_REACHED');
         }
 

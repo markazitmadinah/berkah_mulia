@@ -316,6 +316,68 @@ class QurbanTest extends ApiTestCase
             ->assertStatus(409)->assertJsonPath('error_code', 'CONFLICT');
     }
 
+    public function test_penutupan_periode_tidak_membekukan_pendaftaran_menabung(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+        $periode = $this->createAktifPeriode();
+        $hewan = $this->createHewan($periode);
+        $user = $this->createUser();
+
+        $periode->update(['status' => 'ditutup', 'tanggal_pencairan' => '2020-01-01']);
+
+        $menabung = PendaftaranQurban::create([
+            'user_id' => $user->id,
+            'periode_qurban_id' => $periode->id,
+            'hewan_qurban_id' => $hewan->id,
+            'jumlah_hewan' => 1,
+            'target_dana' => 1000000,
+            'total_terkumpul' => 500000,
+            'status' => StatusPendaftaranQurban::Menabung,
+            'tanggal_daftar' => now()->toDateString(),
+        ]);
+        $tercapai = PendaftaranQurban::create([
+            'user_id' => $user->id,
+            'periode_qurban_id' => $periode->id,
+            'hewan_qurban_id' => $hewan->id,
+            'jumlah_hewan' => 1,
+            'target_dana' => 1000000,
+            'total_terkumpul' => 1000000,
+            'status' => StatusPendaftaranQurban::TargetTercapai,
+            'tanggal_daftar' => now()->toDateString(),
+        ]);
+
+        $this->travelTo(\Illuminate\Support\Carbon::today()->startOfDay());
+        $this->artisan('schedule:run');
+
+        $this->assertDatabaseHas('pendaftaran_qurban', ['id' => $menabung->id, 'status' => 'menabung']);
+        $this->assertDatabaseHas('pendaftaran_qurban', ['id' => $tercapai->id, 'status' => 'siap_dicairkan']);
+    }
+
+    public function test_admin_cairkan_dari_siap_dicairkan(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+        $periode = $this->createAktifPeriode();
+        $hewan = $this->createHewan($periode);
+        $user = $this->createUser();
+        $pendaftaran = PendaftaranQurban::create([
+            'user_id' => $user->id,
+            'periode_qurban_id' => $periode->id,
+            'hewan_qurban_id' => $hewan->id,
+            'jumlah_hewan' => 1,
+            'target_dana' => 1000000,
+            'total_terkumpul' => 1000000,
+            'status' => StatusPendaftaranQurban::SiapDicairkan,
+            'tanggal_daftar' => now()->toDateString(),
+        ]);
+
+        $this->postJson("/api/v1/admin/qurban/{$pendaftaran->id}/cairkan")
+            ->assertOk()->assertJsonPath('data.status', 'sudah_dicairkan');
+
+        $this->assertDatabaseHas('pendaftaran_qurban', ['id' => $pendaftaran->id, 'status' => 'sudah_dicairkan']);
+    }
+
     public function test_admin_nyatakan_lunas_dari_target_tercapai(): void
     {
         $this->seedBase();

@@ -271,6 +271,11 @@ export const UserTabunganQurban: React.FC<UserTabunganQurbanProps> = ({
                         {pend.sisa_pembayaran != null && pend.sisa_pembayaran > 0 && (
                           <span className="text-slate-400">· sisa {pend.sisa_pembayaran}× bayar</span>
                         )}
+                        {pend.tertunggak?.jumlah_periode != null && pend.tertunggak.jumlah_periode > 0 && (
+                          <span className="text-rose-600 dark:text-rose-300 font-bold">
+                            🔔 Tertunggak {pend.tertunggak.jumlah_periode}× (Rp {formatRupiah(pend.tertunggak.nominal)})
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>

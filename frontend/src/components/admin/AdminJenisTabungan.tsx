@@ -135,27 +135,27 @@ export const AdminJenisTabungan: React.FC<AdminJenisTabunganProps> = ({
                 </div>
 
                 {item.sub_jenis === 'hari_raya' && (
-                  <div className="mt-4 p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/50">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400 mb-1 flex items-center gap-1.5">
-                      <Calendar className="w-3.5 h-3.5" /> Tanggal Hari Raya (Pencairan)
-                    </p>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
-                      Dana nasabah otomatis dapat dicairkan mulai 1 minggu sebelum tanggal ini.
-                    </p>
-                    <div className="flex gap-2 mt-2">
+                  <div className="mt-4">
+                    <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/50">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400 mb-1 flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5" /> Tanggal Hari Raya (Pencairan)
+                      </p>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
+                        Dana nasabah otomatis dapat dicairkan mulai 1 minggu sebelum tanggal ini.
+                      </p>
                       <input
                         type="date"
                         value={deadlineDrafts[item.id] ?? item.deadline ?? ''}
                         onChange={(e) => setDeadlineDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))}
-                        className="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50"
+                        className="w-full mt-2 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50"
                       />
-                      <button
-                        onClick={() => handleSaveHariRayaDeadline(item)}
-                        className="px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-colors cursor-pointer"
-                      >
-                        Simpan
-                      </button>
                     </div>
+                    <button
+                      onClick={() => handleSaveHariRayaDeadline(item)}
+                      className="mt-2 w-full py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      Simpan
+                    </button>
                   </div>
                 )}
               </div>

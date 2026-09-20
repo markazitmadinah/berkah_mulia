@@ -154,67 +154,90 @@ class PencairanController extends Controller
      */
     private function cairkanEmasPenuh(Request $request, User $user, JenisTabungan $jenis): JsonResponse
     {
-        $saldoGram = $this->saldoEmasService->getSaldoGram($user, $jenis);
-        $dana = $this->saldoEmasService->getSaldoDana($user, $jenis);
+        // Lock baris user + hitung ulang saldo di dalam transaksi (anti double payout).
+        $result = DB::transaction(function () use ($request, $user, $jenis) {
+            User::whereKey($user->id)->lockForUpdate()->first();
 
-        if ($saldoGram <= 0 && $dana <= 0) {
-            return $this->errorResponse('Tidak ada saldo emas yang bisa dicairkan.', 422, 'NO_BALANCE');
+            $saldoGram = $this->saldoEmasService->getSaldoGram($user, $jenis);
+            $dana = $this->saldoEmasService->getSaldoDana($user, $jenis);
+
+            if ($saldoGram <= 0 && $dana <= 0) {
+                return $this->errorResponse('Tidak ada saldo emas yang bisa dicairkan.', 422, 'NO_BALANCE');
+            }
+
+            $harga = HargaEmasHarian::hargaTerkini();
+            if ($saldoGram > 0 && ! $harga) {
+                return $this->errorResponse('Harga emas belum diinput oleh admin.', 400, 'HARGA_BELUM_ADA');
+            }
+
+            $nilaiGram = $saldoGram > 0 ? round($saldoGram * $harga->hargaJualPerGram($saldoGram), 2) : 0.0;
+            ['penalti' => $penalti, 'refund' => $refund] = $this->saldoEmasService->hitungRefund($nilaiGram, $dana);
+
+            $t = $this->ciptakanTarik($user, $jenis, $refund, $request, [
+                'nominal_emas' => $nilaiGram,
+                'nominal_selisih' => -1 * $dana,
+                'unit_didapat' => -1 * $saldoGram,
+                'biaya_penalti' => $penalti,
+                'harga_acuan_id' => $harga?->id,
+                'harga_acuan_snapshot' => $harga ? $harga->hargaJualPerGram($saldoGram) : null,
+            ]);
+
+            $user->update(['target_emas_gram' => null]);
+
+            return $t;
+        });
+
+        if ($result instanceof JsonResponse) {
+            return $result;
         }
 
-        $harga = HargaEmasHarian::hargaTerkini();
-        if ($saldoGram > 0 && ! $harga) {
-            return $this->errorResponse('Harga emas belum diinput oleh admin.', 400, 'HARGA_BELUM_ADA');
-        }
+        $this->beriTahuUser($user, 'Pembatalan Tabungan Emas', 'Tabungan emas Anda dibatalkan. Refund sebesar Rp ' . number_format((float) $result->nominal, 0, ',', '.') . ' (setelah potongan 10%) telah diproses admin.');
 
-        $nilaiGram = $saldoGram > 0 ? round($saldoGram * $harga->hargaJualPerGram($saldoGram), 2) : 0.0;
-        ['penalti' => $penalti, 'refund' => $refund] = $this->saldoEmasService->hitungRefund($nilaiGram, $dana);
-
-        $transaksi = $this->ciptakanTarik($user, $jenis, $refund, $request, [
-            'nominal_emas' => $nilaiGram,
-            'nominal_selisih' => -1 * $dana,
-            'unit_didapat' => -1 * $saldoGram,
-            'biaya_penalti' => $penalti,
-            'harga_acuan_id' => $harga?->id,
-            'harga_acuan_snapshot' => $harga ? $harga->hargaJualPerGram($saldoGram) : null,
-        ]);
-
-        $user->update(['target_emas_gram' => null]);
-
-        $this->beriTahuUser($user, 'Pembatalan Tabungan Emas', 'Tabungan emas Anda dibatalkan. Refund sebesar Rp ' . number_format($refund, 0, ',', '.') . ' (setelah potongan 10%) telah diproses admin.');
-
-        return $this->createdResponse(new TransaksiResource($transaksi->load('user:id,name', 'jenisTabungan')), 'Batal & refund emas berhasil diproses.');
+        return $this->createdResponse(new TransaksiResource($result->load('user:id,name', 'jenisTabungan')), 'Batal & refund emas berhasil diproses.');
     }
 
     private function cairkanPribadi(Request $request, User $user, JenisTabungan $jenis): JsonResponse
     {
-        $setor = Transaksi::milikUser($user->id)
-            ->where('jenis_tabungan_id', $jenis->id)
-            ->terverifikasi()
-            ->where('jenis_transaksi', JenisTransaksi::Setor->value)
-            ->sum('nominal');
+        // Lock baris user lalu hitung ulang saldo di dalam transaksi — dua request
+        // paralel tidak bisa menggandakan pencairan saldo yang sama (double payout).
+        $result = DB::transaction(function () use ($request, $user, $jenis) {
+            User::whereKey($user->id)->lockForUpdate()->first();
 
-        $tarik = Transaksi::milikUser($user->id)
-            ->where('jenis_tabungan_id', $jenis->id)
-            ->terverifikasi()
-            ->where('jenis_transaksi', JenisTransaksi::Tarik->value)
-            ->sum('nominal');
+            $setor = Transaksi::milikUser($user->id)
+                ->where('jenis_tabungan_id', $jenis->id)
+                ->terverifikasi()
+                ->where('jenis_transaksi', JenisTransaksi::Setor->value)
+                ->sum('nominal');
 
-        $saldo = (float) ($setor - $tarik);
-        if ($saldo < 10000) {
-            return $this->errorResponse('Tidak ada saldo tabungan yang bisa dicairkan.', 422, 'NO_BALANCE');
+            $tarik = Transaksi::milikUser($user->id)
+                ->where('jenis_tabungan_id', $jenis->id)
+                ->terverifikasi()
+                ->where('jenis_transaksi', JenisTransaksi::Tarik->value)
+                ->sum('nominal');
+
+            $saldo = (float) ($setor - $tarik);
+            if ($saldo < 10000) {
+                return $this->errorResponse('Tidak ada saldo tabungan yang bisa dicairkan.', 422, 'NO_BALANCE');
+            }
+
+            // Admin boleh menarik sebagian: nominal dari form; tanpa nominal = tarik penuh.
+            $nominal = $request->filled('nominal') ? (float) $request->nominal : $saldo;
+
+            if ($nominal < 10000) {
+                return $this->errorResponse('Nominal penarikan minimal Rp 10.000.', 422, 'NOMINAL_MINIMAL');
+            }
+            if ($nominal > $saldo) {
+                return $this->errorResponse('Nominal penarikan melebihi saldo tersedia (Rp ' . number_format($saldo, 0, ',', '.') . ').', 422, 'NOMINAL_MELEBIHI_SALDO');
+            }
+
+            return $this->ciptakanTarik($user, $jenis, $nominal, $request);
+        });
+
+        if ($result instanceof JsonResponse) {
+            return $result;
         }
 
-        // Admin boleh menarik sebagian: nominal dari form; tanpa nominal = tarik penuh.
-        $nominal = $request->filled('nominal') ? (float) $request->nominal : $saldo;
-
-        if ($nominal < 10000) {
-            return $this->errorResponse('Nominal penarikan minimal Rp 10.000.', 422, 'NOMINAL_MINIMAL');
-        }
-        if ($nominal > $saldo) {
-            return $this->errorResponse('Nominal penarikan melebihi saldo tersedia (Rp ' . number_format($saldo, 0, ',', '.') . ').', 422, 'NOMINAL_MELEBIHI_SALDO');
-        }
-
-        $transaksi = $this->ciptakanTarik($user, $jenis, $nominal, $request);
+        $nominal = (float) $result->nominal;
 
         if ($jenis->sub_jenis === SubJenisTabungan::HariRaya) {
             $this->beriTahuUser($user, 'Pencairan Tabungan Hari Raya', 'Pencairan tabungan hari raya sebesar Rp ' . number_format($nominal, 0, ',', '.') . ' telah diproses admin.');
@@ -222,29 +245,34 @@ class PencairanController extends Controller
             $this->beriTahuUser($user, 'Pencairan Tabungan Mandiri', 'Pencairan tabungan mandiri sebesar Rp ' . number_format($nominal, 0, ',', '.') . ' telah diproses admin.');
         }
 
-        return $this->createdResponse(new TransaksiResource($transaksi->load('user:id,name', 'jenisTabungan')), 'Pencairan tabungan berhasil diproses.');
+        return $this->createdResponse(new TransaksiResource($result->load('user:id,name', 'jenisTabungan')), 'Pencairan tabungan berhasil diproses.');
     }
 
     private function cairkanBerjangka(Request $request, User $user, JenisTabungan $jenis): JsonResponse
     {
-        $tb = TabunganBerjangka::where('id', $request->tabungan_berjangka_id)
-            ->where('user_id', $user->id)
-            ->first();
+        // Lock baris user lalu re-fetch & re-check status tabungan di dalam transaksi,
+        // agar dua request paralel tidak menggandakan pencairan.
+        $result = DB::transaction(function () use ($request, $user, $jenis) {
+            User::whereKey($user->id)->lockForUpdate()->first();
 
-        if (! $tb) {
-            return $this->errorResponse('Tabungan berjangka tidak ditemukan untuk nasabah ini.', 404, 'NOT_FOUND');
-        }
+            $tb = TabunganBerjangka::where('id', $request->tabungan_berjangka_id)
+                ->where('user_id', $user->id)
+                ->lockForUpdate()
+                ->first();
 
-        if ($tb->status !== 'aktif') {
-            return $this->errorResponse('Hanya tabungan berjangka aktif yang dapat dicairkan.', 422, 'STATUS_INVALID');
-        }
+            if (! $tb) {
+                return $this->errorResponse('Tabungan berjangka tidak ditemukan untuk nasabah ini.', 404, 'NOT_FOUND');
+            }
 
-        $saldo = $tb->terkumpulNominal();
-        if ($saldo <= 0) {
-            return $this->errorResponse('Tidak ada saldo tabungan berjangka yang bisa dicairkan.', 422, 'NO_BALANCE');
-        }
+            if ($tb->status !== 'aktif') {
+                return $this->errorResponse('Hanya tabungan berjangka aktif yang dapat dicairkan.', 422, 'STATUS_INVALID');
+            }
 
-        $transaksi = DB::transaction(function () use ($request, $user, $jenis, $tb, $saldo) {
+            $saldo = $tb->terkumpulNominal();
+            if ($saldo <= 0) {
+                return $this->errorResponse('Tidak ada saldo tabungan berjangka yang bisa dicairkan.', 422, 'NO_BALANCE');
+            }
+
             $t = $this->transaksiService->buatTransaksi([
                 'user_id' => $user->id,
                 'jenis_tabungan_id' => $jenis->id,
@@ -261,9 +289,13 @@ class PencairanController extends Controller
             return $t;
         });
 
-        $this->beriTahuUser($user, 'Pencairan Tabungan Berjangka', 'Pencairan tabungan berjangka sebesar Rp ' . number_format($saldo, 0, ',', '.') . ' telah diproses admin.');
+        if ($result instanceof JsonResponse) {
+            return $result;
+        }
 
-        return $this->createdResponse(new TransaksiResource($transaksi->load('user:id,name', 'jenisTabungan')), 'Pencairan tabungan berjangka berhasil diproses.');
+        $this->beriTahuUser($user, 'Pencairan Tabungan Berjangka', 'Pencairan tabungan berjangka sebesar Rp ' . number_format((float) $result->nominal, 0, ',', '.') . ' telah diproses admin.');
+
+        return $this->createdResponse(new TransaksiResource($result->load('user:id,name', 'jenisTabungan')), 'Pencairan tabungan berjangka berhasil diproses.');
     }
 
     private function ciptakanTarik(User $user, JenisTabungan $jenis, float $nominal, Request $request, array $extra = []): Transaksi

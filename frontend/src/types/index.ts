@@ -144,6 +144,7 @@ export interface PendaftaranQurban {
   frekuensi_label?: string | null;
   nominal_per_periode?: number | null;
   sisa_pembayaran?: number | null;
+  tertunggak?: { jumlah_periode: number; nominal: number } | null;
   persentase?: number | null;
 }
 
@@ -194,6 +195,8 @@ export interface Transaksi {
   created_at: string;
 }
 
+export type Aliran = 'semua' | 'masuk' | 'keluar';
+
 export interface TransaksiFilters {
   tanggal_awal?: string;
   tanggal_akhir?: string;
@@ -202,6 +205,8 @@ export interface TransaksiFilters {
   tipe?: string;
   jenis_tabungan_id?: number;
   search?: string;
+  aliran?: Aliran;
+  periode?: 'hari-ini' | '7-hari' | '30-hari' | 'bulan-ini' | 'semua' | 'kustom';
 }
 
 export type RekapPeriod = 'harian' | 'mingguan' | 'bulanan';
@@ -333,6 +338,7 @@ export interface FrekuensiProgress {
   frekuensi_label: string;
   nominal_per_periode: number | null;
   sisa_pembayaran: number | null;
+  tertunggak?: { jumlah_periode: number; nominal: number } | null;
 }
 
 export interface UserSummaryProgress {

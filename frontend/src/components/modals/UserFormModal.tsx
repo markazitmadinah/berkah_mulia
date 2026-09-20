@@ -1,38 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
-  X,
-  UserCheck,
-  Building2,
-  Mail,
-  Phone,
-  MapPin,
-  History,
-  Coins
+  X
 } from 'lucide-react';
 import { User } from '../../types';
-import { formatRupiah } from '../../utils/format';
 
 interface UserFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   userToEdit?: User | null;
-  legacyMode?: boolean;
-}
-
-interface SaldoAwalItem {
-  jenis_tabungan_id: number;
-  nama: string;
-  nominal: string;
 }
 
 export const UserFormModal: React.FC<UserFormModalProps> = ({
   isOpen,
   onClose,
-  userToEdit,
-  legacyMode = false
+  userToEdit
 }) => {
-  const { createUser, updateUser, showToast, jenisTabungan } = useApp();
+  const { createUser, updateUser, showToast } = useApp();
 
   const [name, setName] = useState<string>('');
   const [email, setEmail] = useState<string>('');
@@ -45,7 +29,6 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   const [password, setPassword] = useState<string>('');
   const [passwordConfirm, setPasswordConfirm] = useState<string>('');
   const [showPasswordSection, setShowPasswordSection] = useState(false);
-  const [saldoAwal, setSaldoAwal] = useState<SaldoAwalItem[]>([]);
 
   const hariIni = () => new Date().toISOString().slice(0, 10);
 
@@ -62,7 +45,6 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       setPassword('');
       setPasswordConfirm('');
       setShowPasswordSection(false);
-      setSaldoAwal([]);
     } else {
       setName('');
       setEmail('');
@@ -75,18 +57,8 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       setPassword('');
       setPasswordConfirm('');
       setShowPasswordSection(false);
-      // Inisialisasi saldo awal dari jenis tabungan aktif saat legacy mode
-      if (legacyMode) {
-        setSaldoAwal(
-          jenisTabungan
-            .filter(j => j.status_aktif)
-            .map(j => ({ jenis_tabungan_id: j.id, nama: j.nama, nominal: '' }))
-        );
-      } else {
-        setSaldoAwal([]);
-      }
     }
-  }, [userToEdit, isOpen, legacyMode, jenisTabungan]);
+  }, [userToEdit, isOpen]);
 
   if (!isOpen) return null;
 
@@ -173,18 +145,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
         address,
         password,
         password_confirmation: passwordConfirm,
-        created_at: tanggalBergabung,
-        // Kirim saldo awal jika ada dan bukan kosong
-        ...(legacyMode && saldoAwal.some(s => parseFloat(s.nominal) > 0)
-          ? {
-              saldo_awal: saldoAwal
-                .filter(s => parseFloat(s.nominal) > 0)
-                .map(s => ({
-                  jenis_tabungan_id: s.jenis_tabungan_id,
-                  nominal: parseFloat(s.nominal)
-                }))
-            }
-          : {})
+        created_at: tanggalBergabung
       });
     }
 
@@ -198,7 +159,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
         <div className="flex items-center justify-between p-6 border-b border-slate-100 dark:border-slate-700">
           <div>
             <h3 className="font-extrabold text-lg text-slate-900 dark:text-white">
-              {userToEdit ? 'Edit Data Nasabah / Pengurus' : legacyMode ? 'Tambah User Lama (Migrasi Data)' : 'Tambah Nasabah Baru'}
+              {userToEdit ? 'Edit Data Nasabah / Pengurus' : 'Tambah Nasabah Baru'}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               Isi parameter data keanggotaan dan profil identitas
@@ -420,44 +381,6 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
                   </div>
                 </div>
               )}
-            </div>
-          )}
-
-          {/* Saldo Awal Section — hanya untuk legacy mode */}
-          {legacyMode && !userToEdit && saldoAwal.length > 0 && (
-            <div className="border border-dashed border-amber-200 dark:border-amber-800/60 rounded-2xl p-4 space-y-3">
-              <div className="flex items-center gap-2 mb-1">
-                <History className="w-4 h-4 text-amber-500" />
-                <span className="text-xs font-bold text-amber-700 dark:text-amber-300">Saldo Awal / Progress Tabungan Sebelumnya</span>
-              </div>
-              <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                Isi nominal saldo awal dari tabungan lama. Kosongkan jika tidak ada. Data ini akan dicatat sebagai transaksi historis terverifikasi.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {saldoAwal.map((item, idx) => (
-                  <div key={item.jenis_tabungan_id}>
-                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5 text-[11px]">
-                      <Coins className="w-3 h-3 inline mr-1 text-amber-500" />
-                      {item.nama}
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">Rp</span>
-                      <input
-                        type="number"
-                        min="0"
-                        value={item.nominal}
-                        onChange={(e) => {
-                          const updated = [...saldoAwal];
-                          updated[idx] = { ...updated[idx], nominal: e.target.value };
-                          setSaldoAwal(updated);
-                        }}
-                        placeholder="0"
-                        className="w-full py-2.5 pl-9 pr-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/30"
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
             </div>
           )}
 

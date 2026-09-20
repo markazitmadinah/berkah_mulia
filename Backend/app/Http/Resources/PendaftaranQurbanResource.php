@@ -24,6 +24,7 @@ class PendaftaranQurbanResource extends JsonResource
             'frekuensi_label' => $this->frekuensiLabel(),
             'nominal_per_periode' => $this->nominal_per_periode,
             'sisa_pembayaran' => $this->sisaPembayaran(),
+            'tertunggak' => $this->tertunggak(),
             'persentase' => $this->hitungPersentase(),
             'status' => $this->status->value,
             'status_label' => $this->status->label(),

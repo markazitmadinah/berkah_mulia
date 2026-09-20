@@ -5,7 +5,6 @@ namespace App\Exports;
 use App\Enums\JenisTransaksi;
 use App\Enums\StatusVerifikasi;
 use App\Models\Transaksi;
-use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromArray;
 use Maatwebsite\Excel\Concerns\WithColumnFormatting;
@@ -15,7 +14,6 @@ use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithStyles;
 use Maatwebsite\Excel\Concerns\WithTitle;
 use Maatwebsite\Excel\Events\AfterSheet;
-use PhpOffice\PhpSpreadsheet\Shared\Date;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Color;
@@ -23,7 +21,7 @@ use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-class TransaksiRekapExport implements FromArray, WithColumnFormatting, WithColumnWidths, WithEvents, WithHeadings, WithStyles, WithTitle
+class TransaksiRekapKategoriExport implements FromArray, WithColumnFormatting, WithColumnWidths, WithEvents, WithHeadings, WithStyles, WithTitle
 {
     private array $rows;
 
@@ -34,45 +32,37 @@ class TransaksiRekapExport implements FromArray, WithColumnFormatting, WithColum
 
     public function title(): string
     {
-        return 'Rekap Harian';
+        return 'Rekap Kategori';
     }
 
     public function headings(): array
     {
-        return ['Tanggal', 'Uang Masuk (Rp)', 'Uang Keluar (Rp)', 'Selisih (Rp)', 'Jumlah Transaksi'];
+        return ['Kategori', 'Uang Masuk (Rp)', 'Uang Keluar (Rp)', 'Selisih (Rp)', 'Jumlah Transaksi'];
     }
 
     private function buildRekap(array $filters): array
     {
-        $query = Transaksi::with('jenisTabungan')->filterAdmin($filters);
+        $transaksi = Transaksi::with('jenisTabungan')
+            ->filterAdmin($filters)
+            ->where('status_verifikasi', StatusVerifikasi::Terverifikasi)
+            ->get(['jenis_tabungan_id', 'jenis_transaksi', 'nominal']);
 
-        $perTanggal = $query->get()->groupBy(fn ($t) => $t->tanggal_transaksi->toDateString());
+        $perKategori = $transaksi->groupBy(fn ($t) => $t->jenisTabungan?->nama ?? 'Lainnya');
 
-        $rows = $perTanggal
-            ->map(function (Collection $group, string $tanggal) {
-                $masuk = $group
-                    ->where('status_verifikasi', StatusVerifikasi::Terverifikasi)
-                    ->where('jenis_transaksi', JenisTransaksi::Setor)
-                    ->sum('nominal');
-                $keluar = $group
-                    ->where('status_verifikasi', StatusVerifikasi::Terverifikasi)
-                    ->where('jenis_transaksi', JenisTransaksi::Tarik)
-                    ->sum('nominal');
+        $rows = $perKategori
+            ->map(function (Collection $group, string $kategori) {
+                $masuk = (float) $group->where('jenis_transaksi', JenisTransaksi::Setor)->sum('nominal');
+                $keluar = (float) $group->where('jenis_transaksi', JenisTransaksi::Tarik)->sum('nominal');
 
-                return [
-                    Date::PHPToExcel(Carbon::parse($tanggal)),
-                    $masuk,
-                    $keluar,
-                    $masuk - $keluar,
-                    $group->count(),
-                ];
+                return [$kategori, $masuk, $keluar, $masuk - $keluar, $group->count()];
             })
+            ->sortByDesc(fn (array $row) => $row[1] + $row[2])
             ->values()
             ->all();
 
         $rekap = collect($rows);
         $rows[] = [
-            'TOTAL',
+            'TOTAL SEMUA KATEGORI',
             $rekap->sum(1),
             $rekap->sum(2),
             $rekap->sum(3),
@@ -90,7 +80,6 @@ class TransaksiRekapExport implements FromArray, WithColumnFormatting, WithColum
     public function columnFormats(): array
     {
         return [
-            'A' => NumberFormat::FORMAT_DATE_DDMMYYYY,
             'B' => '#,##0',
             'C' => '#,##0',
             'D' => '#,##0',
@@ -101,7 +90,7 @@ class TransaksiRekapExport implements FromArray, WithColumnFormatting, WithColum
     public function columnWidths(): array
     {
         return [
-            'A' => 14,
+            'A' => 28,
             'B' => 18,
             'C' => 18,
             'D' => 18,
@@ -134,6 +123,15 @@ class TransaksiRekapExport implements FromArray, WithColumnFormatting, WithColum
                 $sheet->getStyle("A1:{$lastCol}{$highest}")->getBorders()->getAllBorders()
                     ->setBorderStyle(Border::BORDER_THIN)
                     ->getColor()->setARGB('FFCBD5E1');
+
+                $sheet->getStyle("A2:{$lastCol}{$highest}")->getAlignment()->setVertical(Alignment::VERTICAL_CENTER);
+
+                for ($row = 2; $row <= $highest; $row++) {
+                    if ($row % 2 === 0) {
+                        $sheet->getStyle("A{$row}:{$lastCol}{$row}")
+                            ->getFill()->setFillType(Fill::FILL_SOLID)->setStartColor(new Color('FFF1F5F9'));
+                    }
+                }
 
                 $totalRow = $sheet->getStyle("A{$highest}:{$lastCol}{$highest}");
                 $totalRow->getFont()->setBold(true);

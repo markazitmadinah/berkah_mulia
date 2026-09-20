@@ -53,7 +53,7 @@ import { RekeningBankModal } from './components/modals/RekeningBankModal';
 import { ExportModal } from './components/modals/ExportModal';
 
 
-import { Transaksi, TransaksiFilters, User, JenisTabungan, HargaEmasHarian, PeriodeQurban, HewanQurban, RekeningBank } from './types';
+import { Transaksi, TransaksiFilters, User, JenisTabungan, HargaEmasHarian, PeriodeQurban, HewanQurban, RekeningBank, Aliran } from './types';
 
 const MainLayout: React.FC = () => {
   const { currentUser, activeTab, setActiveTab, loading, transaksi, uploadBuktiTransaksi } = useApp();
@@ -117,7 +117,6 @@ const MainLayout: React.FC = () => {
   // User management modals
   const [isUserFormOpen, setIsUserFormOpen] = useState(false);
   const [userToEdit, setUserToEdit] = useState<User | null>(null);
-  const [isLegacyUserMode, setIsLegacyUserMode] = useState(false);
   const [selectedUserDetail, setSelectedUserDetail] = useState<User | null>(null);
   const [isUserDetailOpen, setIsUserDetailOpen] = useState(false);
   const [isImportUserOpen, setIsImportUserOpen] = useState(false);
@@ -142,10 +141,14 @@ const MainLayout: React.FC = () => {
   // Export modal (nasabah / transaksi)
   const [exportType, setExportType] = useState<'nasabah' | 'transaksi'>('nasabah');
   const [exportFilters, setExportFilters] = useState<TransaksiFilters | undefined>(undefined);
+  const [exportAliran, setExportAliran] = useState<Aliran | undefined>(undefined);
+  const [exportPeriode, setExportPeriode] = useState<NonNullable<TransaksiFilters['periode']> | undefined>(undefined);
   const [isExportOpen, setIsExportOpen] = useState(false);
-  const openExport = (type: 'nasabah' | 'transaksi', filters?: TransaksiFilters) => {
+  const openExport = (type: 'nasabah' | 'transaksi', filters?: TransaksiFilters, aliran?: Aliran, periode?: NonNullable<TransaksiFilters['periode']>) => {
     setExportType(type);
     setExportFilters(filters);
+    setExportAliran(aliran);
+    setExportPeriode(periode);
     setIsExportOpen(true);
   };
 
@@ -172,13 +175,6 @@ const MainLayout: React.FC = () => {
   // User Management Handlers
   const handleOpenCreateUser = () => {
     setUserToEdit(null);
-    setIsLegacyUserMode(false);
-    setIsUserFormOpen(true);
-  };
-
-  const handleOpenCreateLegacyUser = () => {
-    setUserToEdit(null);
-    setIsLegacyUserMode(true);
     setIsUserFormOpen(true);
   };
 
@@ -355,7 +351,6 @@ return (
                 {activeTab === 'users' && (
                   <AdminUserManagement
                     onOpenCreateUser={handleOpenCreateUser}
-                    onOpenCreateLegacyUser={handleOpenCreateLegacyUser}
                     onOpenEditUser={handleOpenEditUser}
                     onOpenDetailUser={handleOpenDetailUser}
                     onOpenImportModal={() => setIsImportUserOpen(true)}
@@ -403,7 +398,7 @@ return (
                     onOpenCashModal={openCashModal}
                     onOpenDetailTransaksi={handleOpenDetailTrx}
                     onOpenRejectModal={handleOpenRejectTrx}
-                    onOpenExportModal={(filters) => openExport('transaksi', filters)}
+                    onOpenExportModal={(filters, aliran, periode) => openExport('transaksi', filters, aliran, periode)}
                   />
                 )}
                 {activeTab === 'pembayaran-harian' && (
@@ -472,9 +467,8 @@ return (
 
       <UserFormModal
         isOpen={isUserFormOpen}
-        onClose={() => { setIsUserFormOpen(false); setIsLegacyUserMode(false); }}
+        onClose={() => setIsUserFormOpen(false)}
         userToEdit={userToEdit}
-        legacyMode={isLegacyUserMode}
       />
 
       <UserDetailModal
@@ -493,6 +487,8 @@ return (
         isOpen={isExportOpen}
         onClose={() => setIsExportOpen(false)}
         filters={exportFilters}
+        aliran={exportAliran}
+        periode={exportPeriode}
       />
 
       <HargaEmasModal

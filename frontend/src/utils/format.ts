@@ -1,5 +1,7 @@
-export const formatRupiah = (n: number | string | null | undefined): string =>
-  Number(n ?? 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+export const formatRupiah = (n: number | string | null | undefined): string => {
+  const num = Number(n ?? 0);
+  return (Number.isFinite(num) ? num : 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
 
 // Terima "1.234.567,89" / "1234567.89" / "150,5" → 1234567.89 (titik ribuan, koma desimal)
 export const parseRupiah = (v: string | number): number => {

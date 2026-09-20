@@ -6,7 +6,10 @@ use App\Enums\JenisTransaksi;
 use App\Enums\StatusVerifikasi;
 use App\Enums\SubJenisTabungan;
 use App\Exports\TransaksiExport;
+use App\Exports\TransaksiPembukuanExport;
 use App\Exports\TransaksiRekapExport;
+use Maatwebsite\Excel\Facades\Excel;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use App\Models\HewanQurban;
 use App\Models\JenisTabungan;
 use App\Models\PendaftaranQurban;
@@ -326,5 +329,59 @@ class TransaksiTest extends ApiTestCase
         $this->get('/api/v1/admin/transaksi/export?'.$query)
             ->assertOk()
             ->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    }
+
+    public function test_export_transaksi_semua_hanya_satu_sheet_dengan_footer_total_1_baris(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+        $user = $this->createUser();
+        $jenis = JenisTabungan::where('kode', 'tabungan-pribadi')->first();
+
+        $setor = $this->createPendingTransaksi($user->id, $jenis->id, 500000);
+        $setor->update(['jenis_transaksi' => JenisTransaksi::Setor, 'status_verifikasi' => StatusVerifikasi::Terverifikasi]);
+        $tarik = $this->createPendingTransaksi($user->id, $jenis->id, 150000);
+        $tarik->update(['jenis_transaksi' => JenisTransaksi::Tarik, 'status_verifikasi' => StatusVerifikasi::Terverifikasi]);
+
+        $path = tempnam(sys_get_temp_dir(), 'trx') . '.xlsx';
+        file_put_contents($path, Excel::raw(new TransaksiPembukuanExport(['aliran' => 'semua']), \Maatwebsite\Excel\Excel::XLSX));
+
+        $wb = IOFactory::load($path);
+        $sheet = $wb->getSheetByName('Data Transaksi');
+        $this->assertNotNull($sheet, 'Sheet Data Transaksi harus ada');
+
+        $last = $sheet->getHighestRow();
+        $this->assertSame('Uang Masuk', $sheet->getCell('A'.$last)->getValue());
+        $this->assertSame(500000, (int) $sheet->getCell('C'.$last)->getValue());
+        $this->assertSame('Uang Keluar', $sheet->getCell('D'.$last)->getValue());
+        $this->assertSame('Total', $sheet->getCell('G'.$last)->getValue());
+        $this->assertSame(350000, (int) $sheet->getCell('I'.$last)->getValue());
+
+        unlink($path);
+    }
+
+    public function test_export_transaksi_aliran_masuk_footer_total_saja(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+        $user = $this->createUser();
+        $jenis = JenisTabungan::where('kode', 'tabungan-pribadi')->first();
+
+        $setor = $this->createPendingTransaksi($user->id, $jenis->id, 500000);
+        $setor->update(['jenis_transaksi' => JenisTransaksi::Setor, 'status_verifikasi' => StatusVerifikasi::Terverifikasi]);
+        $tarik = $this->createPendingTransaksi($user->id, $jenis->id, 150000);
+        $tarik->update(['jenis_transaksi' => JenisTransaksi::Tarik, 'status_verifikasi' => StatusVerifikasi::Terverifikasi]);
+
+        $path = tempnam(sys_get_temp_dir(), 'trx') . '.xlsx';
+        file_put_contents($path, Excel::raw(new TransaksiPembukuanExport(['aliran' => 'masuk']), \Maatwebsite\Excel\Excel::XLSX));
+
+        $wb = IOFactory::load($path);
+        $sheet = $wb->getSheetByName('Data Transaksi');
+        $last = $sheet->getHighestRow();
+        $this->assertSame('Total Uang Masuk', $sheet->getCell('A'.$last)->getValue());
+        $this->assertSame(500000, (int) $sheet->getCell('C'.$last)->getValue());
+        $this->assertGreaterThan(1, $last);
+
+        unlink($path);
     }
 }

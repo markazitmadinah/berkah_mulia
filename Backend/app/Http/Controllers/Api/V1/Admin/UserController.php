@@ -621,6 +621,20 @@ class UserController extends Controller
             return $this->errorResponse('Import gagal. Tidak ada data yang diubah.', 500);
         }
 
+        $ditambahkan = $import->getCreatedCount();
+        $diupdate = $import->getUpdatedCount();
+        $dilewati = $import->getSkippedCount();
+
+        // Tidak ada satu baris pun terbaca (file kosong / header tidak cocok
+        // dengan template). Jangan balas sukses supaya tidak menyesatkan.
+        if ($ditambahkan === 0 && $diupdate === 0 && $dilewati === 0) {
+            return $this->errorResponse(
+                $this->pesanImportKosong($request->file('file')),
+                422,
+                'IMPORT_KOSONG'
+            );
+        }
+
         $tabungan = [
             'target_diatur' => $import->getTargetCount(),
             'saldo_awal_dicatat' => $import->getSaldoAwalCreatedCount(),
@@ -629,19 +643,86 @@ class UserController extends Controller
         ];
 
         AuditLog::record('import', $request->user(), [], [
-            'jumlah_ditambahkan' => $import->getCreatedCount(),
-            'jumlah_diupdate' => $import->getUpdatedCount(),
-            'jumlah_dilewati' => $import->getSkippedCount(),
+            'jumlah_ditambahkan' => $ditambahkan,
+            'jumlah_diupdate' => $diupdate,
+            'jumlah_dilewati' => $dilewati,
             'tabungan' => $tabungan,
         ]);
 
         return $this->successResponse([
-            'jumlah_ditambahkan' => $import->getCreatedCount(),
-            'jumlah_diupdate' => $import->getUpdatedCount(),
-            'jumlah_dilewati' => $import->getSkippedCount(),
+            'jumlah_ditambahkan' => $ditambahkan,
+            'jumlah_diupdate' => $diupdate,
+            'jumlah_dilewati' => $dilewati,
             'detail_dilewati' => $import->getSkippedDetail(),
             'tabungan' => $tabungan,
-        ], "Import selesai. {$import->getCreatedCount()} ditambahkan, {$import->getUpdatedCount()} diupdate, {$import->getSkippedCount()} dilewati.");
+        ], "Import selesai. {$ditambahkan} ditambahkan, {$diupdate} diupdate, {$dilewati} dilewati.");
+    }
+
+    /**
+     * Diagnosa kenapa file import tidak terbaca sama sekali: periksa seluruh
+     * sheet, baris terakhir berisi data, dan kolom mana yang berisi isian,
+     * supaya langsung terlihat letak data sebenarnya.
+     */
+    private function pesanImportKosong($file): string
+    {
+        try {
+            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($file->getRealPath());
+        } catch (\Throwable $e) {
+            Log::warning('Gagal membaca header file import: '.$e->getMessage());
+
+            return 'File tidak terbaca. Pastikan formatnya xlsx/xls/csv dan unduh ulang template terbaru.';
+        }
+
+        $report = [];
+        foreach ($spreadsheet->getAllSheets() as $sheet) {
+            $barisNama = 0;
+            $dataDiKolomLain = [];
+            $barisKolomPertama = null;
+
+            $cells = $sheet->getHighestDataRow() > 1
+                ? $sheet->rangeToArray('A1:'.'D'.$sheet->getHighestDataRow(), '', true, false)
+                : [];
+            foreach ($cells as $i => $vals) {
+                if ($i === 0) {
+                    continue; // heading
+                }
+                $nama = trim((string) ($vals[0] ?? ''));
+                if ($nama !== '' && $nama !== \App\Imports\UsersImport::CONTOH_NAMA) {
+                    $barisNama++;
+                    $barisKolomPertama ??= 'baris '.($i + 1).', nilai '.$nama;
+                }
+                foreach ($vals as $c => $v) {
+                    if ($c > 0 && trim((string) $v) !== '') {
+                        $dataDiKolomLain[$c] = ($dataDiKolomLain[$c] ?? 0) + 1;
+                    }
+                }
+            }
+
+            $colLabels = ['B', 'C', 'D'];
+            $kolomTerisi = [];
+            foreach ($dataDiKolomLain as $c => $count) {
+                $kolomTerisi[] = ($colLabels[$c - 1] ?? $c).' ('.$count.' sel)';
+            }
+
+            $sheetInfo = 'sheet "'.$sheet->getTitle().'": '
+                .'nama terbaca '.$barisNama.' baris';
+            if ($barisKolomPertama !== null) {
+                $sheetInfo .= ', contoh nama pertama: '.$barisKolomPertama;
+            } elseif ($barisNama === 0) {
+                $sheetInfo .= ', tidak ada satu pun nama di kolom A';
+            }
+            $sheetInfo .= '. '.($kolomTerisi
+                ? 'Kolom lain yang berisi data: '.implode(', ', array_slice($kolomTerisi, 0, 6)).'.'
+                : 'Kolom lain kosong semua.');
+
+            $report[] = $sheetInfo;
+        }
+
+        $usp = \App\Imports\UsersImport::CONTOH_NAMA;
+
+        return 'Import tidak menemukan nama nasabah di kolom A (Nama Lengkap). Pemeriksaan: '.implode(' ', $report)
+            .' Catatan: baris "'.$usp.'" adalah baris contoh template yang sengaja dilewati, bukan data. '
+            .'Isi nama di kolom A mulai baris 3 dan pastikan hanya ada satu sheet berisi data.';
     }
 
     /**

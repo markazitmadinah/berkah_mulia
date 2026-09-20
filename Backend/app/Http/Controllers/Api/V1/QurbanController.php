@@ -211,7 +211,7 @@ class QurbanController extends Controller
             return $this->errorResponse('Anda tidak memiliki akses ke pendaftaran ini.', 403, 'FORBIDDEN');
         }
 
-        if ($pendaftaran->status !== StatusPendaftaranQurban::TargetTercapai) {
+        if (! in_array($pendaftaran->status, [StatusPendaftaranQurban::TargetTercapai, StatusPendaftaranQurban::SiapDicairkan])) {
             return $this->errorResponse('Pelunasan hanya dapat diajukan setelah target dana tercapai.', 409, 'GOAL_NOT_REACHED');
         }
 

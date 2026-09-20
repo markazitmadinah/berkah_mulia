@@ -144,7 +144,7 @@ class KonfigurasiSetoranEmasController extends Controller
             'durasi_periode' => $durasi,
             'tanggal_deadline' => $deadline?->toDateString(),
             'status' => StatusKonfigurasiSetoran::Aktif,
-            'created_by' => $user->id,
+            'created_by' => auth()->id(),
         ]);
 
         return $this->createdResponse(

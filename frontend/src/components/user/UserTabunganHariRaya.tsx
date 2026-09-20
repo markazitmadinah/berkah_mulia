@@ -142,6 +142,11 @@ export const UserTabunganHariRaya: React.FC<UserTabunganHariRayaProps> = ({
                 Sisa <strong className="text-rose-600 dark:text-rose-300">{st.frekuensi.sisa_pembayaran}x</strong> pembayaran
               </span>
             )}
+            {st.frekuensi?.tertunggak?.jumlah_periode != null && st.frekuensi.tertunggak.jumlah_periode > 0 && (
+              <span className="text-xs font-bold text-rose-600 dark:text-rose-300">
+                🔔 Tertunggak {st.frekuensi.tertunggak.jumlah_periode}× (Rp {formatRupiah(st.frekuensi.tertunggak.nominal)})
+              </span>
+            )}
           </div>
         </div>
       )}

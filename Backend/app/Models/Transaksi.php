@@ -145,7 +145,17 @@ class Transaksi extends Model
                 );
             })
             ->when($filters['tanggal_awal'] ?? null, fn (Builder $q, string $tanggal) => $q->whereDate('tanggal_transaksi', '>=', $tanggal))
-            ->when($filters['tanggal_akhir'] ?? null, fn (Builder $q, string $tanggal) => $q->whereDate('tanggal_transaksi', '<=', $tanggal));
+            ->when($filters['tanggal_akhir'] ?? null, fn (Builder $q, string $tanggal) => $q->whereDate('tanggal_transaksi', '<=', $tanggal))
+            ->when($filters['aliran'] ?? null, function (Builder $q, string $aliran) {
+                $q->when(
+                    $aliran === 'masuk',
+                    fn (Builder $subQuery) => $subQuery->where('jenis_transaksi', JenisTransaksi::Setor),
+                    fn (Builder $subQuery) => $subQuery->when(
+                        $aliran === 'keluar',
+                        fn (Builder $keluarQuery) => $keluarQuery->where('jenis_transaksi', JenisTransaksi::Tarik)
+                    )
+                );
+            });
 
         if (! empty($filters['search'])) {
             $search = str_replace(['%', '_'], ['\\%', '\\_'], trim((string) $filters['search']));

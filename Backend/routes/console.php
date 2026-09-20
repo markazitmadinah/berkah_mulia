@@ -25,8 +25,10 @@ Schedule::call(function () {
         ->get();
 
     foreach ($periodes as $periode) {
+        // Hanya yang SUDAH mencapai target (target_tercapai) yang diset siap dicairkan.
+        // Pendaftaran yang masih menabung tetap bisa disetor sampai target tercapai.
         \App\Models\PendaftaranQurban::where('periode_qurban_id', $periode->id)
-            ->whereIn('status', ['menabung', 'target_tercapai'])
+            ->where('status', 'target_tercapai')
             ->update(['status' => 'siap_dicairkan']);
     }
 })->daily()->name('check-qurban-periode-status')

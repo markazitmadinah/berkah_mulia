@@ -2,8 +2,6 @@
 
 namespace App\Exports;
 
-use App\Enums\TipeTabungan;
-use App\Models\JenisTabungan;
 use Maatwebsite\Excel\Concerns\FromArray;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithEvents;
@@ -18,82 +16,167 @@ use PhpOffice\PhpSpreadsheet\Style\Color;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-class UsersTemplate implements FromArray, WithHeadings, WithStyles, ShouldAutoSize, WithEvents, WithTitle
+class UsersTemplate implements FromArray, ShouldAutoSize, WithEvents, WithHeadings, WithStyles, WithTitle
 {
     public function title(): string
     {
         return 'Template Import';
     }
 
+    /**
+     * Nama kolom harus PERSIS sama dengan kunci yang dibaca parser
+     * (App\Imports\UsersImport). Jangan diganti tanpa sinkron import.
+     *
+     * Layout final (49 kolom):
+     *   A..C   data dasar user (3)
+     *   D..J   tabungan Emas (7)
+     *   K..P   tabungan Hari Raya (6)
+     *   Q..V   tabungan Qurban (7)
+     *   W..AB  tabungan Berjangka (6)
+     *   AC     tabungan Mandiri (1)
+     *   AD..AV gadai (19)
+     */
     public function headings(): array
     {
-        return array_merge($this->baseHeadings(), $this->tabunganHeadings());
-    }
-
-    /**
-     * Kolom dasar identitas nasabah.
-     */
-    private function baseHeadings(): array
-    {
         return [
+            // ─── Blok A: data dasar user ─────────────────────────────
+            // Email, No. Handphone, Alamat, Nomor Anggota & Password sengaja
+            // tidak lagi diminta di template — nasabah mengisinya sendiri
+            // di akun masing-masing setelah import.
             'Nama Lengkap',
-            'Email',
-            'No. Handphone',
-            'Nomor Anggota (10 digit)',
-            'Alamat',
-            'Password',
             'Peran',
             'Status',
+
+            // ─── Blok B: Tabungan Emas (target dalam gram) ──────────
+            'Emas - Target (gram)',
+            'Emas - Gram per Periode',
+            'Emas - Frekuensi Bayar',
+            'Emas - Nominal per Periode (Rp)',
+            'Emas - Durasi (Periode)',
+            'Emas - Tanggal Mulai',
+            'Emas - Jatuh Tempo',
+
+            // ─── Blok C: Tabungan Hari Raya (target rupiah) ─────────
+            'Hari Raya - Target (Rp)',
+            'Hari Raya - Frekuensi Bayar',
+            'Hari Raya - Nominal per Periode (Rp)',
+            'Hari Raya - Durasi (Periode)',
+            'Hari Raya - Tanggal Mulai',
+            'Hari Raya - Jatuh Tempo',
+
+            // ─── Blok D: Tabungan Qurban (mirip target rupiah) ──────
+            'Qurban - Target (Rp)',
+            'Qurban - Jumlah Hewan',
+            'Qurban - Jenis Hewan',
+            'Qurban - Periode',
+            'Qurban - Frekuensi Bayar',
+            'Qurban - Nominal per Periode (Rp)',
+            'Qurban - Tanggal Daftar',
+
+            // ─── Blok E: Tabungan Berjangka (target rupiah + durasi) ─
+            'Berjangka - Target (Rp)',
+            'Berjangka - Frekuensi Bayar',
+            'Berjangka - Nominal per Periode (Rp)',
+            'Berjangka - Durasi (Periode)',
+            'Berjangka - Tanggal Mulai',
+            'Berjangka - Jatuh Tempo',
+
+            // ─── Blok F: Tabungan Mandiri (setor bebas) ─────────────
+            'Mandiri - Saldo Awal (Rp)',
+
+            // ─── Blok G: Gadai (19 kolom lengkap) ───────────────────
+            'Gadai - No. Referensi',
+            'Gadai - Tanggal Aju',
+            'Gadai - Jenis Emas',
+            'Gadai - Berat (gram)',
+            'Gadai - Kadar (%)',
+            'Gadai - Berat Bersih (gram)',
+            'Gadai - Harga Acuan (Rp/gram)',
+            'Gadai - Nilai Taksiran (Rp)',
+            'Gadai - Persen Gadai (%)',
+            'Gadai - Besaran Gadai (Rp)',
+            'Gadai - Tenor (Satuan)',
+            'Gadai - Toleransi Hari',
+            'Gadai - Frekuensi Bayar',
+            'Gadai - Nominal Angsuran (Rp)',
+            'Gadai - Bunga (%)',
+            'Gadai - Total Dibayar (Rp)',
+            'Gadai - Tanggal Aktif',
+            'Gadai - Jatuh Tempo',
+            'Gadai - Status',
         ];
-    }
-
-    /**
-     * Kolom opsional per jenis tabungan pribadi aktif (Mandiri, Hari Raya, Berjangka):
-     * target nominal & saldo awal (dana yang sudah dibayarkan). Nama heading
-     * harus konsisten dengan parser di App\Imports\UsersImport.
-     */
-    private function tabunganHeadings(): array
-    {
-        $headings = [];
-
-        foreach ($this->jenisTabunganPribadi() as $jenis) {
-            $headings[] = "{$jenis->nama} - Target";
-            $headings[] = "{$jenis->nama} - Saldo Awal";
-        }
-
-        return $headings;
-    }
-
-    private function jenisTabunganPribadi(): array
-    {
-        return JenisTabungan::aktif()
-            ->where('tipe', TipeTabungan::Pribadi)
-            ->orderBy('nama')
-            ->get()
-            ->all();
     }
 
     public function array(): array
     {
-        $row = [
-            'Contoh Nasabah',
-            'nasabah.contoh@gmail.com',
-            '08123456789',
-            '1234567890',
-            'Jl. Contoh No. 1, Jakarta',
-            'password123',
+        // Baris kedua = contoh, dilewati saat import (skipped via CONTOH_NAMA).
+        $contoh = [
+            // ─── Blok A ─────────────────────────────────────────────
+            'Ahmad Fauzi',
             'Nasabah',
+            'Aktif',
+
+            // ─── Blok B: Emas (target 25 gram) ──────────────────────
+            '25',
+            '1',
+            'Bulanan',
+            '1500000',
+            '25',
+            '01/01/2026',
+            '01/02/2028',
+
+            // ─── Blok C: Hari Raya (target Rp 5.000.000) ────────────
+            '5000000',
+            'Bulanan',
+            '208333',
+            '24',
+            '01/01/2026',
+            '01/01/2028',
+
+            // ─── Blok D: Qurban (target Rp 4.500.000) ───────────────
+            '4500000',
+            '1',
+            'Kambing',
+            '2026',
+            'Bulanan',
+            '375000',
+            '01/05/2026',
+
+            // ─── Blok E: Berjangka (target Rp 6.000.000) ────────────
+            '6000000',
+            'Bulanan',
+            '500000',
+            '12',
+            '01/06/2026',
+            '01/06/2027',
+
+            // ─── Blok F: Mandiri (saldo awal) ───────────────────────
+            '1000000',
+
+            // ─── Blok G: Gadai (19 kolom); kadar satuan per-mille (999 = 99,9%) ──
+            'GDS-260101-0001',
+            '01/05/2026',
+            'Antam 99',
+            '10',
+            '999',
+            '9.99',
+            '1500000',
+            '14985000',
+            '90',
+            '13486500',
+            'bulan',
+            '7',
+            'bulanan',
+            '561938',
+            '1.5',
+            '13486500',
+            '01/05/2026',
+            '01/05/2027',
             'Aktif',
         ];
 
-        $pertama = true;
-        foreach ($this->jenisTabunganPribadi() as $jenis) {
-            $row[] = $pertama ? '1000000' : null; // Target (contoh)
-            $row[] = $pertama ? '500000' : null;  // Saldo Awal (contoh)
-            $pertama = false;
-        }
-
-        return [$row, array_fill(0, count($row), null)];
+        // Baris 2 = contoh, baris 3 = kosong (keduanya dilewati).
+        return [$contoh, array_fill(0, count($contoh), null)];
     }
 
     public function styles(Worksheet $sheet)
@@ -102,7 +185,11 @@ class UsersTemplate implements FromArray, WithHeadings, WithStyles, ShouldAutoSi
             1 => [
                 'font' => ['bold' => true, 'color' => ['argb' => 'FFFFFFFF'], 'size' => 11],
                 'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => 'FF047857']],
-                'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
+                'alignment' => [
+                    'horizontal' => Alignment::HORIZONTAL_CENTER,
+                    'vertical' => Alignment::VERTICAL_CENTER,
+                    'wrapText' => true,
+                ],
             ],
         ];
     }
@@ -114,71 +201,33 @@ class UsersTemplate implements FromArray, WithHeadings, WithStyles, ShouldAutoSi
                 $sheet = $event->sheet->getDelegate();
                 $lastCol = $sheet->getHighestColumn();
 
-                $sheet->getStyle("A1:{$lastCol}1")->getAlignment()->setWrapText(true);
-                $sheet->getRowDimension(1)->setRowHeight(30);
+                $sheet->getRowDimension(1)->setRowHeight(34);
                 $sheet->freezePane('A2');
 
-                // Styling untuk baris 2-3 (contoh + catatan)
-                $sheet->getStyle("A2:{$lastCol}3")->getBorders()->getAllBorders()
-                    ->setBorderStyle(Border::BORDER_THIN)
-                    ->getColor()->setARGB('FFCBD5E1');
-                $sheet->getStyle("A2:{$lastCol}3")->getAlignment()->setVertical(Alignment::VERTICAL_CENTER);
-                // Highlight baris contoh
-                $sheet->getStyle("A2:{$lastCol}2")
-                    ->getFill()->setFillType(Fill::FILL_SOLID)->setStartColor(new Color('FFFEF3C7'));
+                // Data validation dropdown untuk Peran (B) & Status (C)
+                $this->addValidation($sheet, 'B', 'Nasabah');
+                $this->addValidation($sheet, 'C', 'Aktif,Menunggu Persetujuan,Ditolak,Dibekukan');
 
-                // Data validation: dropdown untuk Peran (G) dan Status (H)
-                $this->addValidation($sheet, 'G', 'Nasabah,Administrator');
-                $this->addValidation($sheet, 'H', 'Aktif,Menunggu Persetujuan,Ditolak,Dibekukan');
-
-                // Kolom nomor wajib (handphone, anggota) + semua kolom tabungan
-                // diformat teks agar angka panjang/tabungan tidak jadi notasi ilmiah.
-                $sheet->getStyle('C3:D200')->getNumberFormat()->setFormatCode('@');
-                foreach ($this->tabunganColumnLetters() as $col) {
-                    $sheet->getStyle("{$col}3:{$col}200")->getNumberFormat()->setFormatCode('@');
+                // Kolom angka di-render teks agar tidak jadi notasi ilmiah / tanggal serial.
+                $textCols = ['D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB', 'AC', 'AD', 'AE', 'AF', 'AG', 'AH', 'AI', 'AJ', 'AK', 'AL', 'AM', 'AN', 'AO', 'AP', 'AQ', 'AR', 'AS', 'AT', 'AU', 'AV'];
+                foreach ($textCols as $col) {
+                    $sheet->getStyle("{$col}2:{$col}200")->getNumberFormat()->setFormatCode('@');
                 }
 
-                // Petunjuk pengisian diletakkan sebagai komentar sel (bukan nilai sel),
-                // supaya tidak ikut terbaca sebagai baris data saat file di-import.
-                $note = 'Petunjuk: Isi mulai baris 3. Kolom wajib: Nama, Email, No. Handphone, Nomor Anggota (10 digit). '
-                    . 'Kolom tabungan ("Target" dan "Saldo Awal") bersifat OPSIONAL — kosongkan bila tabungan tidak ada. '
-                    . 'Target = nominal target tabungan; Saldo Awal = dana yang sudah dibayarkan, dicatat otomatis sebagai '
-                    . 'saldo awal terverifikasi tanpa input manual dari nasabah. Isi angka tanpa titik/koma (contoh: 500000). '
-                    . 'Baris 2 adalah contoh dan otomatis dilewati saat import — jangan diubah menjadi data baru.';
+                // Petunjuk pengisian dalam komentar A1.
+                $note = 'Petunjuk: Isi mulai baris 3 (baris 2 = contoh, otomatis dilewati). '
+                    . 'Kolom wajib: Nama Lengkap (A). '
+                    . 'Email, No. Handphone, Nomor Anggota, Alamat, dan Password TIDAK lagi diminta di template — '
+                    . 'nasabah mengisinya sendiri di akun masing-masing setelah import. '
+                    . 'Blok tabungan OPSIONAL — kosongkan seluruh kolom produk yang tidak dimiliki nasabah. '
+                    . 'Angka tulis tanpa titik/koma (contoh: 5000000). Tanggal format DD/MM/YYYY (contoh: 01/05/2026). '
+                    . 'Emas memakai GRAM untuk target; Hari Raya/Qurban/Berjangka memakai Rupiah. '
+                    . 'Peran hanya "Nasabah" — Admin tidak pernah dibuat lewat import.';
                 $sheet->getComment('A1')->getText()->createTextRun($note);
-                $sheet->getComment('A1')->setWidth('300pt');
-                $sheet->getComment('A1')->setHeight('130pt');
+                $sheet->getComment('A1')->setWidth('320pt');
+                $sheet->getComment('A1')->setHeight('150pt');
             },
         ];
-    }
-
-    /**
-     * Huruf kolom untuk setiap kolom tabungan (Target + Saldo Awal), di urutan
-     * setelah kolom dasar (A..H).
-     */
-    private function tabunganColumnLetters(): array
-    {
-        $letters = [];
-        $index = count($this->baseHeadings()) + 1; // mulai kolom 9 (I)
-
-        foreach ($this->jenisTabunganPribadi() as $jenis) {
-            $letters[] = $this->colLetter($index);
-            $letters[] = $this->colLetter($index + 1);
-            $index += 2;
-        }
-
-        return $letters;
-    }
-
-    private function colLetter(int $index): string
-    {
-        $letter = '';
-        while ($index > 0) {
-            $mod = ($index - 1) % 26;
-            $letter = chr(65 + $mod) . $letter;
-            $index = intdiv($index - 1, 26);
-        }
-        return $letter;
     }
 
     private function addValidation(Worksheet $sheet, string $col, string $list): void

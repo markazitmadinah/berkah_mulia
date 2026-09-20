@@ -722,6 +722,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast('Anda telah keluar dari sistem.', 'info');
   };
 
+  // Sesi kadaluarsa (401 dari api.ts) → bersihkan state & kembali ke layar login.
+  useEffect(() => {
+    const onAuthExpired = () => logout();
+    window.addEventListener('auth-expired', onAuthExpired);
+    return () => window.removeEventListener('auth-expired', onAuthExpired);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     (async () => {
       if (!getToken()) {
@@ -930,6 +938,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           msg += ' ' + detail.slice(0, 5).join(' · ');
         }
         showToast(msg, detail.length ? 'error' : 'success');
+        return refresh(currentUser);
       })
       .catch((e: { message?: string }) => {
         showToast(e?.message || 'Gagal mengimpor file.', 'error');
@@ -1001,6 +1010,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (filters.tipe && filters.tipe !== 'all') params.set('tipe', filters.tipe);
     if (filters.jenis_tabungan_id) params.set('jenis_tabungan_id', String(filters.jenis_tabungan_id));
     if (filters.search?.trim()) params.set('search', filters.search.trim());
+    if (filters.aliran && filters.aliran !== 'semua') params.set('aliran', filters.aliran);
+    if (filters.periode) params.set('periode', filters.periode);
     return params;
   };
 

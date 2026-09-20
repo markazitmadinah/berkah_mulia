@@ -113,6 +113,7 @@ class HariRayaController extends Controller
                 'frekuensi_label' => $targetRow->frekuensiLabel() ?: 'Bulanan',
                 'nominal_per_periode' => $targetRow->nominal_per_periode,
                 'sisa_pembayaran' => $targetRow->sisaPembayaran($saldo),
+                'tertunggak' => $targetRow->tertunggak($saldo),
             ] : null,
             'sisa_nominal' => max(0, $target - $saldo),
             'persentase' => $target > 0 ? round(($saldo / $target) * 100, 2) : null,

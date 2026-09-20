@@ -9,8 +9,7 @@ use App\Enums\StatusPendaftaranQurban;
 use App\Enums\StatusVerifikasi;
 use App\Enums\TipeNotifikasi;
 use App\Enums\TipeTabungan;
-use App\Exports\TransaksiExport;
-use App\Exports\TransaksiRekapExport;
+use App\Exports\TransaksiPembukuanExport;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\TransaksiResource;
 use App\Models\AuditLog;
@@ -98,6 +97,8 @@ class TransaksiController extends Controller
             'search' => 'nullable|string|max:255',
             'tanggal_awal' => 'nullable|date',
             'tanggal_akhir' => 'nullable|date|after_or_equal:tanggal_awal',
+            'aliran' => 'nullable|string|in:semua,masuk,keluar',
+            'periode' => 'nullable|string|max:30',
         ]);
 
         $filters = $request->only([
@@ -108,16 +109,12 @@ class TransaksiController extends Controller
             'search',
             'tanggal_awal',
             'tanggal_akhir',
+            'aliran',
+            'periode',
         ]);
         $filename = 'pembukuan_transaksi_koperasi_berkah_mulia_'.now()->format('Y-m-d').'.xlsx';
 
-        return Excel::download(
-            [
-                new TransaksiExport($filters),
-                new TransaksiRekapExport($filters),
-            ],
-            $filename
-        );
+        return Excel::download(new TransaksiPembukuanExport($filters), $filename);
     }
 
     public function show(Transaksi $transaksi): JsonResponse
