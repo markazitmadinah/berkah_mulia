@@ -14,7 +14,7 @@ class LoginRequest extends FormRequest
     public function rules(): array
     {
         return [
-            // Bisa berupa: email admin, nomor anggota (10 digit), atau username nasabah
+            // Bisa berupa: username atau nomor anggota (10 digit)
             'username' => ['required', 'string', 'max:255'],
             'password' => ['required', 'string'],
         ];

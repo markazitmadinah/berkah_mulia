@@ -18,6 +18,7 @@ class KonfigurasiSetoranEmas extends Model
     protected $table = 'konfigurasi_setoran_emas';
 
     protected $fillable = [
+        'external_id',
         'user_id',
         'jenis_tabungan_id',
         'nominal_per_periode',
@@ -76,6 +77,11 @@ class KonfigurasiSetoranEmas extends Model
     public function scopeMilikUser(Builder $query, int $userId): Builder
     {
         return $query->where('user_id', $userId);
+    }
+
+    public function scopeByExternal(Builder $query, string $externalId): Builder
+    {
+        return $query->where('external_id', $externalId);
     }
 
     /**

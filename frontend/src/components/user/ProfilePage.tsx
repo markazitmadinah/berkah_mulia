@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { ArrowLeft, User, Phone, Mail, MapPin, Save, Upload } from 'lucide-react';
+import { ArrowLeft, User, Phone, MapPin, Save, Upload } from 'lucide-react';
 import { UserAvatar } from '../ui/UserAvatar';
 
 interface ProfilePageProps {
@@ -84,18 +84,18 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onBack }) => {
 
             <div>
               <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                Email (Terdaftar)
+                Username (terdaftar)
               </label>
               <div className="relative">
-                <Mail className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
+                <User className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
                 <input
-                  type="email"
+                  type="text"
                   disabled
-                  value={currentUser.email}
+                  value={currentUser.username}
                   className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 text-sm text-slate-500 cursor-not-allowed"
                 />
               </div>
-              <span className="text-[10px] text-slate-400 mt-1 block">Email tidak dapat diubah secara mandiri. Hubungi pengurus koperasi.</span>
+              <span className="text-[10px] text-slate-400 mt-1 block">Username tidak dapat diubah secara mandiri. Hubungi pengurus koperasi.</span>
             </div>
 
             <div>

@@ -4,8 +4,6 @@ import { UserAvatar } from '../ui/UserAvatar';
 import {
   Users,
   FileSpreadsheet,
-  Upload,
-  Download,
   Ban,
   RotateCcw,
   Trash2,
@@ -19,7 +17,7 @@ interface AdminUserManagementProps {
   onOpenCreateUser: () => void;
   onOpenEditUser: (user: User) => void;
   onOpenDetailUser: (user: User) => void;
-  onOpenImportModal: () => void;
+  onOpenImportTabungan: () => void;
   onOpenExportModal: () => void;
   onOpenProfilNasabah: (user: User) => void;
 }
@@ -28,7 +26,7 @@ export const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
   onOpenCreateUser,
   onOpenEditUser,
   onOpenDetailUser,
-  onOpenImportModal,
+  onOpenImportTabungan,
   onOpenExportModal,
   onOpenProfilNasabah
 }) => {
@@ -36,8 +34,7 @@ export const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
     users,
     suspendUser,
     activateUser,
-    deleteUser,
-    downloadUserTemplate
+    deleteUser
   } = useApp();
 
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -49,10 +46,6 @@ export const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
 
     return matchesStatus && matchesRole;
   });
-
-  const handleDownloadTemplate = () => {
-    downloadUserTemplate();
-  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
@@ -79,11 +72,12 @@ export const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
           </button>
 
           <button
-            onClick={onOpenImportModal}
+            onClick={onOpenImportTabungan}
+            title="Import data tabungan lengkap 7 sheet (Nasabah, Emas, Mandiri, Qurban, Hari Raya, Gadai, Berjangka)"
             className="py-2.5 px-3.5 rounded-2xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
           >
-            <Upload className="w-3.5 h-3.5 text-blue-600" />
-            <span>Import Nasabah</span>
+            <FileSpreadsheet className="w-3.5 h-3.5 text-violet-600" />
+            <span>Import Tabungan</span>
           </button>
 
           <button
@@ -92,15 +86,6 @@ export const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
           >
             <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
             <span>Export</span>
-          </button>
-
-          <button
-            onClick={handleDownloadTemplate}
-            className="py-2.5 px-3.5 rounded-2xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
-            title="Download Template CSV"
-          >
-            <Download className="w-3.5 h-3.5 text-amber-600" />
-            <span>Template</span>
           </button>
         </div>
       </div>
@@ -135,7 +120,7 @@ export const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 uppercase text-[10px]">
-                <th className="py-3 px-3">Nama & Email</th>
+                <th className="py-3 px-3">Nama & Username</th>
                 <th className="py-3 px-3">No. Anggota</th>
                 <th className="py-3 px-3">Telepon</th>
                 <th className="py-3 px-3">Peran</th>
@@ -165,7 +150,7 @@ export const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                           <div className="font-bold text-slate-900 dark:text-white">
                             {u.name}
                           </div>
-                          <span className="text-[11px] text-slate-400">{u.email}</span>
+                          <span className="text-[11px] text-slate-400">@{u.username}</span>
                         </div>
                       </div>
                     </td>

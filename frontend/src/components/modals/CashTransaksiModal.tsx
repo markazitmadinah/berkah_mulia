@@ -187,7 +187,7 @@ export const CashTransaksiModal: React.FC<CashTransaksiModalProps> = ({
             >
               {activeUsers.map((u) => (
                 <option key={u.id} value={u.id}>
-                  {u.name} ({u.nomor_anggota || u.email})
+                  {u.name} ({u.nomor_anggota || u.username})
                 </option>
               ))}
             </select>

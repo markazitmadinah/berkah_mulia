@@ -31,7 +31,7 @@ class TabunganBerjangkaController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = TabunganBerjangka::with('user:id,name,phone,nomor_anggota')
-            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status), fn ($q) => $q->where('status', '!=', 'batal'))
+            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status), fn ($q) => $q->whereNotIn('status', ['batal', 'selesai']))
             ->when($request->filled('user_id'), fn ($q) => $q->where('user_id', $request->user_id))
             ->latest();
 

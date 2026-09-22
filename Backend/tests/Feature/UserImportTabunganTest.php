@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Exports\UsersTemplate;
+use App\Models\HargaEmasHarian;
 use App\Models\JenisTabungan;
 use App\Models\Transaksi;
 use App\Models\User;
@@ -13,47 +14,50 @@ use Tests\ApiTestCase;
 class UserImportTabunganTest extends ApiTestCase
 {
     /**
-     * CSV 54 kolom (mengikuti heading template) dengan blok tabungan yang diisi
-     * sesuai argumen. Blanko = blok produk tidak dimiliki nasabah.
+     * CSV mengikuti heading template (53 kolom). Blok kosong = produk tidak dimiliki.
+     * Heading TIDAK dikunci ke posisi kolom; dipetakan via nama heading → nilai.
      */
-    private function csv(
-        string $email,
-        string $anggota,
-        string $mandiriSaldo = '',
-        string $hrTarget = '',
-        string $hrFrekuensi = 'bulanan',
-        string $hrNominal = '',
-        string $hrDurasi = '',
-        string $hrMulai = '',
-        string $hrJatuhTempo = '',
-    ): string {
+    private function csv(array $set = []): string
+    {
+        return $this->csvMulti([$set]);
+    }
+
+    /**
+     * Satu baris heading (dari template) + N baris data. Baris kedua contoh
+     * template tidak disertakan sehingga seluruh baris adalah data nasabah.
+     */
+    private function csvMulti(array $dataRows): string
+    {
         $headings = (new UsersTemplate)->headings();
-        $vals = array_fill(0, count($headings), '');
 
-        $set = function (string $heading, string $value) use (&$vals, $headings) {
-            $i = array_search($heading, $headings, true);
-            $vals[$i] = $value;
-        };
+        $lines = [implode(',', $headings)];
+        foreach ($dataRows as $set) {
+            $vals = array_map(fn (string $h) => $set[$h] ?? '', $headings);
+            $lines[] = implode(',', $vals);
+        }
 
-        $set('Nama Lengkap', 'Nasabah Import');
-        $set('Email', $email);
-        $set('No. Handphone', '081295000001');
-        $set('Nomor Anggota (10 digit)', $anggota);
-        $set('Alamat', 'Jl. Coba No. 1');
-        $set('Password', 'password123');
-        $set('Peran', 'Nasabah');
-        $set('Status', 'Aktif');
+        return implode("\n", $lines)."\n";
+    }
 
-        $set('Mandiri - Saldo Awal (Rp)', $mandiriSaldo);
+    private function importCsv(array $set, string $namaFile = 'nasabah.csv'): \Illuminate\Testing\TestResponse
+    {
+        return $this->post('/api/v1/admin/users/import', [
+            'file' => UploadedFile::fake()->createWithContent($namaFile, $this->csv($set)),
+        ]);
+    }
 
-        $set('Hari Raya - Target (Rp)', $hrTarget);
-        $set('Hari Raya - Frekuensi Bayar', $hrFrekuensi);
-        $set('Hari Raya - Nominal per Periode (Rp)', $hrNominal);
-        $set('Hari Raya - Durasi (Periode)', $hrDurasi);
-        $set('Hari Raya - Tanggal Mulai', $hrMulai);
-        $set('Hari Raya - Jatuh Tempo', $hrJatuhTempo);
-
-        return implode(',', $headings)."\n".implode(',', $vals)."\n";
+    /**
+     * Kolom "Yang Sudah Terkumpul" per produk (heading → nilai) untuk satu baris nasabah.
+     */
+    private function setTerkumpul(int $mandiri = 0, int $emas = 0, int $hariRaya = 0, int $qurban = 0, int $berjangka = 0): array
+    {
+        return [
+            'Mandiri - Yang Sudah Terkumpul (Rp)' => $mandiri > 0 ? (string) $mandiri : '',
+            'Emas - Yang Sudah Terkumpul (Rp)' => $emas > 0 ? (string) $emas : '',
+            'Hari Raya - Yang Sudah Terkumpul (Rp)' => $hariRaya > 0 ? (string) $hariRaya : '',
+            'Qurban - Yang Sudah Terkumpul (Rp)' => $qurban > 0 ? (string) $qurban : '',
+            'Berjangka - Yang Sudah Terkumpul (Rp)' => $berjangka > 0 ? (string) $berjangka : '',
+        ];
     }
 
     public function test_import_membuat_target_dan_saldo_awal_tabungan(): void
@@ -64,18 +68,23 @@ class UserImportTabunganTest extends ApiTestCase
         $mandiri = JenisTabungan::where('kode', 'tabungan-pribadi')->first();
         $hr = JenisTabungan::where('kode', 'tabungan-hari-raya')->first();
 
-        $file = UploadedFile::fake()->createWithContent(
-            'nasabah_tabungan.csv',
-            $this->csv('import.satu@gmail.com', '1000000016', '500000', '1000000', 'bulanan', '208333', '5')
-        );
+        $res = $this->importCsv([
+            'Nama Lengkap' => 'Nasabah Import',
+            'Peran' => 'Nasabah',
+            'Status' => 'Aktif',
+            'Mandiri - Yang Sudah Terkumpul (Rp)' => '500000',
+            'Hari Raya - Target (Rp)' => '1000000',
+            'Hari Raya - Frekuensi Bayar' => 'bulanan',
+            'Hari Raya - Nominal per Periode (Rp)' => '208333',
+            'Hari Raya - Durasi (Periode)' => '5',
+        ]);
 
-        $this->post('/api/v1/admin/users/import', ['file' => $file])
-            ->assertOk()
+        $res->assertOk()
             ->assertJsonPath('data.jumlah_ditambahkan', 1)
             ->assertJsonPath('data.tabungan.target_diatur', 1)
             ->assertJsonPath('data.tabungan.saldo_awal_dicatat', 1);
 
-        $user = User::where('email', 'import.satu@gmail.com')->firstOrFail();
+        $user = User::where('name', 'Nasabah Import')->firstOrFail();
 
         // Target tersimpan untuk Hari Raya beserta rincian setoran.
         $this->assertDatabaseHas('user_tabungan_target', [
@@ -109,23 +118,23 @@ class UserImportTabunganTest extends ApiTestCase
 
         $mandiri = JenisTabungan::where('kode', 'tabungan-pribadi')->first();
 
-        $import1 = UploadedFile::fake()->createWithContent(
-            'a.csv',
-            $this->csv('import.dua@gmail.com', '1000000017', '500000', '1000000')
-        );
-        $this->post('/api/v1/admin/users/import', ['file' => $import1])->assertOk();
+        $this->importCsv([
+            'Nama Lengkap' => 'Nasabah Import',
+            'Mandiri - Yang Sudah Terkumpul (Rp)' => '500000',
+            'Hari Raya - Target (Rp)' => '1000000',
+        ]);
 
         // Import ulang dengan dana baru → di-update, bukan duplikat.
-        $import2 = UploadedFile::fake()->createWithContent(
-            'b.csv',
-            $this->csv('import.dua@gmail.com', '1000000017', '750000', '2000000')
-        );
-        $this->post('/api/v1/admin/users/import', ['file' => $import2])
+        $this->importCsv([
+            'Nama Lengkap' => 'Nasabah Import',
+            'Mandiri - Yang Sudah Terkumpul (Rp)' => '750000',
+            'Hari Raya - Target (Rp)' => '2000000',
+        ], 'b.csv')
             ->assertOk()
             ->assertJsonPath('data.jumlah_diupdate', 1)
             ->assertJsonPath('data.tabungan.saldo_awal_diubah', 1);
 
-        $user = User::where('email', 'import.dua@gmail.com')->firstOrFail();
+        $user = User::where('name', 'Nasabah Import')->firstOrFail();
 
         $hr = JenisTabungan::where('kode', 'tabungan-hari-raya')->first();
         $this->assertDatabaseHas('user_tabungan_target', [
@@ -153,11 +162,7 @@ class UserImportTabunganTest extends ApiTestCase
         $this->seedBase();
         $this->actingAsAdmin();
 
-        $csv = $this->csv('nasabah.polos@gmail.com', '1000000019');
-
-        $file = UploadedFile::fake()->createWithContent('polos.csv', $csv);
-
-        $this->post('/api/v1/admin/users/import', ['file' => $file])
+        $this->importCsv(['Nama Lengkap' => 'Nasabah Polos'])
             ->assertOk()
             ->assertJsonPath('data.jumlah_ditambahkan', 1)
             ->assertJsonPath('data.tabungan.target_diatur', 0);
@@ -166,32 +171,64 @@ class UserImportTabunganTest extends ApiTestCase
         $this->assertDatabaseCount('transaksi', 0);
     }
 
-    public function test_template_memuat_kolom_tabungan(): void
-    {
-        $headings = (new UsersTemplate)->headings();
-
-        // Blok dasar tetap ada.
-        $this->assertContains('Nomor Anggota (10 digit)', $headings);
-
-        // Kolom tabungan per produk (54 kolom).
-        $this->assertContains('Emas - Target (gram)', $headings);
-        $this->assertContains('Hari Raya - Target (Rp)', $headings);
-        $this->assertContains('Qurban - Target (Rp)', $headings);
-        $this->assertContains('Berjangka - Target (Rp)', $headings);
-        $this->assertContains('Mandiri - Saldo Awal (Rp)', $headings);
-        $this->assertContains('Gadai - No. Referensi', $headings);
-        $this->assertContains('Gadai - Status', $headings);
-
-        // Total kolom persis 54.
-        $this->assertCount(54, $headings);
-    }
-
-    public function test_import_baris_lengkap_54_kolom_mengisi_semua_produk(): void
+    public function test_import_baris_produk_separuh_tidak_membatalkan_user(): void
     {
         $this->seedBase();
         $this->actingAsAdmin();
 
-        $admin = \App\Models\User::where('role', 'admin')->first();
+        // Nama polos (semua produk kosong) + target emas separuh (tanpa rincian).
+        $csv = $this->csvMulti([
+            ['Nama Lengkap' => 'Non Nabung', 'Peran' => 'Nasabah', 'Status' => 'Aktif'],
+            ['Nama Lengkap' => 'Emas Separuh', 'Peran' => 'Nasabah', 'Status' => 'Aktif', 'Emas - Target (gram)' => '25'],
+        ]);
+
+        $res = $this->post('/api/v1/admin/users/import', [
+            'file' => UploadedFile::fake()->createWithContent('separuh.csv', $csv),
+        ]);
+
+        $res->assertOk()
+            ->assertJsonPath('data.jumlah_ditambahkan', 2)
+            ->assertJsonPath('data.tabungan.target_diatur', 0);
+
+        // Kedua user tetap terdaftar walau blok emas baris 3 ditolak schema.
+        $this->assertNotNull(User::where('name', 'Non Nabung')->first());
+        $this->assertNotNull(User::where('name', 'Emas Separuh')->first());
+        $this->assertDatabaseCount('user_tabungan_target', 0);
+
+        $detail = $res->json('data.detail_dilewati');
+        $this->assertIsArray($detail);
+        $this->assertNotEmpty(array_filter($detail, fn (string $d) => str_contains($d, 'Baris 3') && str_contains($d, 'data tabungan tidak valid')));
+    }
+
+    public function test_template_memuat_kolom_tabungan(): void
+    {
+        $headings = (new UsersTemplate)->headings();
+
+        // Kolom target per produk tetap ada.
+        $this->assertContains('Emas - Target (gram)', $headings);
+        $this->assertContains('Hari Raya - Target (Rp)', $headings);
+        $this->assertContains('Qurban - Target (Rp)', $headings);
+        $this->assertContains('Berjangka - Target (Rp)', $headings);
+        $this->assertContains('Gadai - No. Referensi', $headings);
+        $this->assertContains('Gadai - Status', $headings);
+
+        // Setiap blok tabungan punya kolom "Yang Sudah Terkumpul" (tersambung progress).
+        foreach (['Emas', 'Hari Raya', 'Qurban', 'Berjangka', 'Mandiri'] as $produk) {
+            $this->assertContains($produk.' - Yang Sudah Terkumpul (Rp)', $headings);
+        }
+        // Template tidak lagi meminta data yang diisi nasabah sendiri.
+        $this->assertNotContains('Email', $headings);
+
+        // Total kolom persis 53.
+        $this->assertCount(53, $headings);
+    }
+
+    public function test_import_yang_sudah_terkumpul_terhubung_ke_progress_semua_tabungan(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+
+        $admin = User::where('role', 'admin')->first();
         $periode = \App\Models\PeriodeQurban::create([
             'tahun' => 2026,
             'status' => 'aktif',
@@ -208,156 +245,201 @@ class UserImportTabunganTest extends ApiTestCase
             'status_aktif' => true,
             'created_by' => $admin->id,
         ]);
+        HargaEmasHarian::create([
+            'tanggal' => now()->toDateString(),
+            'harga_per_gram' => 1000000,
+            'status_aktif' => true,
+            'created_by' => $admin->id,
+        ]);
 
-        $headings = (new UsersTemplate)->headings();
-        $vals = array_fill(0, count($headings), '');
+        $this->importCsv(array_merge([
+            'Nama Lengkap' => 'Nasabah Lengkap',
+            'Peran' => 'Nasabah',
+            'Status' => 'Aktif',
 
-        $set = function (string $heading, string $value) use (&$vals, $headings) {
-            $vals[array_search($heading, $headings, true)] = $value;
-        };
-
-        $set('Nama Lengkap', 'Nasabah Lengkap');
-        $set('Email', 'lengkap@example.com');
-        $set('No. Handphone', '081295009999');
-        $set('Nomor Anggota (10 digit)', '1000000001');
-        $set('Alamat', 'Jl. Lengkap');
-        $set('Password', 'password123');
-        $set('Peran', 'Nasabah');
-        $set('Status', 'Aktif');
-
-        $set('Emas - Target (gram)', '25');
-        $set('Emas - Gram per Periode', '1');
-        $set('Emas - Frekuensi Bayar', 'Bulanan');
-        $set('Emas - Nominal per Periode (Rp)', '1500000');
-        $set('Emas - Durasi (Periode)', '25');
-        $set('Emas - Tanggal Mulai', '01/01/2026');
-        $set('Emas - Jatuh Tempo', '01/02/2028');
-
-        $set('Hari Raya - Target (Rp)', '5000000');
-        $set('Hari Raya - Frekuensi Bayar', 'Bulanan');
-        $set('Hari Raya - Nominal per Periode (Rp)', '208333');
-        $set('Hari Raya - Durasi (Periode)', '24');
-        $set('Hari Raya - Tanggal Mulai', '01/01/2026');
-        $set('Hari Raya - Jatuh Tempo', '01/01/2028');
-
-        $set('Qurban - Target (Rp)', '4500000');
-        $set('Qurban - Jumlah Hewan', '1');
-        $set('Qurban - Jenis Hewan', 'Kambing');
-        $set('Qurban - Periode', '2026');
-        $set('Qurban - Frekuensi Bayar', 'Bulanan');
-        $set('Qurban - Nominal per Periode (Rp)', '375000');
-        $set('Qurban - Tanggal Daftar', '01/05/2026');
-
-        $set('Berjangka - Target (Rp)', '6000000');
-        $set('Berjangka - Frekuensi Bayar', 'Bulanan');
-        $set('Berjangka - Nominal per Periode (Rp)', '500000');
-        $set('Berjangka - Durasi (Periode)', '12');
-        $set('Berjangka - Tanggal Mulai', '01/06/2026');
-        $set('Berjangka - Jatuh Tempo', '01/06/2027');
-
-        $set('Mandiri - Saldo Awal (Rp)', '1000000');
-
-        $set('Gadai - No. Referensi', 'GDS-260101-0001');
-        $set('Gadai - Tanggal Aju', '01/05/2026');
-        $set('Gadai - Jenis Emas', 'Antam 99');
-        $set('Gadai - Berat (gram)', '10');
-        $set('Gadai - Kadar (%)', '999');
-        $set('Gadai - Berat Bersih (gram)', '9.99');
-        $set('Gadai - Harga Acuan (Rp/gram)', '1500000');
-        $set('Gadai - Nilai Taksiran (Rp)', '14985000');
-        $set('Gadai - Persen Gadai (%)', '90');
-        $set('Gadai - Besaran Gadai (Rp)', '13486500');
-        $set('Gadai - Tenor (Satuan)', 'bulan');
-        $set('Gadai - Toleransi Hari', '7');
-        $set('Gadai - Frekuensi Bayar', 'bulanan');
-        $set('Gadai - Nominal Angsuran (Rp)', '561938');
-        $set('Gadai - Bunga (%)', '1.5');
-        $set('Gadai - Total Dibayar (Rp)', '13486500');
-        $set('Gadai - Tanggal Aktif', '01/05/2026');
-        $set('Gadai - Jatuh Tempo', '01/05/2027');
-        $set('Gadai - Status', 'Aktif');
-
-        $csv = implode(',', $headings)."\n".implode(',', $vals)."\n";
-        $file = UploadedFile::fake()->createWithContent('lengkap.csv', $csv);
-
-        $this->post('/api/v1/admin/users/import', ['file' => $file])
+            'Emas - Target (gram)' => '25',
+            'Emas - Gram per Periode' => '1',
+            'Emas - Nominal per Periode (Rp)' => '1500000',
+            'Emas - Durasi (Periode)' => '25',
+            'Hari Raya - Target (Rp)' => '5000000',
+            'Qurban - Target (Rp)' => '4500000',
+            'Qurban - Jumlah Hewan' => '1',
+            'Qurban - Jenis Hewan' => 'Kambing',
+            'Qurban - Periode' => '2026',
+            'Berjangka - Target (Rp)' => '6000000',
+            'Berjangka - Nominal per Periode (Rp)' => '500000',
+            'Berjangka - Durasi (Periode)' => '12',
+        ], $this->setTerkumpul(
+            mandiri: 1000000,
+            emas: 2000000,
+            hariRaya: 1000000,
+            qurban: 1000000,
+            berjangka: 1000000,
+        )))
             ->assertOk()
             ->assertJsonPath('data.jumlah_ditambahkan', 1)
-            ->assertJsonPath('data.tabungan.target_diatur', 4);
+            ->assertJsonPath('data.tabungan.target_diatur', 4)
+            ->assertJsonPath('data.tabungan.saldo_awal_dicatat', 5);
 
-        $user = User::where('email', 'lengkap@example.com')->firstOrFail();
-
-        // Goal global emas ikut ter-set dari target rencana (progress dashboard tampil).
-        $this->assertNotNull($user->target_emas_gram);
-        $this->assertEqualsWithDelta(25.0, (float) $user->target_emas_gram, 0.000001);
-
+        $user = User::where('name', 'Nasabah Lengkap')->firstOrFail();
         $emas = JenisTabungan::where('kode', 'EMAS')->first();
         $hr = JenisTabungan::where('kode', 'tabungan-hari-raya')->first();
         $berjangka = JenisTabungan::where('kode', 'tabungan-berjangka')->first();
         $mandiri = JenisTabungan::where('kode', 'tabungan-pribadi')->first();
 
-        // Konfigurasi setoran emas terisi target, jadwal, dan tanggal.
-        $this->assertDatabaseHas('konfigurasi_setoran_emas', [
-            'user_id' => $user->id,
-            'jenis_tabungan_id' => $emas->id,
-            'target_gram_total' => 25,
-            'target_gram_per_periode' => 1,
-            'frekuensi_setor' => 'bulanan',
-            'nominal_per_periode' => 1500000,
-            'durasi_periode' => 25,
-            'tanggal_deadline' => '2028-02-01 00:00:00',
-        ]);
+        // Setiap "Yang Sudah Terkumpul" → setoran terverifikasi bertanda saldo awal.
+        $this->assertSaldoAwal($user, $mandiri, 1000000);
+        $this->assertSaldoAwal($user, $hr, 1000000);
+        $this->assertSaldoAwal($user, $berjangka, 1000000);
+        $this->assertSaldoAwal($user, $emas, 2000000);
 
-        // Hari Raya: target + durasi + tanggal (kolom baru).
-        $this->assertDatabaseHas('user_tabungan_target', [
-            'user_id' => $user->id,
-            'jenis_tabungan_id' => $hr->id,
-            'target_nominal' => 5000000,
-            'frekuensi_setor' => 'bulanan',
-            'nominal_per_periode' => 208333,
-            'durasi_periode' => 24,
-            'tanggal_mulai' => '2026-01-01 00:00:00',
-            'tanggal_deadline' => '2028-01-01 00:00:00',
-        ]);
-
-        // Qurban terhubung ke hewan & periode yang dipilih.
-        $this->assertDatabaseHas('pendaftaran_qurban', [
-            'user_id' => $user->id,
-            'periode_qurban_id' => $periode->id,
-            'jumlah_hewan' => 1,
-            'target_dana' => 4500000,
-            'status' => 'menabung',
-        ]);
-
-        // Berjangka: target, durasi_bulan, jadwal aktif.
-        $this->assertDatabaseHas('tabungan_berjangka', [
-            'user_id' => $user->id,
-            'jenis_tabungan_id' => $berjangka->id,
-            'target_nominal' => 6000000,
-            'durasi_bulan' => 12,
-            'status' => 'aktif',
-        ]);
-
-        // Mandiri: saldo awal otomatis terverifikasi (progress mandiri terisi).
+        // Emas: nominal dikonversi ke gram (harga jual bertingkat), jadi progress gram ikut terisi.
+        $emasRow = Transaksi::where('user_id', $user->id)
+            ->where('jenis_tabungan_id', $emas->id)
+            ->where('catatan_admin', 'like', '%SALDO_AWAL_IMPORT%')
+            ->first();
+        $this->assertTrue((float) $emasRow->unit_didapat > 1.5, 'unit_didapat harus > 1.5 gram untuk Rp 2.000.000');
         $this->assertDatabaseHas('transaksi', [
             'user_id' => $user->id,
-            'jenis_tabungan_id' => $mandiri->id,
-            'nominal' => 1000000,
-            'status_verifikasi' => 'terverifikasi',
+            'jenis_tabungan_id' => $emas->id,
+            'nominal' => 2000000,
+            'nominal_selisih' => 0,
         ]);
-        $progress = app(ProgressCalculatorService::class)->getProgress($user, $mandiri);
-        $this->assertEquals(1000000, $progress['saldo']);
+        $progressEmas = app(ProgressCalculatorService::class)->getProgress($user, $emas);
+        $this->assertEquals(2000000, $progressEmas['saldo']);
+        $this->assertEqualsWithDelta(1.666667, (float) $progressEmas['total_unit'], 0.00001);
 
-        // Gadai: seluruh kolom masuk, kadar permille (999) & status aktif.
-        $this->assertDatabaseHas('gadai', [
+        // Emas: saldo awal tertaut rencana → gram terkumpul & capaian rencana ikut terisi.
+        $rencana = app(\App\Services\SaldoEmasService::class)->getAktif($user, $emas);
+        $this->assertNotNull($rencana, 'rencana emas harus ada');
+        $this->assertDatabaseHas('transaksi', [
+            'id' => $emasRow->id,
+            'konfigurasi_id' => $rencana->id,
+        ]);
+        $rekap = app(\App\Services\SaldoEmasService::class)->getProgress($user, $rencana)['rekap'];
+        $this->assertEqualsWithDelta((float) $emasRow->unit_didapat, (float) $rekap['gram_terkumpul'], 0.00001);
+
+        // Berjangka: saldo awal tertaut akun berjangka → terkumpul dihitung langsung.
+        $tb = \App\Models\TabunganBerjangka::where('user_id', $user->id)->first();
+        $this->assertNotNull($tb, 'tabungan berjangka harus ada');
+        $this->assertDatabaseHas('transaksi', [
             'user_id' => $user->id,
-            'nomor_gadai' => 'GDS-260101-0001',
-            'jenis_emas' => 'Antam 99',
-            'berat_gram' => 10,
-            'kadar' => 999,
-            'nominal_angkuran' => 561938,
-            'bunga_persen' => 1.5,
-            'status' => 'aktif',
+            'jenis_tabungan_id' => $berjangka->id,
+            'tabungan_berjangka_id' => $tb->id,
+            'nominal' => 1000000,
+        ]);
+        $this->assertEquals(1000000, $tb->terkumpulNominal());
+
+        // Qurban: transaksi tertaut pendaftaran → total_terkumpul terisi, progress tampil.
+        $pendaftaran = $user->pendaftaranQurban()->first();
+        $this->assertNotNull($pendaftaran);
+        $this->assertEquals(1000000, (float) $pendaftaran->total_terkumpul);
+
+        // Semua progress rupiah terisi saldo sesuai kolom terkumpul.
+        foreach (['mandiri' => $mandiri, 'hari_raya' => $hr, 'berjangka' => $berjangka] as $label => $jenis) {
+            $progress = app(ProgressCalculatorService::class)->getProgress($user, $jenis);
+            $this->assertEquals(1000000, $progress['saldo'], "saldo {$label}");
+        }
+    }
+
+    public function test_import_ulang_nominal_sama_menyambung_kembali_relasi_saldo_awal(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+
+        $admin = User::where('role', 'admin')->first();
+        HargaEmasHarian::create([
+            'tanggal' => now()->toDateString(),
+            'harga_per_gram' => 1000000,
+            'status_aktif' => true,
+            'created_by' => $admin->id,
+        ]);
+
+        $data = [
+            'Nama Lengkap' => 'Relasi Saldo Awal',
+            'Emas - Target (gram)' => '10',
+            'Emas - Gram per Periode' => '1',
+            'Emas - Nominal per Periode (Rp)' => '2000000',
+            'Emas - Durasi (Periode)' => '10',
+            'Emas - Yang Sudah Terkumpul (Rp)' => '2000000',
+        ];
+
+        $this->importCsv($data)->assertOk();
+
+        $user = User::where('name', 'Relasi Saldo Awal')->firstOrFail();
+        $emas = JenisTabungan::where('kode', 'EMAS')->first();
+        $emasRow = Transaksi::where('user_id', $user->id)
+            ->where('jenis_tabungan_id', $emas->id)
+            ->where('catatan_admin', 'like', '%SALDO_AWAL_IMPORT%')
+            ->first();
+
+        // Simulasikan saldo awal lama (diimport sebelum atribusi ke rencana ada).
+        $emasRow->update(['konfigurasi_id' => null]);
+
+        // Import ulang nominal sama → relasi tersambung lagi (bukan duplikat).
+        $this->importCsv($data, 'b.csv')
+            ->assertOk()
+            ->assertJsonPath('data.jumlah_diupdate', 1);
+
+        $rencana = app(\App\Services\SaldoEmasService::class)->getAktif($user, $emas);
+        $this->assertSame(1, Transaksi::withTrashed()
+            ->where('user_id', $user->id)
+            ->where('jenis_tabungan_id', $emas->id)
+            ->where('catatan_admin', 'like', '%SALDO_AWAL_IMPORT%')
+            ->count(), 'tidak boleh duplikat');
+        $this->assertDatabaseHas('transaksi', [
+            'id' => $emasRow->id,
+            'konfigurasi_id' => $rencana->id,
+        ]);
+        $rekap = app(\App\Services\SaldoEmasService::class)->getProgress($user, $rencana)['rekap'];
+        $this->assertEqualsWithDelta((float) $emasRow->unit_didapat, (float) $rekap['gram_terkumpul'], 0.00001);
+    }
+
+    public function test_import_ulang_yang_sudah_terkumpul_tidak_membuat_duplikat(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+
+        $admin = User::where('role', 'admin')->first();
+        HargaEmasHarian::create([
+            'tanggal' => now()->toDateString(),
+            'harga_per_gram' => 1000000,
+            'status_aktif' => true,
+            'created_by' => $admin->id,
+        ]);
+
+        $baris = array_merge(['Nama Lengkap' => 'Nasabah Import'], $this->setTerkumpul(mandiri: 500000, emas: 1000000, hariRaya: 500000));
+
+        $this->importCsv($baris)->assertOk();
+        $this->importCsv($baris, 'ulang.csv')->assertOk();
+
+        $user = User::where('name', 'Nasabah Import')->firstOrFail();
+
+        // Tetap satu catatan saldo awal per tabungan walau di-import ulang.
+        foreach (['tabungan-pribadi', 'EMAS', 'tabungan-hari-raya'] as $kode) {
+            $jenis = JenisTabungan::where('kode', $kode)->first();
+            $this->assertSame(1, $this->countSaldoAwal($user, $jenis->id), "duplikat saldo awal {$kode}");
+        }
+    }
+
+    private function countSaldoAwal(User $user, int $jenisId): int
+    {
+        return Transaksi::where('user_id', $user->id)
+            ->where('jenis_tabungan_id', $jenisId)
+            ->where('jenis_transaksi', 'setor')
+            ->where('status_verifikasi', 'terverifikasi')
+            ->where('catatan_admin', 'like', '%SALDO_AWAL_IMPORT%')
+            ->count();
+    }
+
+    private function assertSaldoAwal(User $user, JenisTabungan $jenis, int $nominal): void
+    {
+        $this->assertDatabaseHas('transaksi', [
+            'user_id' => $user->id,
+            'jenis_tabungan_id' => $jenis->id,
+            'jenis_transaksi' => 'setor',
+            'nominal' => $nominal,
+            'status_verifikasi' => 'terverifikasi',
         ]);
     }
 
@@ -473,7 +555,11 @@ class UserImportTabunganTest extends ApiTestCase
 
         $file = UploadedFile::fake()->createWithContent(
             'saldo-setelah-histori.csv',
-            $this->csv('konflik.histori@gmail.com', '1000000086', '500000', '1000000')
+            $this->csv([
+                'Nama Lengkap' => 'Konflik Histori',
+                'Mandiri - Yang Sudah Terkumpul (Rp)' => '500000',
+                'Hari Raya - Target (Rp)' => '1000000',
+            ])
         );
 
         $this->post('/api/v1/admin/users/import', ['file' => $file])

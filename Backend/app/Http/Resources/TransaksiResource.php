@@ -16,7 +16,6 @@ class TransaksiResource extends JsonResource
             'user' => $this->whenLoaded('user', fn () => [
                 'id' => $this->user->id,
                 'name' => $this->user->name,
-                'email' => $this->user->email,
                 'phone' => $this->user->phone,
                 'nomor_anggota' => $this->user->nomor_anggota,
             ]),

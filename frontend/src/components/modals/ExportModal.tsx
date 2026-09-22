@@ -119,7 +119,6 @@ export const ExportModal: React.FC<ExportModalProps> = ({ type, isOpen, onClose,
               { header: 'No Anggota', dataKey: 'anggota' },
               { header: 'Username', dataKey: 'username' },
               { header: 'Nama Lengkap', dataKey: 'name' },
-
               { header: 'No. HP', dataKey: 'phone' },
               { header: 'Alamat', dataKey: 'alamat' },
               { header: 'Peran', dataKey: 'role' },

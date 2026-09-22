@@ -204,7 +204,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   {currentUser.name}
                 </p>
                 <p className="text-[10px] text-slate-400 truncate mt-0.5">
-                  {currentUser.email}
+                  @{currentUser.username}
                 </p>
                 <div className="mt-2 flex items-center justify-between">
                   <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">

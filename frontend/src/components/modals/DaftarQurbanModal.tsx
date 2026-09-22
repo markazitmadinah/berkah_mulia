@@ -178,7 +178,7 @@ export const DaftarQurbanModal: React.FC<DaftarQurbanModalProps> = ({
               >
                 <option value="" disabled>— Pilih Nasabah —</option>
                 {users!.map((u) => (
-                  <option key={u.id} value={u.id}>{u.name} ({u.nomor_anggota || u.email})</option>
+                  <option key={u.id} value={u.id}>{u.name} ({u.nomor_anggota || u.username})</option>
                 ))}
               </select>
             </div>

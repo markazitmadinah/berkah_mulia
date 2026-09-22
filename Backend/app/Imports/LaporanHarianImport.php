@@ -201,12 +201,10 @@ class LaporanHarianImport implements SkipsEmptyRows, ToCollection, WithCalculate
             // Auto-create user baru
             $nomorAnggotaBaru = $nomorAnggota !== '' ? $nomorAnggota : $this->generateNomorAnggota();
             $username = $this->generateUsername($nama);
-            $emailDummy = 'user.'.$username.'@berkahmulia.local';
 
             $user = new User([
                 'name' => $nama,
                 'username' => $username,
-                'email' => $emailDummy,
                 'phone' => $phone !== '' ? $phone : $this->generatePlaceholderPhone(),
                 'address' => null,   // diisi saat onboarding
                 'nomor_anggota' => $nomorAnggotaBaru,

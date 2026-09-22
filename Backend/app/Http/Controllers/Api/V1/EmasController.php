@@ -326,8 +326,9 @@ class EmasController extends Controller
                 'auto_verify' => true,
             ]);
 
-            // Reset goal emas setelah tukar selesai (gram sudah berkurang).
-            $request->user()->update(['target_emas_gram' => null]);
+            // Rencana yang sudah tuntas ditutup 'selesai' (goal tercapai → tukar penuh),
+            // goal global ikut dibersihkan → progress bar hilang dari tab user & admin.
+            $this->saldoEmasService->tutupRencanaSetelahCairPenuh($request->user(), $jenisTabungan->id);
 
             return $t;
         });

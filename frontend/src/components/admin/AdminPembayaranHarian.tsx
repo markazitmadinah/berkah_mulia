@@ -358,7 +358,7 @@ export const AdminPembayaranHarian: React.FC<AdminPembayaranHarianProps> = ({ on
                   <p className="text-[9px] text-slate-400 font-bold uppercase">Setoran / Periode</p>
                   <p className="text-xs font-extrabold text-slate-700 dark:text-slate-200">Rp {formatRupiah(item.nominal_per_periode)}</p>
                   <p className="text-[10px] text-slate-400">
-                    Target {item.target_gram_per_periode} gram emas
+                    Target {item.target_gram_total ?? item.target_gram_per_periode} gram emas
                   </p>
                 </div>
 

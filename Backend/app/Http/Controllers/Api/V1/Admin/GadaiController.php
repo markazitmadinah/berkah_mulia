@@ -144,7 +144,7 @@ class GadaiController extends Controller
      */
     public function show(Gadai $gadai): JsonResponse
     {
-        $gadai->load(['user:id,email,name,phone,nomor_anggota,address', 'angsuran.createdBy:id,name']);
+        $gadai->load(['user:id,username,name,phone,nomor_anggota,address', 'angsuran.createdBy:id,name']);
 
         $data = $this->gadaiArray($gadai);
         $data['angsuran'] = $gadai->angsuran->map(fn (AngsuranGadai $a) => [

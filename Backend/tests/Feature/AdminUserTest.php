@@ -33,13 +33,13 @@ class AdminUserTest extends ApiTestCase
 
         $this->postJson('/api/v1/admin/users', [
             'name' => 'User Baru',
-            'email' => 'baru@example.com',
+            'username' => 'user.baru',
             'phone' => '081299887766',
             'nomor_anggota' => '0020260001',
             'password' => 'password123',
         ])->assertStatus(201)->assertJsonPath('data.status', 'active');
 
-        $this->assertDatabaseHas('users', ['email' => 'baru@example.com', 'status' => 'active']);
+        $this->assertDatabaseHas('users', ['username' => 'user.baru', 'status' => 'active']);
     }
 
     public function test_admin_bisa_update_user(): void
@@ -52,6 +52,34 @@ class AdminUserTest extends ApiTestCase
             ->assertOk()->assertJsonPath('data.name', 'Nama Updated');
 
         $this->assertDatabaseHas('users', ['id' => $user->id, 'name' => 'Nama Updated']);
+    }
+
+    public function test_update_user_terima_status_rejected_dan_revoke_token(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+        $user = $this->createUser();
+        $user->createToken('auth-token');
+        $this->assertDatabaseCount('personal_access_tokens', 1);
+
+        $this->putJson("/api/v1/admin/users/{$user->id}", ['status' => 'rejected'])
+            ->assertOk()->assertJsonPath('data.status', 'rejected');
+
+        $this->assertDatabaseHas('users', ['id' => $user->id, 'status' => 'rejected']);
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
+    public function test_update_user_status_active_kembali(): void
+    {
+        $this->seedBase();
+        $admin = $this->actingAsAdmin();
+        $user = $this->createUser(['status' => UserStatus::Rejected]);
+
+        $this->putJson("/api/v1/admin/users/{$user->id}", ['status' => 'active'])
+            ->assertOk()->assertJsonPath('data.status', 'active');
+
+        $this->assertDatabaseHas('users', ['id' => $user->id, 'status' => 'active', 'approved_by' => $admin->id]);
+        $this->assertNotNull(User::find($user->id)->approved_at);
     }
 
     public function test_admin_bisa_soft_delete_user(): void

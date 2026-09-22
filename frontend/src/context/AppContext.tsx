@@ -37,7 +37,8 @@ import {
   SetorTabunganBerjangkaPayload,
   CairkanTabunganBerjangkaPayload,
   TransaksiFilters,
-  FrekuensiSetoran
+  FrekuensiSetoran,
+  ImportTabunganPreview
 } from '../types';
 import { formatRupiah } from '../utils/format';
 import { hargaJualPerGram } from '../utils/hargaJual';
@@ -207,6 +208,9 @@ interface AppContextType {
   importLaporanHarian: (file: File) => Promise<void>;
   downloadUserTemplate: () => Promise<void>;
   downloadLaporanHarianTemplate: () => Promise<void>;
+  previewImportTabungan: (file: File) => Promise<ImportTabunganPreview>;
+  importTabungan: (file: File) => Promise<void>;
+  downloadImportTabunganTemplate: () => Promise<void>;
   exportUsers: () => Promise<void>;
   exportTransaksi: (filters?: TransaksiFilters) => Promise<void>;
   fetchTransaksiForExport: (filters?: TransaksiFilters) => Promise<Transaksi[]>;
@@ -266,7 +270,6 @@ const EMPTY_USER: User = {
   id: 0,
   name: '',
   username: '',
-  email: '',
   phone: '',
   role: 'user',
   status: 'active',
@@ -925,6 +928,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .then((res) => {
         const detail: string[] = (res?.data?.detail_dilewati || []) as string[];
         const t = res?.data?.tabungan as Record<string, number> | undefined;
+        const ditambahkan = Number(res?.data?.jumlah_ditambahkan ?? 0);
+        const diupdate = Number(res?.data?.jumlah_diupdate ?? 0);
+        const adaYangMasuk = ditambahkan > 0 || diupdate > 0;
         let msg = res?.message || 'File import sedang diproses.';
         if (t) {
           const parts: string[] = [];
@@ -937,8 +943,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (detail.length) {
           msg += ' ' + detail.slice(0, 5).join(' · ');
         }
-        showToast(msg, detail.length ? 'error' : 'success');
-        return refresh(currentUser);
+        // Hijau selama data tetap masuk; merah hanya jika tidak ada baris yang
+        // ditambahkan/diperbarui (catatan baris dilewati bukan berarti gagal).
+        showToast(msg, adaYangMasuk ? 'success' : 'error');
+        // Refresh daftar user secara mandiri agar tabel langsung ter-update
+        // walau refresh monolit (13 fetch) gagal sebagian setelah toast sukses.
+        const users$ = api
+          .get<User[]>('/admin/users?per_page=200')
+          .then((r) => setUsers(r.data.map(normUser)))
+          .catch(() => null);
+        return Promise.all([refresh(currentUser, 'light'), users$]).then(() => undefined);
       })
       .catch((e: { message?: string }) => {
         showToast(e?.message || 'Gagal mengimpor file.', 'error');
@@ -977,6 +991,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const downloadLaporanHarianTemplate = () =>
     downloadFile('/admin/users/import-laporan/template', 'template_import_laporan_harian.xlsx')
       .then(() => showToast('Template laporan harian berhasil diunduh!'))
+      .catch((e: { message?: string }) => {
+        showToast(e?.message || 'Gagal mengunduh template.', 'error');
+        throw e;
+      });
+
+  const previewImportTabungan = (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api.postForm<ImportTabunganPreview>('/admin/import-tabungan/preview', form).then((res) => res.data);
+  };
+
+  const importTabungan = (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api
+      .postForm<ImportTabunganPreview>('/admin/import-tabungan', form)
+      .then((res) => {
+        const s = res?.data?.summary;
+        const bits: string[] = [];
+        if (s) {
+          if (s.nasabah?.baru || s.nasabah?.ada) bits.push(`Nasabah: ${s.nasabah.baru} baru, ${s.nasabah.ada} ada`);
+          if (s.emas?.rencana) bits.push(`Emas: ${s.emas.rencana} rencana`);
+          if (s.berjangka?.rencana) bits.push(`Berjangka: ${s.berjangka.rencana} rencana`);
+          if (s.qurban?.daftar) bits.push(`Qurban: ${s.qurban.daftar} daftar`);
+          if (s.gadai?.record) bits.push(`Gadai: ${s.gadai.record} record`);
+          if (s.hari_raya?.target) bits.push(`Hari Raya: ${s.hari_raya.target} target`);
+          if (s.mandiri?.saldo_awal !== undefined) bits.push(`Mandiri: ${s.mandiri.saldo_awal} saldo awal`);
+          if (s.emas?.saldo_awal) bits.push(`${s.emas.saldo_awal} saldo awal`);
+          if (s.qurban?.saldo_awal) bits.push(`${s.qurban.saldo_awal} saldo awal qurban`);
+          if (s.berjangka?.saldo_awal) bits.push(`${s.berjangka.saldo_awal} saldo awal berjangka`);
+          if (s.hari_raya?.saldo_awal) bits.push(`${s.hari_raya.saldo_awal} saldo awal hari raya`);
+        }
+        const msg = bits.length ? `Import selesai: ${bits.join(' · ')}` : 'Import selesai.';
+        showToast(msg, 'success');
+        return refresh(currentUser);
+      })
+      .catch((e: { message?: string }) => {
+        showToast(e?.message || 'Gagal mengimpor tabungan.', 'error');
+        throw e;
+      });
+  };
+
+  const downloadImportTabunganTemplate = () =>
+    downloadFile('/admin/import-tabungan/template', 'template_import_tabungan_7sheet.xlsx')
+      .then(() => showToast('Template import tabungan berhasil diunduh!'))
       .catch((e: { message?: string }) => {
         showToast(e?.message || 'Gagal mengunduh template.', 'error');
         throw e;
@@ -1546,6 +1605,9 @@ setActiveTab,
     importLaporanHarian,
     downloadUserTemplate,
     downloadLaporanHarianTemplate,
+    previewImportTabungan,
+    importTabungan,
+    downloadImportTabunganTemplate,
     exportUsers,
     exportTransaksi,
     fetchTransaksiForExport,

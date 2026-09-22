@@ -55,7 +55,6 @@ class UsersExport implements FromQuery, ShouldAutoSize, WithColumnFormatting, Wi
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
                     ->orWhere('username', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%")
                     ->orWhere('nomor_anggota', 'like', "%{$search}%")
                     ->orWhere('phone', 'like', "%{$search}%");
             });
@@ -71,7 +70,6 @@ class UsersExport implements FromQuery, ShouldAutoSize, WithColumnFormatting, Wi
             'No Anggota',
             'Username',
             'Nama Lengkap',
-            'Email',
             'No. Handphone',
             'Alamat',
             'Total Saldo Simpanan (Rp)',
@@ -128,7 +126,6 @@ class UsersExport implements FromQuery, ShouldAutoSize, WithColumnFormatting, Wi
             $this->safeCell($user->nomor_anggota ?? '-'),
             $this->safeCell($user->username ?? '-'),
             $this->safeCell($user->name),
-            $this->safeCell($user->email),
             $this->safeCell($user->phone ?? '-'),
             $this->safeCell($user->address ?: '-'),
             max(0, $saldoSimpanan),
@@ -157,9 +154,9 @@ class UsersExport implements FromQuery, ShouldAutoSize, WithColumnFormatting, Wi
     public function columnFormats(): array
     {
         return [
-            'H' => '#,##0',
-            'I' => '0.0000',
-            'N' => NumberFormat::FORMAT_DATE_DDMMYYYY,
+            'G' => '#,##0',
+            'H' => '0.0000',
+            'M' => NumberFormat::FORMAT_DATE_DDMMYYYY,
         ];
     }
 

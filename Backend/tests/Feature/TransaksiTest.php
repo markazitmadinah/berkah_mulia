@@ -351,11 +351,10 @@ class TransaksiTest extends ApiTestCase
         $this->assertNotNull($sheet, 'Sheet Data Transaksi harus ada');
 
         $last = $sheet->getHighestRow();
-        $this->assertSame('Uang Masuk', $sheet->getCell('A'.$last)->getValue());
-        $this->assertSame(500000, (int) $sheet->getCell('C'.$last)->getValue());
-        $this->assertSame('Uang Keluar', $sheet->getCell('D'.$last)->getValue());
-        $this->assertSame('Total', $sheet->getCell('G'.$last)->getValue());
-        $this->assertSame(350000, (int) $sheet->getCell('I'.$last)->getValue());
+        // Footer: label+nilai digabung (merge) jadi satu sel per aliran.
+        $this->assertSame('Uang Masuk: Rp 500.000', $sheet->getCell('A'.$last)->getValue());
+        $this->assertSame('Uang Keluar: Rp 150.000', $sheet->getCell('D'.$last)->getValue());
+        $this->assertSame('Total: Rp 350.000', $sheet->getCell('G'.$last)->getValue());
 
         unlink($path);
     }
@@ -378,8 +377,7 @@ class TransaksiTest extends ApiTestCase
         $wb = IOFactory::load($path);
         $sheet = $wb->getSheetByName('Data Transaksi');
         $last = $sheet->getHighestRow();
-        $this->assertSame('Total Uang Masuk', $sheet->getCell('A'.$last)->getValue());
-        $this->assertSame(500000, (int) $sheet->getCell('C'.$last)->getValue());
+        $this->assertSame('Total Uang Masuk: Rp 500.000', $sheet->getCell('A'.$last)->getValue());
         $this->assertGreaterThan(1, $last);
 
         unlink($path);

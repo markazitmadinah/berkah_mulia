@@ -7,6 +7,8 @@ use App\Models\JenisTabungan;
 use App\Models\KonfigurasiSetoranEmas;
 use App\Models\Transaksi;
 use App\Models\User;
+use App\Services\SaldoAwalService;
+use App\Services\SaldoEmasService;
 use Laravel\Sanctum\Sanctum;
 use Tests\ApiTestCase;
 
@@ -524,8 +526,9 @@ class SetoranBerkalaEmasTest extends ApiTestCase
         // Satu setoran rencana terverifikasi: 0,012gr (biaya 12.000) + saldo dana 3.000.
         $this->buatSetorTerverifikasi($user, $jenis, ['konfigurasi_id' => $rencana->id]);
 
-        // Refund = TOTAL tabungan (nilai gram dinilai harga jual 0,012gr × 1,2jt =
-        // 14.400 + saldo dana 3.000) dipotong 10% (1.740) = 15.660.
+        // Refund baru: potongan 10% hanya dari TOTAL SETORAN EMAS (nominal 15.000 →
+        // potongan 1.500), bukan dari nilai pasar gram. Nilai emas 0,012gr × 1,2jt =
+        // 14.400 − 1.500 = 12.900; saldo dana 3.000 dikembalikan penuh → total 15.900.
         $response = $this->postJson("/api/v1/emas/setoran-berkala/{$rencana->id}/batalkan", [
             'bank_tujuan' => 'BSI',
             'no_rekening' => '7123456789',
@@ -535,16 +538,19 @@ class SetoranBerkalaEmasTest extends ApiTestCase
         $response->assertOk()
             ->assertJsonPath('data.rencana.status', 'aktif')
             ->assertJsonPath('data.refund.gram_dibatalkan', 0.012)
-            ->assertJsonPath('data.refund.penalti_10_persen', 1740)
+            ->assertJsonPath('data.refund.nilai_gram', 14400)
+            ->assertJsonPath('data.refund.total_setoran_emas', 15000)
+            ->assertJsonPath('data.refund.refund_emas', 12900)
+            ->assertJsonPath('data.refund.penalti_10_persen', 1500)
             ->assertJsonPath('data.refund.saldo_dana', 3000)
-            ->assertJsonPath('data.refund.nominal_refund', 15660);
+            ->assertJsonPath('data.refund.nominal_refund', 15900);
 
         $this->assertDatabaseHas('transaksi', [
             'user_id' => $user->id,
             'konfigurasi_id' => $rencana->id,
             'jenis_transaksi' => 'tarik',
-            'nominal' => '15660.00',
-            'biaya_penalti' => '1740.00',
+            'nominal' => '15900.00',
+            'biaya_penalti' => '1500.00',
             'nominal_selisih' => '-3000.00',
             'unit_didapat' => '-0.0120',
             'status_verifikasi' => 'menunggu_verifikasi',
@@ -577,6 +583,50 @@ class SetoranBerkalaEmasTest extends ApiTestCase
         $this->actingAsAdmin();
         $this->postJson("/api/v1/admin/transaksi/{$refundId}/verifikasi")->assertOk();
         $this->assertDatabaseHas('konfigurasi_setoran_emas', ['id' => $rencana->id, 'status' => 'batal']);
+    }
+
+    public function test_refund_penalti_berbasis_total_setoran_emas_saja_saldo_dana_bebas_potongan(): void
+    {
+        $this->seedBase();
+        $user = $this->actingAsUser();
+        $jenis = $this->buatHargaDanGoal($user, 1000000);
+        $rencana = $this->buatKonfigurasi($user, $jenis);
+
+        // Setoran A: berhasil jadi gram 0,012gr (nominal 15.000, sisa 3.000 → dana).
+        $this->buatSetorTerverifikasi($user, $jenis, ['konfigurasi_id' => $rencana->id]);
+        // Setoran B: SELURUH nominal masuk saldo dana (unit 0) — tidak boleh jadi dasar potongan.
+        $this->buatSetorTerverifikasi($user, $jenis, [
+            'konfigurasi_id' => $rencana->id,
+            'nominal_emas' => 0,
+            'nominal_selisih' => 15000,
+            'unit_didapat' => 0,
+        ]);
+
+        // Potongan = 10% × 15.000 (hanya setoran A) = 1.500; nilai emas 0,012 × 1,2jt =
+        // 14.400 − 1.500 = 12.900; saldo dana (3.000 + 15.000 = 18.000) dikembalikan penuh → 30.900.
+        $this->postJson("/api/v1/emas/setoran-berkala/{$rencana->id}/batalkan", [
+            'bank_tujuan' => 'BSI',
+            'no_rekening' => '7123456789',
+            'atas_nama' => 'Ahmad',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.refund.gram_dibatalkan', 0.012)
+            ->assertJsonPath('data.refund.total_setoran_emas', 15000)
+            ->assertJsonPath('data.refund.nilai_gram', 14400)
+            ->assertJsonPath('data.refund.refund_emas', 12900)
+            ->assertJsonPath('data.refund.penalti_10_persen', 1500)
+            ->assertJsonPath('data.refund.saldo_dana', 18000)
+            ->assertJsonPath('data.refund.nominal_refund', 30900);
+
+        $this->assertDatabaseHas('transaksi', [
+            'user_id' => $user->id,
+            'konfigurasi_id' => $rencana->id,
+            'jenis_transaksi' => 'tarik',
+            'nominal' => '30900.00',
+            'biaya_penalti' => '1500.00',
+            'nominal_selisih' => '-18000.00',
+            'unit_didapat' => '-0.0120',
+        ]);
     }
 
     public function test_cairkan_dana_mengurangi_saldo(): void
@@ -696,5 +746,169 @@ class SetoranBerkalaEmasTest extends ApiTestCase
             'user_id' => $user->id,
             'status' => 'selesai',
         ]);
+    }
+
+    public function test_saldo_awal_legacy_tanpa_tanda_hanya_diatribusikan_ke_rencana_tertua(): void
+    {
+        $this->seedBase();
+        $user = $this->actingAsUser();
+        $jenis = $this->buatHargaDanGoal($user);
+
+        $rencanaLama = $this->buatKonfigurasi($user, $jenis);
+        $rencanaBaru = $this->buatKonfigurasi($user, $jenis);
+
+        // Saldo awal import tanpa konfigurasi_id (jalur UsersImport / TabunganImportService:608,630).
+        Transaksi::create([
+            'nomor_referensi' => 'TRX-SA-' . uniqid(),
+            'user_id' => $user->id,
+            'jenis_tabungan_id' => $jenis->id,
+            'jenis_transaksi' => 'setor',
+            'nominal' => 15000,
+            'nominal_emas' => 12000,
+            'nominal_selisih' => 3000,
+            'unit_didapat' => 0.012,
+            'metode_pembayaran' => 'cash',
+            'status_verifikasi' => 'terverifikasi',
+            'catatan_admin' => 'Saldo awal import (SALDO_AWAL_IMPORT).',
+            'tanggal_transaksi' => now()->toDateString(),
+        ]);
+
+        $service = app(SaldoEmasService::class);
+
+        $this->assertSame(15000.0, $service->getSaldoRencana($user, $rencanaLama)['nominal']);
+        $this->assertSame(0.0, $service->getSaldoRencana($user, $rencanaBaru)['nominal']);
+    }
+
+    public function test_goal_global_hilang_hanya_kala_rencana_terakhir_batal(): void
+    {
+        $this->seedBase();
+        $user = $this->actingAsUser();
+        $jenis = $this->buatHargaDanGoal($user);
+        $rencana = $this->buatKonfigurasi($user, $jenis);
+
+        $service = app(SaldoEmasService::class);
+
+        // Masih ada rencana aktif → goal tidak boleh hilang.
+        $service->bersihkanGoalKalaRencanaHabis($user, $jenis->id);
+        $this->assertEqualsWithDelta(10.0, (float) $user->fresh()->target_emas_gram, 0.000001);
+
+        // Rencana terakhir dibatalkan → goal dibersihkan.
+        $rencana->update(['status' => 'batal']);
+        $service->bersihkanGoalKalaRencanaHabis($user, $jenis->id);
+        $this->assertNull($user->fresh()->target_emas_gram);
+    }
+
+    public function test_verifikasi_pencairan_saldo_dana_tidak_menghapus_goal_emas(): void
+    {
+        $this->seedBase();
+        $user = $this->actingAsUser();
+        $jenis = $this->buatHargaDanGoal($user);
+        $this->buatKonfigurasi($user, $jenis);
+
+        // Saldo dana Rp 50.000 terverifikasi, lalu pengajuan pencairan dana-only
+        // (unit_didapat 0, tanpa konfigurasi_id) seperti /emas/dana/cair.
+        Transaksi::create([
+            'nomor_referensi' => 'TRX-D1-' . uniqid(),
+            'user_id' => $user->id,
+            'jenis_tabungan_id' => $jenis->id,
+            'jenis_transaksi' => 'setor',
+            'nominal' => 50000,
+            'nominal_selisih' => 50000,
+            'unit_didapat' => 0,
+            'metode_pembayaran' => 'cash',
+            'status_verifikasi' => 'terverifikasi',
+            'tanggal_transaksi' => now()->toDateString(),
+        ]);
+
+        $tarik = Transaksi::create([
+            'nomor_referensi' => 'TRX-D2-' . uniqid(),
+            'user_id' => $user->id,
+            'jenis_tabungan_id' => $jenis->id,
+            'jenis_transaksi' => 'tarik',
+            'nominal' => 20000,
+            'nominal_selisih' => -20000,
+            'unit_didapat' => 0,
+            'metode_pembayaran' => 'transfer',
+            'status_verifikasi' => 'menunggu_verifikasi',
+            'tanggal_transaksi' => now()->toDateString(),
+        ]);
+
+        Sanctum::actingAs($this->createAdmin());
+
+        $this->postJson('/api/v1/admin/transaksi/' . $tarik->id . '/verifikasi')
+            ->assertOk();
+
+        // Pencairan dana tidak menyentuh gram → goal emas harus tetap ada.
+        $this->assertEqualsWithDelta(10.0, (float) $user->fresh()->target_emas_gram, 0.000001);
+    }
+
+    public function test_e2e_multi_rencana_saldo_awal_import_tidak_dobel_dan_setoran_bertanda_tetap_masuk_rencananya(): void
+    {
+        $this->seedBase();
+        $user = $this->actingAsUser();
+        $jenis = $this->buatHargaDanGoal($user);
+
+        // Dua rencana aktif, nominal per periode sama (memicu konflik atribusi legacy).
+        $this->postSetoranBerkala($user, [
+            'nominal_per_periode' => 50000,
+            'target_gram_per_periode' => 0.05,
+            'frekuensi_setor' => 'harian',
+            'durasi_periode' => 10,
+        ])->assertStatus(201);
+        $this->postSetoranBerkala($user, [
+            'nominal_per_periode' => 50000,
+            'target_gram_per_periode' => 0.05,
+            'frekuensi_setor' => 'harian',
+            'durasi_periode' => 10,
+        ])->assertStatus(201);
+
+        $rencanaA = KonfigurasiSetoranEmas::where('user_id', $user->id)->orderBy('id')->first();
+        $rencanaB = KonfigurasiSetoranEmas::where('user_id', $user->id)->orderByDesc('id')->first();
+
+        // Import saldo awal 200.000 TANPA konfigurasi_id (jalur UsersImport / TabunganImportService:608,630).
+        Sanctum::actingAs($this->createAdmin());
+        $harga = HargaEmasHarian::whereDate('tanggal', now()->toDateString())->firstOrFail();
+        app(SaldoAwalService::class)->atur($user, $jenis->id, 200000, null, [
+            'unit_didapat' => '0.200000',
+            'nominal_emas' => 200000,
+            'nominal_selisih' => 0,
+            'harga_acuan_id' => $harga->id,
+            'harga_acuan_snapshot' => 1000000,
+        ]);
+
+        // Saldo awal hanya dihitung SATU kali, di rencana tertua.
+        Sanctum::actingAs($user);
+        $items = $this->getJson('/api/v1/emas/setoran-berkala')
+            ->assertOk()
+            ->json('data.items');
+
+        $getTotalSetor = fn (array $items, int $id): float => (float) collect($items)
+            ->first(fn ($i) => $i['konfigurasi']['id'] === $id)['progress']['rekap']['nominal_total_setor'];
+        $getGram = fn (array $items, int $id): float => (float) collect($items)
+            ->first(fn ($i) => $i['konfigurasi']['id'] === $id)['progress']['rekap']['gram_terkumpul'];
+
+        $this->assertSame(200000.0, $getTotalSetor($items, $rencanaA->id));
+        $this->assertSame(0.0, $getTotalSetor($items, $rencanaB->id));
+        $this->assertEqualsWithDelta(0.2, $getGram($items, $rencanaA->id), 0.000001);
+        $this->assertEqualsWithDelta(0.0, $getGram($items, $rencanaB->id), 0.000001);
+
+        // Setoran BARU yang bertanda konfigurasi tetap masuk rencananya sendiri.
+        $setor = $this->postSetor('/api/v1/emas/setor', [
+            'nominal' => 50000,
+            'konfigurasi_id' => $rencanaB->id,
+        ])->assertStatus(201);
+
+        // Simulasi admin memverifikasi setoran (baru terhitung setelah terverifikasi).
+        Sanctum::actingAs($this->createAdmin());
+        $this->postJson('/api/v1/admin/transaksi/' . $setor->json('data.id') . '/verifikasi')->assertOk();
+
+        Sanctum::actingAs($user);
+        $items = $this->getJson('/api/v1/emas/setoran-berkala')->assertOk()->json('data.items');
+        $this->assertSame(50000.0, $getTotalSetor($items, $rencanaB->id));
+        $this->assertSame(200000.0, $getTotalSetor($items, $rencanaA->id));
+        // Nominal 50000 < biaya 0.05g x harga-jual (acuan+markup) → mengendap di dana rencana, bukan gram.
+        $this->assertSame(0.0, $getGram($items, $rencanaB->id));
+        $this->assertEqualsWithDelta(50000.0, (float) collect($items)
+            ->first(fn ($i) => $i['konfigurasi']['id'] === $rencanaB->id)['progress']['rekap']['saldo_dana_rencana'], 0.000001);
     }
 }

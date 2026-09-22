@@ -33,6 +33,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   const { createUser, updateUser, showToast, jenisTabungan } = useApp();
 
   const [name, setName] = useState<string>('');
+  const [username, setUsername] = useState<string>('');
   const [phone, setPhone] = useState<string>('');
   const [nomorAnggota, setNomorAnggota] = useState<string>('');
   const [tanggalBergabung, setTanggalBergabung] = useState<string>(new Date().toISOString().slice(0, 10));
@@ -49,6 +50,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
   useEffect(() => {
     if (userToEdit) {
       setName(userToEdit.name);
+      setUsername(userToEdit.username || '');
       setPhone(userToEdit.phone);
       setNomorAnggota(userToEdit.nomor_anggota || '');
       setTanggalBergabung(userToEdit.created_at?.slice(0, 10) || hariIni());
@@ -61,6 +63,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       setSaldoAwal([]);
     } else {
       setName('');
+      setUsername('');
       setPhone('');
       setNomorAnggota('');
       setTanggalBergabung(hariIni());
@@ -89,6 +92,10 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
     e.preventDefault();
     if (!name.trim()) {
       showToast('Nama lengkap wajib diisi', 'error');
+      return;
+    }
+    if (username.trim() && !/^[A-Za-z0-9._]{3,50}$/.test(username.trim())) {
+      showToast('Username hanya huruf, angka, titik, atau underscore (3–50 karakter)', 'error');
       return;
     }
     if (!phone.trim()) {
@@ -143,6 +150,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
     if (userToEdit) {
       updateUser(userToEdit.id, {
         name,
+        ...(username.trim() ? { username: username.trim() } : {}),
         phone,
         nomor_anggota: nomorAnggota,
         role,
@@ -155,6 +163,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
     } else {
       createUser({
         name,
+        ...(username.trim() ? { username: username.trim() } : {}),
         phone,
         nomor_anggota: nomorAnggota,
         role,
@@ -216,20 +225,34 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
             />
           </div>
 
-          <div>
-            <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-              Nomor Telepon / WhatsApp
-            </label>
-            <input
-              type="tel"
-              required
-              inputMode="numeric"
-              maxLength={15}
-              value={phone}
-              onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 15))}
-              placeholder="08123456789"
-              className="w-full py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none"
-            />
+<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                Username
+              </label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="otomatis dari nama jika dikosongkan"
+                className="w-full py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                Nomor Telepon / WhatsApp
+              </label>
+              <input
+                type="tel"
+                required
+                inputMode="numeric"
+                maxLength={15}
+                value={phone}
+                onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 15))}
+                placeholder="08123456789"
+                className="w-full py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none"
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

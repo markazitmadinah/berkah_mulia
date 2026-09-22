@@ -165,14 +165,24 @@ export const AdminManagementJenis: React.FC<AdminManagementJenisProps> = ({ jeni
         out.push({ user: m.user, kind: 'qurban', qurban: m.qurban, tunggakan });
       });
     } else {
+      const isEmas = jenis.tipe === 'emas';
       data.forEach((m) => {
         const progress = m.tabungan.find((t) => t.jenis_tabungan_id === jenis.id);
         if (!progress) return;
-        const aktif = progress.saldo > 0
-          || progress.pending_amount > 0
-          || progress.total_setoran > 0
-          || progress.target > 0
-          || (progress.target_emas_gram ?? 0) > 0;
+        // Emas: row dipertahankan HANYA selama masih menyimpan nilai (gram/dana)
+        // atau masih punya rencana aktif. Setelah rencana dibatalkan dan gram-nya
+        // disalurkan ke refund, total_setoran / target global yang tersisa tidak
+        // boleh memunculkan tabungan hantu (0 gram). Rencana baru tanpa setoran
+        // tetap tampil karena setoran_berkala nya tidak kosong.
+        const aktif = isEmas
+          ? (Number(progress.total_unit ?? 0) > 0
+            || Number(progress.saldo_dana ?? 0) > 0
+            || (progress.setoran_berkala?.length ?? 0) > 0)
+          : progress.saldo > 0
+            || progress.pending_amount > 0
+            || progress.total_setoran > 0
+            || progress.target > 0
+            || (progress.target_emas_gram ?? 0) > 0;
         if (!aktif) return;
         out.push({ user: m.user, kind: 'saldo', progress, tunggakan: tunggakanByUser.get(m.user.id) ?? { jumlah: 0, nominal: 0 } });
       });
@@ -406,7 +416,7 @@ export const AdminManagementJenis: React.FC<AdminManagementJenisProps> = ({ jeni
                       {r.user.name}
                     </button>
                     <span className="font-mono text-[10px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300">
-                      {r.user.nomor_anggota || r.user.email}
+                      {r.user.nomor_anggota || r.user.username}
                     </span>
                   </div>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-[10px] text-slate-500 dark:text-slate-400">
@@ -801,7 +811,8 @@ const PlanModal: React.FC<PlanModalProps> = ({ jenis, planType, users, initialUs
 
   const gramVal = parseRupiah(gram);
   const nominalVal = parseRupiah(nominal);
-  const durasiNum = Math.min(120, Math.max(1, Math.floor(Number(durasi)) || 0));
+  // Durasi: emas = jumlah kali setoran (tanpa batas atas), berjangka = bulan (maks 120).
+  const durasiNum = Math.max(1, Math.min(planType === 'emas' ? 100000 : 120, Math.floor(Number(durasi)) || 1));
 
   // Harga jual per gram: harga acuan aktif + markup bertingkat (satu sumber dengan
   // halaman Harga Emas Hari Ini & perhitungan setoran).
@@ -811,16 +822,6 @@ const PlanModal: React.FC<PlanModalProps> = ({ jenis, planType, users, initialUs
   };
 
   const harga = hargaJualPerGram(gramVal);
-
-  // Tanggal pencairan estimasi: mulai hari ini + (durasi - 1) periode sesuai frekuensi.
-  const tglCair = useMemo(() => {
-    if (planType !== 'emas' || durasiNum < 1) return null;
-    const d = new Date();
-    if (frekuensi === 'harian') d.setDate(d.getDate() + durasiNum - 1);
-    else if (frekuensi === 'mingguan') d.setDate(d.getDate() + (durasiNum - 1) * 7);
-    else d.setMonth(d.getMonth() + durasiNum - 1);
-    return d.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-  }, [planType, durasiNum, frekuensi]);
 
   const selisihVal = parseRupiah(selisih);
 
@@ -836,6 +837,20 @@ const PlanModal: React.FC<PlanModalProps> = ({ jenis, planType, users, initialUs
     const gp = gramPerPembayaran();
     return gramVal > 0 && gp > 0 ? Math.max(1, Math.ceil(gramVal / gp)) : 0;
   };
+
+  // Perkiraan gram terkumpul saat target tercapai (gram presisi × jumlah setoran).
+  const gramTerkumpulSaatCair = (): number => gramPerPembayaran() * sisaKali();
+
+  // Tanggal pencairan estimasi: mulai hari ini + (sisaKali - 1) periode sesuai frekuensi.
+  const tglCair = (() => {
+    const n = sisaKali();
+    if (n < 1) return null;
+    const d = new Date();
+    if (frekuensi === 'harian') d.setDate(d.getDate() + n - 1);
+    else if (frekuensi === 'mingguan') d.setDate(d.getDate() + (n - 1) * 7);
+    else d.setMonth(d.getMonth() + n - 1);
+    return d.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  })();
 
   const onSync = () => {
     if (planType !== 'emas') return;
@@ -913,7 +928,7 @@ const PlanModal: React.FC<PlanModalProps> = ({ jenis, planType, users, initialUs
                 className="w-full py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-200"
               >
                 {users.map((u) => (
-                  <option key={u.id} value={u.id}>{u.name} ({u.nomor_anggota || u.email})</option>
+                  <option key={u.id} value={u.id}>{u.name} ({u.nomor_anggota || u.username})</option>
                 ))}
               </select>
             </div>
@@ -1032,6 +1047,7 @@ const PlanModal: React.FC<PlanModalProps> = ({ jenis, planType, users, initialUs
                     )}
                     <DetailRow label={`${sisaKali()}× setoran @ ${FREKUENSI_LABEL[frekuensi].toLowerCase()}`} value={`Rp ${formatRupiah(nominalVal)}`} />
                     <DetailRow label="Total dibayarkan" value={`Rp ${formatRupiah(nominalVal * sisaKali())}`} />
+                    <DetailRow label="Perkiraan emas terkumpul" value={`±${gramTerkumpulSaatCair().toFixed(4)} gr`} muted={`(gram presisi × ${sisaKali()} setoran)`} />
                     {tglCair && (
                       <DetailRow label="Tarik / cair" value={tglCair} muted={`setelah ${sisaKali()}× setoran ${FREKUENSI_LABEL[frekuensi].toLowerCase()}`} />
                     )}
@@ -1039,13 +1055,16 @@ const PlanModal: React.FC<PlanModalProps> = ({ jenis, planType, users, initialUs
                       const sisa = nominalVal * sisaKali() - gramVal * harga;
                       return (
                         <DetailRow
-                          label="Selisih total (pembulatan nominal)"
+                          label="Selisih total pembayaran"
                           value={`${sisa >= 0 ? '+' : '−'} Rp ${formatRupiah(Math.abs(sisa))}`}
-                          muted={sisa >= 0 ? 'kebijakan admin' : 'kurang → bulatkan nominal/durasi'}
+                          muted={sisa >= 0 ? 'penyesuaian periode pembayaran' : 'kurang → bulatkan nominal/durasi'}
                           accent={sisa >= 0 ? 'text-emerald-600 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-300'}
                         />
                       );
                     })()}
+                    <p className="text-[9px] text-amber-600/80 dark:text-amber-300/70 pt-1 border-t border-amber-200/60 dark:border-amber-800/40">
+                      Estimasi dengan asumsi harga emas tetap Rp {formatRupiah(harga)}/gr. Bila harga berubah, gram aktual dihitung dari harga transaksi saat setor.
+                    </p>
                   </>
                 )}
                 {!hargaValid && (

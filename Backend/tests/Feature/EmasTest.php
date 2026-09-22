@@ -2,9 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Enums\StatusKonfigurasiSetoran;
 use App\Models\HargaEmasHarian;
 use App\Models\JenisTabungan;
+use App\Models\KonfigurasiSetoranEmas;
 use App\Models\Transaksi;
+use App\Models\User;
 use Tests\ApiTestCase;
 
 class EmasTest extends ApiTestCase
@@ -540,5 +543,101 @@ class EmasTest extends ApiTestCase
 
         $this->postJson('/api/v1/emas/tukar')
             ->assertStatus(422)->assertJsonPath('error_code', 'GOAL_NOT_REACHED');
+    }
+
+    private function buatRencanaAktif(User $user, int $jenisId): KonfigurasiSetoranEmas
+    {
+        return KonfigurasiSetoranEmas::create([
+            'user_id' => $user->id,
+            'jenis_tabungan_id' => $jenisId,
+            'nominal_per_periode' => 50000,
+            'target_gram_per_periode' => 0.05,
+            'target_gram_total' => 2.0,
+            'frekuensi_setor' => 'bulanan',
+            'tanggal_mulai' => now()->toDateString(),
+            'durasi_periode' => 40,
+            'status' => StatusKonfigurasiSetoran::Aktif,
+            'created_by' => 1,
+        ]);
+    }
+
+    public function test_tarik_full_terverifikasi_menutup_rencana_dan_hilang_dari_index(): void
+    {
+        $this->seedBase();
+        $user = $this->actingAsUser();
+        HargaEmasHarian::create(['tanggal' => now()->toDateString(), 'harga_per_gram' => 1000000, 'status_aktif' => true, 'created_by' => $user->id]);
+        $jenis = JenisTabungan::where('kode', 'EMAS')->first();
+
+        // Goal 2 gram, terkumpul 10 gram → tercapai, rencana aktif.
+        $user->update(['target_emas_gram' => 2]);
+        $plan = $this->buatRencanaAktif($user, $jenis->id);
+        Transaksi::create([
+            'nomor_referensi' => 'TRX-E-M1',
+            'user_id' => $user->id,
+            'jenis_tabungan_id' => $jenis->id,
+            'konfigurasi_id' => $plan->id,
+            'jenis_transaksi' => 'setor',
+            'nominal' => 10000000,
+            'unit_didapat' => 10,
+            'harga_acuan_id' => HargaEmasHarian::hargaTerkini()->id,
+            'harga_acuan_snapshot' => 1000000,
+            'metode_pembayaran' => 'cash',
+            'status_verifikasi' => 'terverifikasi',
+            'tanggal_transaksi' => now()->toDateString(),
+        ]);
+
+        $tarik = $this->postJson('/api/v1/emas/tarik', [
+            'bank_tujuan' => 'BSI',
+            'no_rekening' => '7123456789',
+            'atas_nama' => 'Ahmad',
+        ])->assertStatus(201)->json('data.id');
+
+        // Rencana masih ada selama pengajuan menunggu verifikasi (tidak terkunci).
+        $this->assertDatabaseHas('konfigurasi_setoran_emas', ['id' => $plan->id, 'status' => 'aktif']);
+
+        $this->actingAsAdmin();
+        $this->postJson("/api/v1/admin/transaksi/{$tarik}/verifikasi")->assertOk();
+
+        // Setelah verifikasi: rencana tuntas → 'selesai', goal global dibersihkan.
+        $this->assertDatabaseHas('konfigurasi_setoran_emas', ['id' => $plan->id, 'status' => 'selesai']);
+        $this->assertDatabaseHas('users', ['id' => $user->id, 'target_emas_gram' => null]);
+
+        // Progress bar & rencana hilang dari daftar user.
+        $this->actingAsUser();
+        $items = $this->getJson('/api/v1/emas/setoran-berkala')->assertOk()->json('data.items');
+        $this->assertCount(0, $items);
+    }
+
+    public function test_tukar_emas_menutup_rencana_aktif_dan_hilang_dari_index(): void
+    {
+        $this->seedBase();
+        $user = $this->actingAsUser();
+        HargaEmasHarian::create(['tanggal' => now()->toDateString(), 'harga_per_gram' => 1000000, 'status_aktif' => true, 'created_by' => $user->id]);
+        $jenis = JenisTabungan::where('kode', 'EMAS')->first();
+
+        $user->update(['target_emas_gram' => 2]);
+        $plan = $this->buatRencanaAktif($user, $jenis->id);
+        Transaksi::create([
+            'nomor_referensi' => 'TRX-E-M2',
+            'user_id' => $user->id,
+            'jenis_tabungan_id' => $jenis->id,
+            'konfigurasi_id' => $plan->id,
+            'jenis_transaksi' => 'setor',
+            'nominal' => 10000000,
+            'unit_didapat' => 10,
+            'harga_acuan_id' => HargaEmasHarian::hargaTerkini()->id,
+            'harga_acuan_snapshot' => 1000000,
+            'metode_pembayaran' => 'cash',
+            'status_verifikasi' => 'terverifikasi',
+            'tanggal_transaksi' => now()->toDateString(),
+        ]);
+
+        $this->postJson('/api/v1/emas/tukar')->assertOk();
+
+        $this->assertDatabaseHas('konfigurasi_setoran_emas', ['id' => $plan->id, 'status' => 'selesai']);
+        $this->assertDatabaseHas('users', ['id' => $user->id, 'target_emas_gram' => null]);
+
+        $items = $this->getJson('/api/v1/emas/setoran-berkala')->assertOk()->json('data.items');
+        $this->assertCount(0, $items);
     }
 }

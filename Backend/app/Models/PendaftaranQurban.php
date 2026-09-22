@@ -17,6 +17,7 @@ class PendaftaranQurban extends Model
     protected $table = 'pendaftaran_qurban';
 
     protected $fillable = [
+        'external_id',
         'user_id',
         'periode_qurban_id',
         'hewan_qurban_id',
@@ -70,6 +71,11 @@ class PendaftaranQurban extends Model
     public function transaksi(): HasMany
     {
         return $this->hasMany(Transaksi::class);
+    }
+
+    public function scopeByExternal($query, string $externalId)
+    {
+        return $query->where('external_id', $externalId);
     }
 
     // ─── Helpers ───────────────────────────────────────────────
@@ -153,7 +159,7 @@ class PendaftaranQurban extends Model
 
             return match ($this->frekuensi_setor) {
                 'mingguan' => intdiv($hari, 7) + 1,
-                'bulanan' => max(1, $dari->diffInMonths($ke) + 1),
+                'bulanan' => max(1, (int) $dari->diffInMonths($ke) + 1),
                 default => $hari + 1,
             };
         };

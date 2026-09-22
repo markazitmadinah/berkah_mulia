@@ -155,6 +155,9 @@ class PembayaranHarianController extends Controller
                 'jadwal_label' => $k->jadwalLabel(),
                 'nominal_per_periode' => (float) $k->nominal_per_periode,
                 'target_gram_per_periode' => (float) $k->target_gram_per_periode,
+                'target_gram_total' => $k->target_gram_total !== null
+                    ? (float) $k->target_gram_total
+                    : ($k->durasi_periode ? round((float) $k->target_gram_per_periode * (int) $k->durasi_periode, 6) : null),
                 'tanggal_mulai' => $k->tanggal_mulai?->toDateString(),
                 'status_verifikasi' => $trx?->status_verifikasi?->value ?? 'belum',
                 'transaksi_id' => $trx?->id,

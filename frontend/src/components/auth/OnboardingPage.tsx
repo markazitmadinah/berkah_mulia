@@ -17,6 +17,10 @@ export const OnboardingPage: React.FC = () => {
       showToast('Nomor HP wajib diisi', 'error');
       return;
     }
+    if (!/^\d{10,15}$/.test(phone)) {
+      showToast('Nomor HP hanya boleh angka, minimal 10 dan maksimal 15 digit', 'error');
+      return;
+    }
     if (!address.trim()) {
       showToast('Alamat wajib diisi', 'error');
       return;
@@ -87,9 +91,10 @@ export const OnboardingPage: React.FC = () => {
                   type="tel"
                   required
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 15))}
                   placeholder="08123456789"
                   inputMode="tel"
+                  maxLength={15}
                   className="w-full pl-10 pr-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/60"
                 />
               </div>

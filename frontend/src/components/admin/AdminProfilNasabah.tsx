@@ -150,10 +150,10 @@ export const AdminProfilNasabah: React.FC<AdminProfilNasabahProps> = ({ onBack, 
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-mono">
-                {user.nomor_anggota || user.email}
+                {user.nomor_anggota || user.username}
               </p>
               <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[11px] text-slate-500 dark:text-slate-400">
-                <span>{user.email}</span>
+                <span>@{user.username || '-'}</span>
                 <span>{user.phone || '-'}</span>
                 {user.address && <span>{user.address}</span>}
               </div>

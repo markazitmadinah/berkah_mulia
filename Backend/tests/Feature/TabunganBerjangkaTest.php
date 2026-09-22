@@ -173,6 +173,42 @@ class TabunganBerjangkaTest extends ApiTestCase
             ->assertStatus(422)->assertJsonPath('error_code', 'STATUS_TIDAK_VALID');
     }
 
+    public function test_tunggakan_berjangka_tidak_melampaui_target(): void
+    {
+        $this->seedBase();
+        $user = $this->actingAsUser();
+        $admin = User::where('role', UserRole::Admin)->first();
+        $jenis = JenisTabungan::where('sub_jenis', SubJenisTabungan::Berjangka)->firstOrFail();
+
+        // Rencana tak sinkron (mis. hasil import): target 18jt tapi nominal 1jt/hari.
+        // Tanpa cap, tunggakan meledak jadi ratusan periode (199× / Rp199jt).
+        $tb = TabunganBerjangka::create([
+            'user_id' => $user->id,
+            'jenis_tabungan_id' => $jenis->id,
+            'target_nominal' => 18000000,
+            'durasi_bulan' => 18,
+            'frekuensi_setor' => 'harian',
+            'nominal_per_periode' => 1000000,
+            'tanggal_mulai' => now()->subMonths(7)->toDateString(),
+            'tanggal_jatuh_tempo' => now()->addMonths(11)->toDateString(),
+            'status' => 'aktif',
+            'approved_by' => $admin->id,
+            'approved_at' => now(),
+            'created_by' => $admin->id,
+        ]);
+
+        $t = $tb->tertunggak();
+        $this->assertSame(18, $t['jumlah_periode']); // di-cap target ÷ nominal
+        $this->assertEquals(18000000.0, $t['nominal']);
+        $this->assertLessThanOrEqual((float) $tb->target_nominal, $t['nominal']);
+
+        // Setelah 6jt terkumpul → sisa 12 periode / Rp12jt (cocok "Sisa target").
+        $this->isiSaldo($tb, $user->id, $admin->id, 6000000);
+        $t2 = $tb->fresh()->tertunggak();
+        $this->assertSame(12, $t2['jumlah_periode']);
+        $this->assertEquals(12000000.0, $t2['nominal']);
+    }
+
     private function buatBerjangkaAktif(int $userId, int $adminId, float $target = 600000): TabunganBerjangka
     {
         $jenis = JenisTabungan::where('sub_jenis', SubJenisTabungan::Berjangka)->firstOrFail();

@@ -203,7 +203,6 @@ class UserController extends Controller
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
                     ->orWhere('username', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%")
                     ->orWhere('nomor_anggota', 'like', "%{$search}%")
                     ->orWhere('phone', 'like', "%{$search}%");
             });
@@ -303,6 +302,7 @@ class UserController extends Controller
             ->values();
 
         $berjangka = TabunganBerjangka::where('user_id', $user->id)
+            ->whereNotIn('status', ['batal', 'selesai'])
             ->orderByDesc('id')
             ->get()
             ->map(fn (TabunganBerjangka $tb) => [
@@ -353,6 +353,7 @@ class UserController extends Controller
     {
         $request->validate([
             'name' => 'required|string|max:255',
+            'username' => 'sometimes|string|max:50|regex:/^[A-Za-z0-9._]{3,50}$/|unique:users,username',
             'phone' => 'nullable|string|max:20|unique:users,phone',
             'nomor_anggota' => 'required|string|regex:/^\d{10}$/|unique:users,nomor_anggota',
             'password' => 'required|string|min:8',
@@ -369,8 +370,10 @@ class UserController extends Controller
         $roleValue = $request->input('role', 'user');
         $statusValue = $request->input('status', 'active');
 
-        // Auto-generate username unik dari nama depan + 4 digit random
-        $username = $this->generateUniqueUsername($request->name);
+        // Auto-generate username unik dari nama depan + 4 digit random (bila tidak diisi)
+        $username = $request->filled('username')
+            ? $request->username
+            : $this->generateUniqueUsername($request->name);
 
         $user = new User([
             'name' => $request->name,
@@ -446,23 +449,34 @@ class UserController extends Controller
     {
         $request->validate([
             'name' => 'sometimes|string|max:255',
+            'username' => 'sometimes|string|max:50|regex:/^[A-Za-z0-9._]{3,50}$/|unique:users,username,'.$user->id,
             'phone' => 'sometimes|string|max:20|unique:users,phone,'.$user->id,
             'nomor_anggota' => 'sometimes|string|regex:/^\d{10}$/|unique:users,nomor_anggota,'.$user->id,
             'address' => 'nullable|string|max:500',
             'role' => 'sometimes|string|in:admin,user',
+            'status' => 'sometimes|string|in:active,suspended,rejected',
             'created_at' => 'sometimes|date',
             'password' => 'sometimes|nullable|string|min:8',
             'password_confirmation' => 'sometimes|string',
         ]);
 
-        $fillableFields = ['name', 'phone', 'nomor_anggota', 'address', 'created_at'];
-        $allFields = ['name', 'phone', 'nomor_anggota', 'address', 'role', 'created_at'];
+$fillableFields = ['name', 'username', 'phone', 'nomor_anggota', 'address', 'created_at'];
+        $allFields = ['name', 'username', 'phone', 'nomor_anggota', 'address', 'role', 'status', 'created_at'];
         $oldValues = $user->only($allFields);
 
         $user->fill($request->only($fillableFields));
 
         if ($request->filled('role')) {
             $user->role = $request->input('role');
+        }
+
+        if ($request->filled('status') && $request->input('status') !== $user->status) {
+            $user->status = $request->input('status');
+            $user->approved_by = auth()->id();
+            $user->approved_at = $request->input('status') === 'active' ? now() : null;
+            if ($request->input('status') !== 'active') {
+                $user->tokens()->delete();
+            }
         }
 
         // Update password hanya jika admin mengirimkan field password

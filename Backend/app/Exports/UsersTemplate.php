@@ -27,20 +27,24 @@ class UsersTemplate implements FromArray, ShouldAutoSize, WithEvents, WithHeadin
      * Nama kolom harus PERSIS sama dengan kunci yang dibaca parser
      * (App\Imports\UsersImport). Jangan diganti tanpa sinkron import.
      *
-     * Layout final (49 kolom):
-     *   A..C   data dasar user (3)
-     *   D..J   tabungan Emas (7)
-     *   K..P   tabungan Hari Raya (6)
-     *   Q..V   tabungan Qurban (7)
-     *   W..AB  tabungan Berjangka (6)
-     *   AC     tabungan Mandiri (1)
-     *   AD..AV gadai (19)
+     * Layout final (53 kolom):
+     *   A..C    data dasar user (3)
+     *   D..K    tabungan Emas (8)
+     *   L..S    tabungan Hari Raya (8)
+     *   T..AA   tabungan Qurban (8)
+     *   AB..AH  tabungan Berjangka (7)
+     *   AI      tabungan Mandiri (1) — Yang Sudah Terkumpul
+     *   AJ..BA  gadai (19)
+     *
+     * Setiap blok tabungan punya kolom "X - Yang Sudah Terkumpul (Rp)" yang
+     * menjadi SALDO AWAL / nominal yang sudah terkumpul user; tersambung
+     * ke progress tabungan masing-masing lewat SaldoAwalService.
      */
     public function headings(): array
     {
         return [
             // ─── Blok A: data dasar user ─────────────────────────────
-            // Email, No. Handphone, Alamat, Nomor Anggota & Password sengaja
+            // No. Handphone, Alamat, Nomor Anggota & Password sengaja
             // tidak lagi diminta di template — nasabah mengisinya sendiri
             // di akun masing-masing setelah import.
             'Nama Lengkap',
@@ -55,6 +59,7 @@ class UsersTemplate implements FromArray, ShouldAutoSize, WithEvents, WithHeadin
             'Emas - Durasi (Periode)',
             'Emas - Tanggal Mulai',
             'Emas - Jatuh Tempo',
+            'Emas - Yang Sudah Terkumpul (Rp)',
 
             // ─── Blok C: Tabungan Hari Raya (target rupiah) ─────────
             'Hari Raya - Target (Rp)',
@@ -63,6 +68,7 @@ class UsersTemplate implements FromArray, ShouldAutoSize, WithEvents, WithHeadin
             'Hari Raya - Durasi (Periode)',
             'Hari Raya - Tanggal Mulai',
             'Hari Raya - Jatuh Tempo',
+            'Hari Raya - Yang Sudah Terkumpul (Rp)',
 
             // ─── Blok D: Tabungan Qurban (mirip target rupiah) ──────
             'Qurban - Target (Rp)',
@@ -72,6 +78,7 @@ class UsersTemplate implements FromArray, ShouldAutoSize, WithEvents, WithHeadin
             'Qurban - Frekuensi Bayar',
             'Qurban - Nominal per Periode (Rp)',
             'Qurban - Tanggal Daftar',
+            'Qurban - Yang Sudah Terkumpul (Rp)',
 
             // ─── Blok E: Tabungan Berjangka (target rupiah + durasi) ─
             'Berjangka - Target (Rp)',
@@ -80,9 +87,10 @@ class UsersTemplate implements FromArray, ShouldAutoSize, WithEvents, WithHeadin
             'Berjangka - Durasi (Periode)',
             'Berjangka - Tanggal Mulai',
             'Berjangka - Jatuh Tempo',
+            'Berjangka - Yang Sudah Terkumpul (Rp)',
 
             // ─── Blok F: Tabungan Mandiri (setor bebas) ─────────────
-            'Mandiri - Saldo Awal (Rp)',
+            'Mandiri - Yang Sudah Terkumpul (Rp)',
 
             // ─── Blok G: Gadai (19 kolom lengkap) ───────────────────
             'Gadai - No. Referensi',
@@ -124,6 +132,7 @@ class UsersTemplate implements FromArray, ShouldAutoSize, WithEvents, WithHeadin
             '25',
             '01/01/2026',
             '01/02/2028',
+            '2000000', // sudah terkumpul Rp 2jt
 
             // ─── Blok C: Hari Raya (target Rp 5.000.000) ────────────
             '5000000',
@@ -132,6 +141,7 @@ class UsersTemplate implements FromArray, ShouldAutoSize, WithEvents, WithHeadin
             '24',
             '01/01/2026',
             '01/01/2028',
+            '1000000', // sudah terkumpul Rp 1jt
 
             // ─── Blok D: Qurban (target Rp 4.500.000) ───────────────
             '4500000',
@@ -141,6 +151,7 @@ class UsersTemplate implements FromArray, ShouldAutoSize, WithEvents, WithHeadin
             'Bulanan',
             '375000',
             '01/05/2026',
+            '1000000', // sudah terkumpul Rp 1jt
 
             // ─── Blok E: Berjangka (target Rp 6.000.000) ────────────
             '6000000',
@@ -149,8 +160,9 @@ class UsersTemplate implements FromArray, ShouldAutoSize, WithEvents, WithHeadin
             '12',
             '01/06/2026',
             '01/06/2027',
+            '1000000', // sudah terkumpul Rp 1jt
 
-            // ─── Blok F: Mandiri (saldo awal) ───────────────────────
+            // ─── Blok F: Mandiri (saldo sudah terkumpul) ────────────
             '1000000',
 
             // ─── Blok G: Gadai (19 kolom); kadar satuan per-mille (999 = 99,9%) ──
@@ -209,7 +221,7 @@ class UsersTemplate implements FromArray, ShouldAutoSize, WithEvents, WithHeadin
                 $this->addValidation($sheet, 'C', 'Aktif,Menunggu Persetujuan,Ditolak,Dibekukan');
 
                 // Kolom angka di-render teks agar tidak jadi notasi ilmiah / tanggal serial.
-                $textCols = ['D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB', 'AC', 'AD', 'AE', 'AF', 'AG', 'AH', 'AI', 'AJ', 'AK', 'AL', 'AM', 'AN', 'AO', 'AP', 'AQ', 'AR', 'AS', 'AT', 'AU', 'AV'];
+                $textCols = ['D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB', 'AC', 'AD', 'AE', 'AF', 'AG', 'AH', 'AI', 'AJ', 'AK', 'AL', 'AM', 'AN', 'AO', 'AP', 'AQ', 'AR', 'AS', 'AT', 'AU', 'AV', 'AW', 'AX', 'AY', 'AZ', 'BA'];
                 foreach ($textCols as $col) {
                     $sheet->getStyle("{$col}2:{$col}200")->getNumberFormat()->setFormatCode('@');
                 }
@@ -217,9 +229,11 @@ class UsersTemplate implements FromArray, ShouldAutoSize, WithEvents, WithHeadin
                 // Petunjuk pengisian dalam komentar A1.
                 $note = 'Petunjuk: Isi mulai baris 3 (baris 2 = contoh, otomatis dilewati). '
                     . 'Kolom wajib: Nama Lengkap (A). '
-                    . 'Email, No. Handphone, Nomor Anggota, Alamat, dan Password TIDAK lagi diminta di template — '
+                    . 'No. Handphone, Nomor Anggota, Alamat, dan Password TIDAK lagi diminta di template — '
                     . 'nasabah mengisinya sendiri di akun masing-masing setelah import. '
                     . 'Blok tabungan OPSIONAL — kosongkan seluruh kolom produk yang tidak dimiliki nasabah. '
+                    . 'Kolom "X - Yang Sudah Terkumpul (Rp)" = nominal yang sudah dimiliki nasabah untuk produk itu '
+                    . '(saldo awal); tercatat sebagai setoran terverifikasi dan otomatis mengisi progress tabungan. '
                     . 'Angka tulis tanpa titik/koma (contoh: 5000000). Tanggal format DD/MM/YYYY (contoh: 01/05/2026). '
                     . 'Emas memakai GRAM untuk target; Hari Raya/Qurban/Berjangka memakai Rupiah. '
                     . 'Peran hanya "Nasabah" — Admin tidak pernah dibuat lewat import.';

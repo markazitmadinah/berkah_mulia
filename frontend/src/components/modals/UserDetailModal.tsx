@@ -2,8 +2,8 @@ import React from 'react';
 import { UserAvatar } from '../ui/UserAvatar';
 import {
   X,
-  UserCheck,
   Mail,
+  UserCheck,
   Phone,
   MapPin,
   Calendar,
@@ -74,12 +74,16 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
           {/* Details list */}
           <div className="space-y-2.5 pt-2">
             <div className="flex items-center gap-2.5 text-slate-700 dark:text-slate-300">
-              <Mail className="w-4 h-4 text-slate-400" />
+<Mail className="w-4 h-4 text-slate-400" />
               <span>@{user.username}</span>
             </div>
             <div className="flex items-center gap-2.5 text-slate-700 dark:text-slate-300">
               <Phone className="w-4 h-4 text-slate-400" />
               <span>{user.phone}</span>
+            </div>
+            <div className="flex items-center gap-2.5 text-slate-700 dark:text-slate-300">
+              <UserCheck className="w-4 h-4 text-slate-400" />
+              <span>@{user.username || 'belum diatur'}</span>
             </div>
             <div className="flex items-center gap-2.5 text-slate-700 dark:text-slate-300">
               <MapPin className="w-4 h-4 text-slate-400" />

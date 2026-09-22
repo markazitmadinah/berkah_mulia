@@ -212,12 +212,15 @@ class TransaksiController extends Controller
                 'diverifikasi_pada' => now(),
             ]);
 
-            // Clear emas goal after FULL withdrawal/cancel so progress bar resets.
-            // Refund pembatalan PER RENCANA (ber-konfigurasi_id) tidak menghapus goal global.
+            // Clear emas goal after FULL withdrawal/cancel so progress bar resets,
+            // dan tutup rencana aktif (goal tercapai → cair penuh = rencana 'selesai').
+            // Hanya tarik yang benar-benar menarik gram (unit_didapat < 0) — pencairan
+            // saldo DANA saja (unit_didapat = 0) tidak boleh menghapus goal global.
             if ($transaksi->jenis_transaksi === JenisTransaksi::Tarik
                 && $transaksi->jenisTabungan?->tipe === TipeTabungan::Emas
-                && is_null($transaksi->konfigurasi_id)) {
-                $transaksi->user->update(['target_emas_gram' => null]);
+                && is_null($transaksi->konfigurasi_id)
+                && (float) $transaksi->unit_didapat < 0) {
+                $this->saldoEmasService->tutupRencanaSetelahCairPenuh($transaksi->user, $transaksi->jenis_tabungan_id);
             }
 
             // Refund batal PER RENCANA terverifikasi → rencana baru resmi BATAL.
@@ -228,6 +231,9 @@ class TransaksiController extends Controller
                     ->where('user_id', $transaksi->user_id)
                     ->aktif()
                     ->update(['status' => StatusKonfigurasiSetoran::Batal]);
+
+                // Rencana terakhir batal → goal global sudah tak ada yang membelinya.
+                $this->saldoEmasService->bersihkanGoalKalaRencanaHabis($transaksi->user, $transaksi->jenis_tabungan_id);
 
                 $this->notif->kirim(
                     $transaksi->user,

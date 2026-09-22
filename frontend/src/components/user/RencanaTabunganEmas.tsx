@@ -47,6 +47,7 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
     nominal: number;
     gram: number;
     dana: number;
+    totalSetor: number;
   }>(null);
 
   const [rekBank, setRekBank] = useState('Bank Syariah Indonesia (BSI)');
@@ -57,6 +58,21 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
   const items = setoranBerkala?.items ?? [];
 
   const activeHarga = activeHargaEmas ? activeHargaEmas.harga_per_gram : 1200000;
+
+  // Rumus refund batal per rencana — SAMA dengan backend (SaldoEmasService::rincianRefund):
+  // potongan 10% hanya dari TOTAL SETORAN EMAS (rupiah yang berhasil jadi gram),
+  // bukan dari nilai pasar gram; saldo dana rencana dikembalikan penuh.
+  const hitungRefundRencana = (p: { gram: number; dana: number; totalSetor: number }) => {
+    const nilaiGram = p.gram * (p.gram > 0 ? hargaJualPerGram(activeHarga, p.gram) : 0);
+    const potongan = Math.round(p.totalSetor * 0.10);
+    const refundEmas = Math.round(nilaiGram - potongan);
+    return {
+      nilaiGram: Math.round(nilaiGram),
+      potongan,
+      refundEmas,
+      refundTotal: Math.round(refundEmas + p.dana)
+    };
+  };
 
   const goalTercapai = userEmasGoal != null && userEmasGramTotal >= userEmasGoal;
 
@@ -94,13 +110,12 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
   const handleBatalRencana = (e: React.FormEvent) => {
     e.preventDefault();
     if (!batalPlan) return;
-    const total = batalPlan.gram * activeHarga + batalPlan.dana;
-    const refund = Math.round(total - Math.round(total * 0.10));
-    if (refund > 0 && (!rekNo.trim() || !rekNama.trim())) {
+    const { refundTotal } = hitungRefundRencana(batalPlan);
+    if (refundTotal > 0 && (!rekNo.trim() || !rekNama.trim())) {
       showToast('Isi nomor rekening dan atas nama penerima.', 'error');
       return;
     }
-    const payload = refund > 0
+    const payload = refundTotal > 0
       ? { bank_tujuan: rekBank, no_rekening: rekNo, atas_nama: rekNama, catatan_user: rekCatatan }
       : {};
     batalkanSetoranBerkala(batalPlan.id, payload);
@@ -273,7 +288,8 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
                           label: items.length > 1 ? `Rencana Pembayaran #${idx + 1}` : 'Rencana Pembayaran',
                           nominal: nominalPlan,
                           gram,
-                          dana: p?.rekap.saldo_dana_rencana ?? 0
+                          dana: p?.rekap.saldo_dana_rencana ?? 0,
+                          totalSetor: p?.rekap.total_setoran_emas ?? 0
                         });
                       }}
                       className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-500 dark:text-rose-400 hover:text-rose-600 hover:underline cursor-pointer"
@@ -399,19 +415,23 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
               <div className="p-4 rounded-2xl border border-rose-50 dark:border-rose-950/40 bg-rose-50 dark:bg-rose-950/40">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-rose-800 dark:text-rose-300">Rincian Refund</span>
                 {(() => {
-                  const nilaiGram = batalPlan.gram * (batalPlan.gram > 0 ? hargaJualPerGram(activeHarga, batalPlan.gram) : 0);
-                  const total = nilaiGram + batalPlan.dana;
-                  const penalti = Math.round(total * 0.10);
-                  const refund = Math.round(total - penalti);
+                  const {
+                    nilaiGram,
+                    potongan,
+                    refundEmas,
+                    refundTotal
+                  } = hitungRefundRencana(batalPlan);
                   return (
                     <>
-                      {refund > 0 ? (
+                      {refundTotal > 0 ? (
                         <>
-                          <p className="text-xl font-extrabold mt-0.5 text-rose-700 dark:text-rose-300">Rp {formatRupiah(refund)}</p>
+                          <p className="text-xl font-extrabold mt-0.5 text-rose-700 dark:text-rose-300">Rp {formatRupiah(refundTotal)}</p>
                           <div className="mt-2 space-y-1 text-[11px] text-rose-700/80 dark:text-rose-300/70">
-                            <p>Saldo emas rencana ini: {batalPlan.gram.toFixed(4)} gr ≈ Rp {formatRupiah(Math.round(nilaiGram))}</p>
-                            <p>Saldo dana rencana ini: Rp {formatRupiah(batalPlan.dana)}</p>
-                            <p>Potongan 10% (dari total): −Rp {formatRupiah(penalti)}</p>
+                            <p>Nilai emas ({batalPlan.gram.toFixed(4)} gr × harga jual): Rp {formatRupiah(nilaiGram)}</p>
+                            <p>Total setoran emas (rupiah yang jadi gram): Rp {formatRupiah(Math.round(batalPlan.totalSetor))}</p>
+                            <p>Potongan 10% (dari total setoran emas): −Rp {formatRupiah(potongan)}</p>
+                            <p>Refund emas: Rp {formatRupiah(refundEmas)}</p>
+                            <p>Saldo dana rencana (dikembalikan penuh): Rp {formatRupiah(batalPlan.dana)}</p>
                           </div>
                           <span className="text-[11px] text-rose-700/80 dark:text-rose-300/70">Harga jual Rp {formatRupiah(batalPlan.gram > 0 ? hargaJualPerGram(activeHarga, batalPlan.gram) : 0)} / gram</span>
                         </>
@@ -426,9 +446,8 @@ export const RencanaTabunganEmas: React.FC<RencanaTabunganEmasProps> = ({ onOpen
               </div>
 
               {(() => {
-                const total = batalPlan.gram * activeHarga + batalPlan.dana;
-                const refund = Math.round(total - Math.round(total * 0.10));
-                return refund > 0 && (
+                const { refundTotal } = hitungRefundRencana(batalPlan);
+                return refundTotal > 0 && (
                   <>
                     <div>
                       <label className={labelCls}>Bank Tujuan</label>

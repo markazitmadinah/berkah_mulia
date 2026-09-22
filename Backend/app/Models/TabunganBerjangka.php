@@ -12,6 +12,7 @@ class TabunganBerjangka extends Model
     protected $table = 'tabungan_berjangka';
 
     protected $fillable = [
+        'external_id',
         'user_id',
         'jenis_tabungan_id',
         'target_nominal',
@@ -71,6 +72,11 @@ class TabunganBerjangka extends Model
     public function scopeMilikUser(Builder $query, int $userId): Builder
     {
         return $query->where('user_id', $userId);
+    }
+
+    public function scopeByExternal(Builder $query, string $externalId): Builder
+    {
+        return $query->where('external_id', $externalId);
     }
 
     public function scopeAktif(Builder $query): Builder
@@ -150,17 +156,27 @@ class TabunganBerjangka extends Model
 
             return match ($this->frekuensi_setor) {
                 'mingguan' => intdiv($hari, 7) + 1,
-                'bulanan' => max(1, $dari->diffInMonths($ke) + 1),
+                'bulanan' => max(1, (int) $dari->diffInMonths($ke) + 1),
                 default => $hari + 1,
             };
         };
+
+        $nominalPeriode = (float) $this->nominal_per_periode;
+        $totalPeriode = $nominalPeriode > 0 ? (int) ceil((float) $this->target_nominal / $nominalPeriode) : 0;
 
         $seharusnya = $hitungPeriode($mulai, $sampai);
         if ($this->tanggal_jatuh_tempo) {
             $seharusnya = min($seharusnya, $hitungPeriode($mulai, $this->tanggal_jatuh_tempo->copy()->startOfDay()));
         }
 
-        $nominalPeriode = (float) $this->nominal_per_periode;
+        // Jangan melampaui total periode rencana (target ÷ nominal). Tanpa ini,
+        // rencana dengan nominal/periode tak sinkron (mis. hasil import) bisa
+        // menagih ratusan periode jauh melebihi target. Konsisten dengan
+        // UserTabunganTarget::tertunggak & PendaftaranQurban::tertunggak.
+        if ($totalPeriode > 0) {
+            $seharusnya = min($seharusnya, $totalPeriode);
+        }
+
         $terlaksana = $nominalPeriode > 0 ? (int) floor($this->terkumpulNominal() / $nominalPeriode) : 0;
 
         return [

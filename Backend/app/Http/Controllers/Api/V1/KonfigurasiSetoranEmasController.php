@@ -156,7 +156,8 @@ class KonfigurasiSetoranEmasController extends Controller
     /**
      * POST /emas/setoran-berkala/{konfigurasi}/batalkan
      * Batal & refund PER RENCANA (tidak menyentuh rencana lain):
-     * TOTAL tabungan rencana (nilai gram + saldo dana rencana) dipotong 10%.
+     * potongan 10% dihitung dari TOTAL SETORAN EMAS (rupiah yang berhasil dikonversi
+     * jadi gram), bukan dari nilai pasar; saldo dana rencana dikembalikan penuh.
      * Refund berupa transaksi tarik yang menunggu verifikasi admin.
      */
     public function batalkan(Request $request, KonfigurasiSetoranEmas $konfigurasi): JsonResponse
@@ -179,17 +180,21 @@ class KonfigurasiSetoranEmasController extends Controller
         $gram = (float) $rekap['gram'];
         $danaRencana = (float) $rekap['dana'];
 
+        $hargaJual = 0.0;
         if ($gram > 0) {
             $harga = $this->emasService->getHargaTerkini();
             if (! $harga) {
                 return $this->errorResponse('Harga emas belum diinput oleh admin. Silakan hubungi admin.', 400);
             }
-            $nilaiGram = round($gram * $harga->hargaJualPerGram($gram), 2);
-        } else {
-            $nilaiGram = 0.0;
+            $hargaJual = $harga->hargaJualPerGram($gram);
         }
 
-        ['penalti' => $penalti, 'refund' => $refund] = $this->saldoEmasService->hitungRefund($nilaiGram, $danaRencana);
+        $rincian = $this->saldoEmasService->rincianRefund($user, $konfigurasi, $hargaJual);
+        $totalSetoran = $rincian['total_setoran_emas'];
+        $nilaiGram = $rincian['nilai_emas'];
+        $penalti = $rincian['potongan'];
+        $refundEmas = $rincian['refund_emas'];
+        $refund = $rincian['refund_total'];
 
         $transaksi = null;
 
@@ -201,7 +206,7 @@ class KonfigurasiSetoranEmasController extends Controller
                 'catatan_user' => 'nullable|string|max:500',
             ]);
 
-            $transaksi = DB::transaction(function () use ($user, $konfigurasi, $gram, $nilaiGram, $penalti, $danaRencana, $refund, $request) {
+            $transaksi = DB::transaction(function () use ($user, $konfigurasi, $gram, $nilaiGram, $penalti, $danaRencana, $refund, $totalSetoran, $refundEmas, $request) {
                 // Kunci baris rencana: dua pengajuan batal paralel tidak boleh
                 // menghasilkan refund ganda (rapat pre-check refundTerkunci di atas).
                 KonfigurasiSetoranEmas::whereKey($konfigurasi->id)->lockForUpdate()->firstOrFail();
@@ -222,10 +227,14 @@ class KonfigurasiSetoranEmasController extends Controller
                     'unit_didapat' => -1 * $gram,
                     'biaya_penalti' => $penalti,
                     'metode_pembayaran' => MetodePembayaran::Transfer,
-                    'catatan_user' => 'Pembatalan rencana setoran berkala. Refund: total tabungan (emas Rp '
-                        . number_format($nilaiGram, 0, ',', '.') . ' + saldo dana Rp ' . number_format($danaRencana, 0, ',', '.')
-                        . ') dipotong 10% Rp ' . number_format($penalti, 0, ',', '.')
-                        . ' = Rp ' . number_format($refund, 0, ',', '.')
+                    'catatan_user' => 'Pembatalan rencana setoran berkala. Nilai emas Rp '
+                        . number_format($nilaiGram, 0, ',', '.')
+                        . ' (gram × harga jual) dikurangi potongan 10% dari total setoran emas Rp '
+                        . number_format($totalSetoran, 0, ',', '.')
+                        . ' = Rp ' . number_format($penalti, 0, ',', '.')
+                        . ', refund emas Rp ' . number_format($refundEmas, 0, ',', '.')
+                        . '; saldo dana Rp ' . number_format($danaRencana, 0, ',', '.')
+                        . ' dikembalikan penuh. Total refund Rp ' . number_format($refund, 0, ',', '.')
                         . ' ke ' . $request->bank_tujuan . ' (' . $request->no_rekening . ' a.n ' . $request->atas_nama . ').',
                 ]);
             });
@@ -236,6 +245,9 @@ class KonfigurasiSetoranEmasController extends Controller
         // (lihat TransaksiController::verifikasi). Rencana kosong (refund 0) dibatalkan langsung.
         if ($refund <= 0) {
             $konfigurasi->update(['status' => StatusKonfigurasiSetoran::Batal]);
+
+            // Rencana terakhir batal → goal global sudah tak ada yang membelinya.
+            $this->saldoEmasService->bersihkanGoalKalaRencanaHabis($user, $konfigurasi->jenis_tabungan_id);
         }
 
         if ($refund > 0) {
@@ -254,6 +266,8 @@ class KonfigurasiSetoranEmasController extends Controller
             'refund' => [
                 'gram_dibatalkan' => $gram,
                 'nilai_gram' => $nilaiGram,
+                'total_setoran_emas' => $totalSetoran,
+                'refund_emas' => $refundEmas,
                 'penalti_10_persen' => $penalti,
                 'saldo_dana' => $danaRencana,
                 'nominal_refund' => $refund,

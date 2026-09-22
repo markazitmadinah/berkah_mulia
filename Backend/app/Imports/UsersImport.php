@@ -3,25 +3,23 @@
 namespace App\Imports;
 
 use App\Enums\FrekuensiSetoran;
-use App\Enums\JenisTransaksi;
-use App\Enums\MetodePembayaran;
 use App\Enums\StatusGadai;
 use App\Enums\StatusKonfigurasiSetoran;
 use App\Enums\StatusPendaftaranQurban;
-use App\Enums\StatusVerifikasi;
 use App\Enums\TipeTabungan;
 use App\Enums\UserRole;
 use App\Enums\UserStatus;
 use App\Models\Gadai;
+use App\Models\HargaEmasHarian;
 use App\Models\HewanQurban;
 use App\Models\JenisTabungan;
 use App\Models\KonfigurasiSetoranEmas;
 use App\Models\PendaftaranQurban;
 use App\Models\PeriodeQurban;
 use App\Models\TabunganBerjangka;
-use App\Models\Transaksi;
 use App\Models\User;
 use App\Models\UserTabunganTarget;
+use App\Services\SaldoEmasService;
 use Illuminate\Support\Carbon;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Hash;
@@ -40,7 +38,7 @@ class UsersImport implements SkipsEmptyRows, ToModel, WithCalculatedFormulas, Wi
      * Penanda pada catatan_admin transaksi setor saldo awal dari import.
      * Dipakai untuk anti-duplikat dan "set ulang dana" saat file di-import ulang.
      */
-    public const MARKER_SALDO_AWAL = 'SALDO_AWAL_IMPORT';
+    public const MARKER_SALDO_AWAL = \App\Services\SaldoAwalService::MARKER;
 
     /**
      * Identitas baris contoh pada template unduhan. Baris ini otomatis
@@ -90,7 +88,7 @@ class UsersImport implements SkipsEmptyRows, ToModel, WithCalculatedFormulas, Wi
 
         $nama = trim((string) ($row['nama_lengkap'] ?? ''));
 
-        // Email, no. HP, nomor anggota, alamat, dan password tidak lagi
+        // No. HP, nomor anggota, alamat, dan password tidak lagi
         // diimport — nasabah mengisinya sendiri di akun masing-masing.
 
         // Baris contoh dari template: jangan pernah menjadi data nyata.
@@ -151,13 +149,12 @@ class UsersImport implements SkipsEmptyRows, ToModel, WithCalculatedFormulas, Wi
 
             $username = $this->generateUniqueUsername($nama);
 
-            // email/phone diisi placeholder unik agar kolom NOT NULL terpenuhi;
-            // data asli diisi nasabah di akun masing-masing (pola LaporanHarianImport).
+            // phone diisi placeholder unik; data asli diisi nasabah di akun masing-masing
+            // (pola LaporanHarianImport).
             // forceFill: role/status/approved_by/approved_at tidak fillable (mass-assignment).
             $user = (new User)->forceFill([
                 'name' => $nama,
                 'username' => $username,
-                'email' => 'user.'.$username.'@berkahmulia.local',
                 'phone' => $this->generatePlaceholderPhone(),
                 'address' => null,
                 'password' => Hash::make(Str::random(16)),
@@ -293,19 +290,66 @@ class UsersImport implements SkipsEmptyRows, ToModel, WithCalculatedFormulas, Wi
                 continue;
             }
 
-            $this->prosesEmas($user, $item['row'], $item['baris']);
-            $this->prosesHariRaya($user, $item['row'], $item['baris']);
-            $this->prosesBerjangka($user, $item['row'], $item['baris']);
-            $this->prosesQurban($user, $item['row'], $item['baris']);
-            $this->prosesMandiri($user, $item['row'], $item['baris']);
-            $this->prosesGadai($user, $item['row'], $item['baris']);
+            // Satu baris yang produknya diisi separuh/tidak valid TIDAK boleh
+            // membatalkan seluruh file: user (nama + status) tetap terdaftar,
+            // blok yang bermasalah dilewati dengan catatan.
+            try {
+                $this->prosesEmas($user, $item['row'], $item['baris']);
+                $this->prosesHariRaya($user, $item['row'], $item['baris']);
+                $this->prosesBerjangka($user, $item['row'], $item['baris']);
+                $this->prosesQurban($user, $item['row'], $item['baris']);
+                $this->prosesMandiri($user, $item['row'], $item['baris']);
+                $this->prosesGadai($user, $item['row'], $item['baris']);
+            } catch (\Throwable $e) {
+                $this->skipped[] = 'Baris '.$item['baris'].": data tabungan tidak valid dan dilewati ({$e->getMessage()}).";
+            }
         }
     }
 
     private function prosesEmas(User $user, array $row, int $baris): void
     {
         $targetGram = $this->desimal($row, 'Emas - Target (gram)');
-        if ($targetGram === null) {
+        if ($targetGram !== null) {
+            $jenis = $this->jenisByKode('EMAS');
+            if (! $jenis) {
+                $this->skipped[] = "Baris {$baris}: Jenis tabungan EMAS tidak ditemukan.";
+
+                return;
+            }
+
+            KonfigurasiSetoranEmas::updateOrCreate(
+                ['user_id' => $user->id, 'jenis_tabungan_id' => $jenis->id],
+                [
+                    'target_gram_total' => $targetGram,
+                    'target_gram_per_periode' => $this->desimal($row, 'Emas - Gram per Periode'),
+                    'nominal_per_periode' => $this->rupiah($row, 'Emas - Nominal per Periode (Rp)'),
+                    'frekuensi_setor' => $this->parseFrekuensi($this->ambil($row, 'Emas - Frekuensi Bayar') ?? 'bulanan'),
+                    'durasi_periode' => $this->bersihNominal($this->ambil($row, 'Emas - Durasi (Periode)')),
+                    'tanggal_mulai' => $this->parseTanggal($this->ambil($row, 'Emas - Tanggal Mulai')),
+                    'tanggal_deadline' => $this->parseTanggal($this->ambil($row, 'Emas - Jatuh Tempo')),
+                    'status' => StatusKonfigurasiSetoran::Aktif->value,
+                    'created_by' => auth()->id(),
+                ]
+            );
+
+            // Salin semantik KonfigurasiSetoranEmasController::store: rencana
+            // pertama menetapkan goal global (target_emas_gram) untuk user.
+            if ($user->target_emas_gram === null && $targetGram > 0) {
+                $user->update(['target_emas_gram' => round($targetGram, 6)]);
+            }
+
+            $this->targetDiatur++;
+        }
+
+        // "Yang Sudah Terkumpul" emas: nominal rupiah dikonversi ke gram
+        // (setoran di luar rencana) dan dicatat sebagai saldo awal terverifikasi.
+        $this->prosesSaldoEmasTerkumpul($user, $row, $baris);
+    }
+
+    private function prosesSaldoEmasTerkumpul(User $user, array $row, int $baris): void
+    {
+        $saldo = $this->rupiah($row, 'Emas - Yang Sudah Terkumpul (Rp)');
+        if ($saldo === null) {
             return;
         }
 
@@ -316,139 +360,199 @@ class UsersImport implements SkipsEmptyRows, ToModel, WithCalculatedFormulas, Wi
             return;
         }
 
-        KonfigurasiSetoranEmas::updateOrCreate(
-            ['user_id' => $user->id, 'jenis_tabungan_id' => $jenis->id],
-            [
-                'target_gram_total' => $targetGram,
-                'target_gram_per_periode' => $this->desimal($row, 'Emas - Gram per Periode'),
-                'nominal_per_periode' => $this->rupiah($row, 'Emas - Nominal per Periode (Rp)'),
-                'frekuensi_setor' => $this->parseFrekuensi($this->ambil($row, 'Emas - Frekuensi Bayar') ?? 'bulanan'),
-                'durasi_periode' => $this->bersihNominal($this->ambil($row, 'Emas - Durasi (Periode)')),
-                'tanggal_mulai' => $this->parseTanggal($this->ambil($row, 'Emas - Tanggal Mulai')),
-                'tanggal_deadline' => $this->parseTanggal($this->ambil($row, 'Emas - Jatuh Tempo')),
-                'status' => StatusKonfigurasiSetoran::Aktif->value,
-                'created_by' => auth()->id(),
-            ]
-        );
+        $harga = HargaEmasHarian::hargaTerkini();
+        if (! $harga) {
+            $this->skipped[] = "Baris {$baris}: 'Emas - Yang Sudah Terkumpul' dilewati karena harga emas belum diinput admin.";
 
-        // Salin semantik KonfigurasiSetoranEmasController::store: rencana
-        // pertama menetapkan goal global (target_emas_gram) untuk user.
-        if ($user->target_emas_gram === null && $targetGram > 0) {
-            $user->update(['target_emas_gram' => round($targetGram, 6)]);
+            return;
         }
 
-        $this->targetDiatur++;
+        // Sama seperti setoran emas biasa di luar rencana: gramasi diestimasi dari
+        // harga acuan, guna harga jual bertingkat, lalu konversi nominal → gram.
+        $gramasi = (float) $harga->harga_per_gram > 0 ? $saldo / (float) $harga->harga_per_gram : 0.0;
+        $hargaJual = $harga->hargaJualPerGram($gramasi);
+        $porsi = app(SaldoEmasService::class)->hitungSetoran($saldo, null, 0.0, $hargaJual);
+
+        $ekstra = [
+            'unit_didapat' => $porsi['unit_didapat'],
+            'nominal_emas' => $porsi['nominal_emas'],
+            'nominal_selisih' => $porsi['nominal_selisih'],
+            'harga_acuan_id' => $harga->id,
+            'harga_acuan_snapshot' => $hargaJual,
+        ];
+
+        // Sambungkan ke rencana emas (konfigurasi) yang baru dibuat/diperbarui oleh
+        // import baris ini agar progress rencana (gram terkumpul, capaian gram,
+        // sisa periode, konsistensi) ikut terisi dari saldo awal.
+        // ponytail: bila nasabah punya >1 rencana aktif, saldo awal di-attribusi ke
+        // rencana terbaru; per-rencana alokasi manual bisa ditambahkan bila dipakai.
+        $konfigurasi = app(SaldoEmasService::class)->getAktif($user, $jenis);
+        if ($konfigurasi) {
+            $ekstra['konfigurasi_id'] = $konfigurasi->id;
+        }
+
+        $this->aturSaldoAwal($user, $jenis->id, $saldo, $baris, $ekstra);
     }
 
     private function prosesHariRaya(User $user, array $row, int $baris): void
     {
         $target = $this->rupiah($row, 'Hari Raya - Target (Rp)');
-        if ($target === null) {
-            return;
+        if ($target !== null) {
+            $jenis = $this->jenisByKode('tabungan-hari-raya');
+            if (! $jenis) {
+                $this->skipped[] = "Baris {$baris}: Jenis tabungan Hari Raya tidak ditemukan.";
+
+                return;
+            }
+
+            UserTabunganTarget::updateOrCreate(
+                ['user_id' => $user->id, 'jenis_tabungan_id' => $jenis->id],
+                [
+                    'target_nominal' => $target,
+                    'frekuensi_setor' => $this->parseFrekuensi($this->ambil($row, 'Hari Raya - Frekuensi Bayar') ?? 'bulanan'),
+                    'nominal_per_periode' => $this->rupiah($row, 'Hari Raya - Nominal per Periode (Rp)'),
+                    'durasi_periode' => $this->bersihNominal($this->ambil($row, 'Hari Raya - Durasi (Periode)')),
+                    'tanggal_mulai' => $this->parseTanggal($this->ambil($row, 'Hari Raya - Tanggal Mulai')),
+                    'tanggal_deadline' => $this->parseTanggal($this->ambil($row, 'Hari Raya - Jatuh Tempo')),
+                ]
+            );
+            $this->targetDiatur++;
         }
 
-        $jenis = $this->jenisByKode('tabungan-hari-raya');
-        if (! $jenis) {
-            $this->skipped[] = "Baris {$baris}: Jenis tabungan Hari Raya tidak ditemukan.";
-
-            return;
-        }
-
-        UserTabunganTarget::updateOrCreate(
-            ['user_id' => $user->id, 'jenis_tabungan_id' => $jenis->id],
-            [
-                'target_nominal' => $target,
-                'frekuensi_setor' => $this->parseFrekuensi($this->ambil($row, 'Hari Raya - Frekuensi Bayar') ?? 'bulanan'),
-                'nominal_per_periode' => $this->rupiah($row, 'Hari Raya - Nominal per Periode (Rp)'),
-                'durasi_periode' => $this->bersihNominal($this->ambil($row, 'Hari Raya - Durasi (Periode)')),
-                'tanggal_mulai' => $this->parseTanggal($this->ambil($row, 'Hari Raya - Tanggal Mulai')),
-                'tanggal_deadline' => $this->parseTanggal($this->ambil($row, 'Hari Raya - Jatuh Tempo')),
-            ]
-        );
-        $this->targetDiatur++;
+        $this->prosesSaldoSudahTerkumpul($user, $row, $baris, 'tabungan-hari-raya', 'Hari Raya');
     }
 
     private function prosesBerjangka(User $user, array $row, int $baris): void
     {
         $target = $this->rupiah($row, 'Berjangka - Target (Rp)');
-        if ($target === null) {
-            return;
+        if ($target !== null) {
+            $jenis = $this->jenisByKode('tabungan-berjangka');
+            if (! $jenis) {
+                $this->skipped[] = "Baris {$baris}: Jenis tabungan Berjangka tidak ditemukan.";
+
+                return;
+            }
+
+            TabunganBerjangka::updateOrCreate(
+                ['user_id' => $user->id, 'jenis_tabungan_id' => $jenis->id],
+                [
+                    'target_nominal' => $target,
+                    'frekuensi_setor' => $this->parseFrekuensi($this->ambil($row, 'Berjangka - Frekuensi Bayar') ?? 'bulanan'),
+                    'nominal_per_periode' => $this->rupiah($row, 'Berjangka - Nominal per Periode (Rp)'),
+                    'durasi_bulan' => $this->bersihNominal($this->ambil($row, 'Berjangka - Durasi (Periode)')),
+                    'tanggal_mulai' => $this->parseTanggal($this->ambil($row, 'Berjangka - Tanggal Mulai')),
+                    'tanggal_jatuh_tempo' => $this->parseTanggal($this->ambil($row, 'Berjangka - Jatuh Tempo')),
+                    'status' => 'aktif',
+                    'approved_by' => auth()->id(),
+                    'approved_at' => now(),
+                    'created_by' => auth()->id(),
+                ]
+            );
+            $this->targetDiatur++;
         }
 
+        // Sambungkan saldo awal ke akun berjangka agar terkumpul dihitung langsung
+        // (bukan fallback jendela waktu yang rapuh bila nanti ada setoran bertanda).
         $jenis = $this->jenisByKode('tabungan-berjangka');
-        if (! $jenis) {
-            $this->skipped[] = "Baris {$baris}: Jenis tabungan Berjangka tidak ditemukan.";
-
-            return;
-        }
-
-        TabunganBerjangka::updateOrCreate(
-            ['user_id' => $user->id, 'jenis_tabungan_id' => $jenis->id],
-            [
-                'target_nominal' => $target,
-                'frekuensi_setor' => $this->parseFrekuensi($this->ambil($row, 'Berjangka - Frekuensi Bayar') ?? 'bulanan'),
-                'nominal_per_periode' => $this->rupiah($row, 'Berjangka - Nominal per Periode (Rp)'),
-                'durasi_bulan' => $this->bersihNominal($this->ambil($row, 'Berjangka - Durasi (Periode)')),
-                'tanggal_mulai' => $this->parseTanggal($this->ambil($row, 'Berjangka - Tanggal Mulai')),
-                'tanggal_jatuh_tempo' => $this->parseTanggal($this->ambil($row, 'Berjangka - Jatuh Tempo')),
-                'status' => 'aktif',
-                'approved_by' => auth()->id(),
-                'approved_at' => now(),
-                'created_by' => auth()->id(),
-            ]
-        );
-        $this->targetDiatur++;
+        $tb = $jenis
+            ? TabunganBerjangka::where('user_id', $user->id)->where('jenis_tabungan_id', $jenis->id)->latest('id')->first()
+            : null;
+        $this->prosesSaldoSudahTerkumpul($user, $row, $baris, 'tabungan-berjangka', 'Berjangka', $tb ? ['tabungan_berjangka_id' => $tb->id] : []);
     }
 
     private function prosesQurban(User $user, array $row, int $baris): void
     {
         $target = $this->rupiah($row, 'Qurban - Target (Rp)');
-        if ($target === null) {
+        if ($target !== null) {
+            $hewanNama = trim((string) ($this->ambil($row, 'Qurban - Jenis Hewan') ?? ''));
+            $periodeText = trim((string) ($this->ambil($row, 'Qurban - Periode') ?? ''));
+
+            $hewan = $hewanNama !== '' ? HewanQurban::aktif()->where('jenis_hewan', $hewanNama)->first() : null;
+            $tahun = (int) preg_replace('/\D+/', '', $periodeText);
+            $periode = $tahun > 0
+                ? PeriodeQurban::where('tahun', $tahun)->first()
+                : PeriodeQurban::aktif()->first();
+
+            if (! $hewan && $hewanNama !== '') {
+                $this->skipped[] = "Baris {$baris}: Hewan qurban '{$hewanNama}' tidak ditemukan.";
+
+                return;
+            }
+
+            PendaftaranQurban::updateOrCreate(
+                ['user_id' => $user->id, 'periode_qurban_id' => $periode?->id],
+                [
+                    'hewan_qurban_id' => $hewan?->id,
+                    'jumlah_hewan' => $this->bersihNominal($this->ambil($row, 'Qurban - Jumlah Hewan')) ?? 1,
+                    'target_dana' => $target,
+                    'total_terkumpul' => 0,
+                    'status' => StatusPendaftaranQurban::Menabung->value,
+                    'tanggal_daftar' => $this->parseTanggal($this->ambil($row, 'Qurban - Tanggal Daftar')) ?? now()->toDateString(),
+                    'frekuensi_setor' => $this->parseFrekuensi($this->ambil($row, 'Qurban - Frekuensi Bayar') ?? 'bulanan'),
+                    'nominal_per_periode' => $this->rupiah($row, 'Qurban - Nominal per Periode (Rp)'),
+                ]
+            );
+            $this->targetDiatur++;
+        }
+
+        // Saldo awal qurban dicatat setelah pendaftaran dibuat agar total_terkumpul
+        // bisa di-refresh & transaksinya tertaut ke pendaftaran (dasar progress qurban).
+        $this->prosesSaldoQurbanTerkumpul($user, $row, $baris);
+    }
+
+    private function prosesSaldoQurbanTerkumpul(User $user, array $row, int $baris): void
+    {
+        $saldo = $this->rupiah($row, 'Qurban - Yang Sudah Terkumpul (Rp)');
+        if ($saldo === null) {
             return;
         }
 
-        $hewanNama = trim((string) ($this->ambil($row, 'Qurban - Jenis Hewan') ?? ''));
-        $periodeText = trim((string) ($this->ambil($row, 'Qurban - Periode') ?? ''));
-
-        $hewan = $hewanNama !== '' ? HewanQurban::aktif()->where('jenis_hewan', $hewanNama)->first() : null;
-        $tahun = (int) preg_replace('/\D+/', '', $periodeText);
-        $periode = $tahun > 0
-            ? PeriodeQurban::where('tahun', $tahun)->first()
-            : PeriodeQurban::aktif()->first();
-
-        if (! $hewan && $hewanNama !== '') {
-            $this->skipped[] = "Baris {$baris}: Hewan qurban '{$hewanNama}' tidak ditemukan.";
+        $jenis = $this->jenisByKode('tabungan-qurban');
+        if (! $jenis) {
+            $this->skipped[] = "Baris {$baris}: Jenis tabungan Qurban tidak ditemukan.";
 
             return;
         }
 
-        PendaftaranQurban::updateOrCreate(
-            ['user_id' => $user->id, 'periode_qurban_id' => $periode?->id],
-            [
-                'hewan_qurban_id' => $hewan?->id,
-                'jumlah_hewan' => $this->bersihNominal($this->ambil($row, 'Qurban - Jumlah Hewan')) ?? 1,
-                'target_dana' => $target,
-                'total_terkumpul' => 0,
-                'status' => StatusPendaftaranQurban::Menabung->value,
-                'tanggal_daftar' => $this->parseTanggal($this->ambil($row, 'Qurban - Tanggal Daftar')) ?? now()->toDateString(),
-                'frekuensi_setor' => $this->parseFrekuensi($this->ambil($row, 'Qurban - Frekuensi Bayar') ?? 'bulanan'),
-                'nominal_per_periode' => $this->rupiah($row, 'Qurban - Nominal per Periode (Rp)'),
-            ]
-        );
-        $this->targetDiatur++;
+        $pendaftaran = PendaftaranQurban::where('user_id', $user->id)
+            ->where('status', '!=', 'batal')
+            ->latest('id')
+            ->first();
+
+        if (! $pendaftaran) {
+            $this->skipped[] = "Baris {$baris}: 'Qurban - Yang Sudah Terkumpul' dilewati karena nasabah belum punya pendaftaran qurban (isi kolom target qurban).";
+
+            return;
+        }
+
+        $this->aturSaldoAwal($user, $jenis->id, $saldo, $baris, ['pendaftaran_qurban_id' => $pendaftaran->id]);
+        app(\App\Services\QurbanTargetService::class)->updateTotalTerkumpul($pendaftaran->fresh());
     }
 
     private function prosesMandiri(User $user, array $row, int $baris): void
     {
-        $jenis = $this->jenisByKode('tabungan-pribadi');
-        if (! $jenis) {
+        $this->prosesSaldoSudahTerkumpul($user, $row, $baris, 'tabungan-pribadi', 'Mandiri');
+    }
+
+    /**
+     * Catat "X - Yang Sudah Terkumpul (Rp)" sebagai saldo awal tabungan
+     * (setoran terverifikasi bertanda SALDO_AWAL_IMPORT), idempotent.
+     */
+    private function prosesSaldoSudahTerkumpul(User $user, array $row, int $baris, string $kode, string $label, array $ekstra = []): void
+    {
+        $saldo = $this->rupiah($row, $label.' - Yang Sudah Terkumpul (Rp)');
+        if ($saldo === null) {
             return;
         }
 
-        $saldo = $this->rupiah($row, 'Mandiri - Saldo Awal (Rp)');
-        if ($saldo !== null) {
-            $this->aturSaldoAwal($user, $jenis->id, $saldo, $baris);
+        $jenis = $this->jenisByKode($kode);
+        if (! $jenis) {
+            $this->skipped[] = "Baris {$baris}: Jenis tabungan {$label} tidak ditemukan.";
+
+            return;
         }
+
+        $this->aturSaldoAwal($user, $jenis->id, $saldo, $baris, $ekstra);
     }
 
     private function prosesGadai(User $user, array $row, int $baris): void
@@ -504,70 +608,17 @@ class UsersImport implements SkipsEmptyRows, ToModel, WithCalculatedFormulas, Wi
         };
     }
 
-    private function posisiSaldoAwal(int $userId, int $jenisId): ?Transaksi
+    private function aturSaldoAwal(User $user, int $jenisId, int $saldo, int $baris, array $ekstra = []): void
     {
-        return Transaksi::milikUser($userId)
-            ->where('jenis_tabungan_id', $jenisId)
-            ->where('jenis_transaksi', JenisTransaksi::Setor->value)
-            ->where('status_verifikasi', StatusVerifikasi::Terverifikasi->value)
-            ->where('catatan_admin', 'like', '%'.self::MARKER_SALDO_AWAL.'%')
-            ->latest('id')
-            ->first();
-    }
+        $hasil = app(\App\Services\SaldoAwalService::class)->atur($user, $jenisId, $saldo, 'IMPORT_LAPORAN_HARIAN', $ekstra);
 
-    /**
-     * "Set ulang dana" saldo awal tabungan nasabah:
-     * - belum ada catatan → buat transaksi setor terverifikasi (langsung masuk saldo).
-     * - nilainya berubah → perbarui nominal (import ulang).
-     * - diisi 0 → hapus catatan saldo awal.
-     */
-    private function aturSaldoAwal(User $user, int $jenisId, int $saldo, int $baris): void
-    {
-        $existing = $this->posisiSaldoAwal($user->id, $jenisId);
-
-        $memilikiHistori = Transaksi::milikUser($user->id)
-            ->where('jenis_tabungan_id', $jenisId)
-            ->where('catatan_admin', 'like', '%IMPORT_LAPORAN_HARIAN%')
-            ->exists();
-
-        if ($saldo > 0 && $memilikiHistori) {
-            $this->skipped[] = "Baris {$baris}: Saldo awal ditolak karena histori laporan harian untuk tabungan ini sudah ada.";
-
-            return;
-        }
-
-        if ($existing) {
-            if ($saldo === 0) {
-                $existing->delete();
-                $this->saldoDihapus++;
-            } elseif ((float) $existing->nominal !== (float) $saldo) {
-                $existing->update(['nominal' => $saldo]);
-                $this->saldoDiubah++;
-            }
-
-            return;
-        }
-
-        if ($saldo === 0) {
-            return;
-        }
-
-        Transaksi::create([
-            'nomor_referensi' => Transaksi::generateNomorReferensi(),
-            'user_id' => $user->id,
-            'jenis_tabungan_id' => $jenisId,
-            'jenis_transaksi' => JenisTransaksi::Setor->value,
-            'nominal' => $saldo,
-            'metode_pembayaran' => MetodePembayaran::Cash->value,
-            'status_verifikasi' => StatusVerifikasi::Terverifikasi->value,
-            'diverifikasi_oleh' => auth()->id(),
-            'diverifikasi_pada' => now(),
-            'catatan_admin' => 'Saldo awal dari import ('.self::MARKER_SALDO_AWAL.').',
-            'catatan_user' => 'Saldo awal tabungan dari data nasabah.',
-            'tanggal_transaksi' => now()->toDateString(),
-        ]);
-
-        $this->saldoDicatat++;
+        match ($hasil) {
+            'created' => $this->saldoDicatat++,
+            'updated' => $this->saldoDiubah++,
+            'deleted' => $this->saldoDihapus++,
+            'denied' => $this->skipped[] = "Baris {$baris}: Saldo awal ditolak karena histori laporan harian untuk tabungan ini sudah ada.",
+            default => null,
+        };
     }
 
     public function getCreatedCount(): int

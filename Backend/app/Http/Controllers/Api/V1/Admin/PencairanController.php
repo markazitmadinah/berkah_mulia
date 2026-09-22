@@ -105,13 +105,18 @@ class PencairanController extends Controller
             return $this->errorResponse('Tidak ada saldo emas yang bisa dicairkan.', 422, 'NO_BALANCE');
         }
 
-        $harga = HargaEmasHarian::hargaTerkini();
-        if ($gram > 0 && ! $harga) {
-            return $this->errorResponse('Harga emas belum diinput oleh admin.', 400, 'HARGA_BELUM_ADA');
+        $harga = null;
+        if ($gram > 0) {
+            $harga = HargaEmasHarian::hargaTerkini();
+            if (! $harga) {
+                return $this->errorResponse('Harga emas belum diinput oleh admin.', 400, 'HARGA_BELUM_ADA');
+            }
         }
 
-        $nilaiGram = $gram > 0 ? round($gram * $harga->hargaJualPerGram($gram), 2) : 0.0;
-        ['penalti' => $penalti, 'refund' => $refund] = $this->saldoEmasService->hitungRefund($nilaiGram, $dana);
+        $rincian = $this->saldoEmasService->rincianRefund($user, $konfigurasi, $harga?->hargaJualPerGram($gram) ?? 0.0);
+        $nilaiGram = $rincian['nilai_emas'];
+        $penalti = $rincian['potongan'];
+        $refund = $rincian['refund_total'];
 
         $transaksi = DB::transaction(function () use ($user, $jenis, $konfigurasi, $gram, $dana, $nilaiGram, $penalti, $refund, $request, $harga) {
             KonfigurasiSetoranEmas::whereKey($konfigurasi->id)->lockForUpdate()->firstOrFail();
@@ -134,11 +139,14 @@ class PencairanController extends Controller
                 'harga_acuan_id' => $harga?->id,
                 'harga_acuan_snapshot' => $harga ? $harga->hargaJualPerGram($gram) : null,
                 'metode_pembayaran' => MetodePembayaran::Transfer,
-                'catatan_admin' => $request->catatan_admin ?: 'Batal & refund rencana setoran emas oleh admin (potongan 10%).',
+                'catatan_admin' => $request->catatan_admin ?: 'Batal & refund rencana setoran emas oleh admin (potongan 10% dari total setoran emas).',
                 'auto_verify' => true,
             ]);
 
             $konfigurasi->update(['status' => StatusKonfigurasiSetoran::Batal]);
+
+            // Rencana terakhir batal → goal global sudah tak ada yang membelinya.
+            $this->saldoEmasService->bersihkanGoalKalaRencanaHabis($user, $jenis->id);
 
             return $t;
         });

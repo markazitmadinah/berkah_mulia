@@ -12,7 +12,7 @@ class UserSeeder extends Seeder
     public function run(): void
     {
         User::updateOrCreate(
-            ['username' => 'nasabah1'],
+['username' => 'nasabah1'],
             [
                 'name' => 'Nasabah Uji',
                 'username' => 'nasabah1',
@@ -22,7 +22,6 @@ class UserSeeder extends Seeder
                 'password' => 'password123',
                 'role' => UserRole::User,
                 'status' => UserStatus::Active,
-                'email_verified_at' => now(),
                 'approved_at' => now(),
             ]
         );
@@ -38,7 +37,6 @@ class UserSeeder extends Seeder
                 'password' => 'password123',
                 'role' => UserRole::User,
                 'status' => UserStatus::Active,
-                'email_verified_at' => now(),
                 'approved_at' => now(),
             ]
         );

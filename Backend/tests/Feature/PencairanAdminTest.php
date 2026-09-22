@@ -186,18 +186,19 @@ class PencairanAdminTest extends ApiTestCase
         $this->buatSetorEmasRencana($user, $emas, $rencanaA, '2.000000');
         $this->buatSetorEmasRencana($user, $emas, $rencanaB, '1.000000');
 
-        // Refund rencana A: emas 2gr × 1,2jt (harga jual) = 2,4jt - 10% = 2,16jt.
+        // Refund rencana A: potongan 10% dari total setoran emas (nominal 15.000 → 1.500),
+        // bukan dari nilai pasar 2gr. Nilai emas 2 × 1,2jt = 2,4jt − 1.500 = 2.398.500.
         $this->postJson("/api/v1/admin/tabungan/{$user->id}/cairkan", [
             'jenis_tabungan_id' => $emas->id,
             'konfigurasi_id' => $rencanaA->id,
-        ])->assertStatus(201)->assertJsonPath('data.nominal', '2160000.00');
+        ])->assertStatus(201)->assertJsonPath('data.nominal', '2398500.00');
 
         $this->assertDatabaseHas('transaksi', [
             'user_id' => $user->id,
             'konfigurasi_id' => $rencanaA->id,
             'jenis_transaksi' => 'tarik',
-            'nominal' => 2160000,
-            'biaya_penalti' => 240000,
+            'nominal' => 2398500,
+            'biaya_penalti' => 1500,
             'status_verifikasi' => 'terverifikasi',
         ]);
 

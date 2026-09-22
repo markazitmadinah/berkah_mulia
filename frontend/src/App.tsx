@@ -45,7 +45,7 @@ import { RejectTransaksiModal } from './components/modals/RejectTransaksiModal';
 import { CashTransaksiModal } from './components/modals/CashTransaksiModal';
 import { UserFormModal } from './components/modals/UserFormModal';
 import { UserDetailModal } from './components/modals/UserDetailModal';
-import { ImportUserModal } from './components/modals/ImportUserModal';
+import { ImportTabunganModal } from './components/modals/ImportTabunganModal';
 import { HargaEmasModal } from './components/modals/HargaEmasModal';
 import { PeriodeQurbanModal } from './components/modals/PeriodeQurbanModal';
 import { HewanQurbanModal } from './components/modals/HewanQurbanModal';
@@ -119,7 +119,7 @@ const MainLayout: React.FC = () => {
   const [userToEdit, setUserToEdit] = useState<User | null>(null);
   const [selectedUserDetail, setSelectedUserDetail] = useState<User | null>(null);
   const [isUserDetailOpen, setIsUserDetailOpen] = useState(false);
-  const [isImportUserOpen, setIsImportUserOpen] = useState(false);
+  const [isImportTabunganOpen, setIsImportTabunganOpen] = useState(false);
   const [profilUserId, setProfilUserId] = useState<number | null>(null);
   const [profilBackTab, setProfilBackTab] = useState<'users' | 'kelola-jenis'>('users');
   const [kelolaJenis, setKelolaJenis] = useState<JenisTabungan | null>(null);
@@ -353,7 +353,7 @@ return (
                     onOpenCreateUser={handleOpenCreateUser}
                     onOpenEditUser={handleOpenEditUser}
                     onOpenDetailUser={handleOpenDetailUser}
-                    onOpenImportModal={() => setIsImportUserOpen(true)}
+                    onOpenImportTabungan={() => setIsImportTabunganOpen(true)}
                     onOpenExportModal={() => openExport('nasabah')}
                     onOpenProfilNasabah={handleOpenProfilNasabah}
                   />
@@ -477,9 +477,9 @@ return (
         user={selectedUserDetail}
       />
 
-      <ImportUserModal
-        isOpen={isImportUserOpen}
-        onClose={() => setIsImportUserOpen(false)}
+      <ImportTabunganModal
+        isOpen={isImportTabunganOpen}
+        onClose={() => setIsImportTabunganOpen(false)}
       />
 
       <ExportModal
@@ -487,8 +487,6 @@ return (
         isOpen={isExportOpen}
         onClose={() => setIsExportOpen(false)}
         filters={exportFilters}
-        aliran={exportAliran}
-        periode={exportPeriode}
       />
 
       <HargaEmasModal

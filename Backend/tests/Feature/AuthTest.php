@@ -76,12 +76,12 @@ class AuthTest extends ApiTestCase
     public function test_me_mengembalikan_profil_user(): void
     {
         $this->seedBase();
-        $user = $this->actingAsUser(['email' => 'me@example.com']);
+        $user = $this->actingAsUser();
 
         $this->getJson('/api/v1/auth/me')
             ->assertOk()
             ->assertJsonPath('data.id', $user->id)
-            ->assertJsonPath('data.email', 'me@example.com');
+            ->assertJsonPath('data.username', $user->username);
     }
 
     public function test_update_profile_hanya_field_tertentu(): void

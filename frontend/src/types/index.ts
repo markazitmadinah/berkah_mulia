@@ -278,6 +278,7 @@ export interface SetoranBerkalaProgress {
     gram_terkumpul: number;
     saldo_dana: number;
     saldo_dana_rencana: number;
+    total_setoran_emas: number;
   };
   konsistensi: {
     periode_seharusnya: number;
@@ -436,6 +437,7 @@ export interface PembayaranHarianItem {
   jadwal_label?: string;
   nominal_per_periode: number;
   target_gram_per_periode: number;
+  target_gram_total?: number | null;
   tanggal_mulai?: string;
   status_verifikasi: 'terverifikasi' | 'ditolak' | 'menunggu_verifikasi' | 'belum';
   transaksi_id?: number;
@@ -616,4 +618,26 @@ export interface MonitoringNasabah {
     }
   >;
   qurban: Array<Pick<ProfilQurban, 'id' | 'hewan' | 'jumlah_hewan' | 'target_dana' | 'total_terkumpul' | 'persentase' | 'status' | 'frekuensi_setor' | 'frekuensi_label' | 'nominal_per_periode' | 'sisa_pembayaran' | 'tertunggak'>>;
+}
+
+export interface ImportTabunganPreviewError {
+  sheet: string;
+  baris: number;
+  kolom: string;
+  nilai: string;
+  pesan: string;
+}
+
+export interface ImportTabunganPreview {
+  summary: {
+    nasabah: { baru: number; ada: number };
+    emas: { rencana: number; saldo_awal: number };
+    mandiri: { saldo_awal: number };
+    qurban: { daftar: number; saldo_awal: number };
+    hari_raya: { target: number; saldo_awal: number };
+    gadai: { record: number };
+    berjangka: { rencana: number; saldo_awal: number };
+  };
+  errors: ImportTabunganPreviewError[];
+  warnings: Array<{ sheet: string; baris: number; kolom: string; nilai: string; pesan: string }>;
 }

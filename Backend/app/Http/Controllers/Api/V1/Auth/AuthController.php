@@ -129,8 +129,7 @@ class AuthController extends Controller
         return $this->successResponse(new UserResource($user->fresh()), 'Profil berhasil diperbarui.');
     }
 
-
-    /**
+/**
      * POST /auth/change-password
      * Requires current password. Revokes all tokens.
      */

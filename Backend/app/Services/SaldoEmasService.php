@@ -47,6 +47,40 @@ class SaldoEmasService
     }
 
     /**
+     * Target emas global (target_emas_gram) hanya relevan selama masih ada rencana
+     * aktif yang membelinya. Saat rencana TERAKHIR dibatalkan, bersihkan target agar
+     * progress tidak menggantung di goal yang tak akan pernah tercapai lagi.
+     */
+    public function bersihkanGoalKalaRencanaHabis(User $user, int $jenisId): void
+    {
+        $adaRencana = KonfigurasiSetoranEmas::query()
+            ->aktif()
+            ->where('user_id', $user->id)
+            ->where('jenis_tabungan_id', $jenisId)
+            ->exists();
+
+        if (! $adaRencana) {
+            $user->update(['target_emas_gram' => null]);
+        }
+    }
+
+    /**
+     * Rencana yang sudah tuntas (goal tercapai → emas dicair/ditarik penuh) resmi
+     * ditutup 'selesai' agar admin bisa membuatkan rencana baru. Karena semua rencana
+     * selesai, goal global ikut dibersihkan (progress bar reset di tab user & admin).
+     */
+    public function tutupRencanaSetelahCairPenuh(User $user, int $jenisId): void
+    {
+        KonfigurasiSetoranEmas::query()
+            ->aktif()
+            ->where('user_id', $user->id)
+            ->where('jenis_tabungan_id', $jenisId)
+            ->update(['status' => StatusKonfigurasiSetoran::Selesai]);
+
+        $this->bersihkanGoalKalaRencanaHabis($user, $jenisId);
+    }
+
+    /**
      * Query setoran yang diatribusikan ke rencana ini:
      * 1. transaksi baru yang mencatat konfigurasi_id = rencana,
      * 2. data lama (konfigurasi_id NULL) dalam jendela tanggal rencana — hanya untuk kompatibilitas
@@ -56,25 +90,50 @@ class SaldoEmasService
     {
         $mulai = Carbon::parse($k->tanggal_mulai ?: $k->created_at)->startOfDay();
 
+        // Setoran legacy (konfigurasi_id NULL) & saldo awal import tanpa tanda rencana
+        // hanya diatribusikan ke rencana TERTUA milik user+jenis. Sebelum multi-rencana
+        // hanya ada satu rencana, jadi setoran tanpa tanda tak boleh dihitung ulang di
+        // semua rencana (double-count gram/refund/progress).
+        $rencanaTertua = KonfigurasiSetoranEmas::query()
+            ->where('user_id', $user->id)
+            ->where('jenis_tabungan_id', $k->jenis_tabungan_id)
+            ->orderBy('id')
+            ->first();
+        $countLegacy = $rencanaTertua !== null && $rencanaTertua->id === $k->id;
+
         return Transaksi::milikUser($user->id)
             ->where('jenis_tabungan_id', $k->jenis_tabungan_id)
             ->where('jenis_transaksi', 'setor')
             ->terverifikasi()
-            ->where(function (Builder $q) use ($k) {
-                // Baris bertanda konfigurasi_id dihitung apa pun nominalnya;
-                // filter nominal hanya untuk data lama (tanpa tanda).
-                $q->where('konfigurasi_id', $k->id)
-                    ->orWhere(function (Builder $q2) use ($k) {
+            ->where(function (Builder $q) use ($k, $countLegacy) {
+                // Baris bertanda konfigurasi_id dihitung apa pun nominalnya.
+                $q->where('konfigurasi_id', $k->id);
+                if ($countLegacy) {
+                    // Data lama (tanpa tanda) hanya di rencana tertua; saldo awal import
+                    // (MARKER) dihitung apa pun nominalnya, sisanya harus match nominal
+                    // per periode (satu-satunya penanda atribusi sebelum multi-rencana).
+                    $q->orWhere(function (Builder $q2) use ($k) {
                         $q2->whereNull('konfigurasi_id')
-                            ->where('nominal', (float) $k->nominal_per_periode);
+                            ->where(function (Builder $q3) use ($k) {
+                                $q3->where('catatan_admin', 'like', '%'.SaldoAwalService::MARKER.'%')
+                                    ->orWhere('nominal', (float) $k->nominal_per_periode);
+                            });
                     });
+                }
             })
             // Semua setoran (termasuk yang bertanda konfigurasi_id) dibatasi pada
             // jendela rencana — setoran setelah deadline tidak dihitung progress/refund.
-            ->whereBetween('tanggal_transaksi', [
-                $mulai->toDateString(),
-                $k->tanggal_deadline ?: now()->toDateString(),
-            ]);
+            // Pengecualian: saldo awal import selalu dihitung (mewakili setoran sebelum
+            // rencana), termasuk saat tanggal_mulai masih di masa depan.
+            // whereDate (bukan whereBetween string tanggal) agar benar di MySQL (kolom DATE)
+            // maupun SQLite (TEXT 'Y-m-d 00:00:00').
+            ->where(function (Builder $q) use ($k, $mulai) {
+                $q->where('catatan_admin', 'like', '%'.SaldoAwalService::MARKER.'%')
+                    ->orWhere(function (Builder $q2) use ($k, $mulai) {
+                        $q2->whereDate('tanggal_transaksi', '>=', $mulai->toDateString())
+                            ->whereDate('tanggal_transaksi', '<=', $k->tanggal_deadline ?: now()->toDateString());
+                    });
+            });
     }
 
     /**
@@ -99,6 +158,41 @@ class SaldoEmasService
             ->where('jenis_tabungan_id', $jenisTabungan->id)
             ->terverifikasi()
             ->sum('nominal_selisih'), 2);
+    }
+
+    /**
+     * Rincian refund BATAL & REFUND per rencana (user & admin):
+     * - total_setoran_emas = SUM nominal setoran rencana terverifikasi yang berhasil
+     *   dikonversi menjadi gram (unit_didapat > 0) — SATU-SATUNYA dasar potongan.
+     * - potongan 10% hanya dari total_setoran_emas (rupiah yang disetor jadi gram),
+     *   TIDAK dari nilai pasar gram (gram × harga jual) dan tidak menyentuh saldo dana.
+     * - saldo dana rencana dikembalikan 100% (uang, bukan emas — bebas potongan).
+     *
+     * @return array{gram: float, total_setoran_emas: float, nilai_emas: float, potongan: float, refund_emas: float, saldo_dana_rencana: float, refund_total: float}
+     */
+    public function rincianRefund(User $user, KonfigurasiSetoranEmas $konfigurasi, float $hargaJualPerGram): array
+    {
+        $setors = $this->setoranRencana($user, $konfigurasi);
+
+        $gram = round((float) (clone $setors)->sum('unit_didapat'), 6);
+        $saldoDana = round((float) (clone $setors)->sum('nominal_selisih'), 2);
+        $totalSetoranEmas = round((float) (clone $setors)
+            ->where('unit_didapat', '>', 0)
+            ->sum('nominal'), 2);
+
+        $nilaiEmas = round($gram * $hargaJualPerGram, 2);
+        $potongan = round($totalSetoranEmas * 0.10, 2);
+        $refundEmas = round($nilaiEmas - $potongan, 2);
+
+        return [
+            'gram' => $gram,
+            'total_setoran_emas' => $totalSetoranEmas,
+            'nilai_emas' => $nilaiEmas,
+            'potongan' => $potongan,
+            'refund_emas' => $refundEmas,
+            'saldo_dana_rencana' => $saldoDana,
+            'refund_total' => round($refundEmas + $saldoDana, 2),
+        ];
     }
 
     /**
@@ -208,10 +302,6 @@ if ($konfigurasi->tanggal_deadline && now()->endOfDay()->gt(Carbon::parse($konfi
         }
 
         $nominalTotal = (clone $this->setoranRencana($user, $konfigurasi))
-            ->whereBetween('tanggal_transaksi', [
-                Carbon::parse($konfigurasi->tanggal_mulai ?: $konfigurasi->created_at)->startOfDay()->toDateString(),
-                $konfigurasi->tanggal_deadline ?: now()->toDateString(),
-            ])
             ->sum('nominal');
 
         return (int) floor($nominalTotal / $nominalPeriode);
@@ -231,10 +321,7 @@ if ($konfigurasi->tanggal_deadline && now()->endOfDay()->gt(Carbon::parse($konfi
             $seharusnya = min($seharusnya, (int) $konfigurasi->durasi_periode);
         }
 
-        $setorRencana = $this->setoranRencana($user, $konfigurasi)->whereBetween('tanggal_transaksi', [
-            $mulai->toDateString(),
-            $konfigurasi->tanggal_deadline ?: now()->toDateString(),
-        ]);
+        $setorRencana = $this->setoranRencana($user, $konfigurasi);
 
         $terlaksana = (clone $setorRencana)->count();
         $nominalTotal = (clone $setorRencana)->sum('nominal');
@@ -280,6 +367,7 @@ if ($konfigurasi->tanggal_deadline && now()->endOfDay()->gt(Carbon::parse($konfi
                 'gram_terkumpul' => round((float) $gramTerkumpul, 6),
                 'saldo_dana' => $this->getSaldoDana($user, JenisTabungan::findOrFail($konfigurasi->jenis_tabungan_id)),
                 'saldo_dana_rencana' => round((clone $setorRencana)->sum('nominal_selisih'), 2),
+                'total_setoran_emas' => round((float) (clone $setorRencana)->where('unit_didapat', '>', 0)->sum('nominal'), 2),
             ],
             'konsistensi' => [
                 'periode_seharusnya' => $seharusnya,
@@ -306,11 +394,7 @@ if ($konfigurasi->tanggal_deadline && now()->endOfDay()->gt(Carbon::parse($konfi
      */
     public function getSaldoRencana(User $user, KonfigurasiSetoranEmas $konfigurasi): array
     {
-        $mulai = Carbon::parse($konfigurasi->tanggal_mulai ?: $konfigurasi->created_at)->startOfDay();
-        $setors = $this->setoranRencana($user, $konfigurasi)->whereBetween('tanggal_transaksi', [
-            $mulai->toDateString(),
-            $konfigurasi->tanggal_deadline ?: now()->toDateString(),
-        ]);
+        $setors = $this->setoranRencana($user, $konfigurasi);
 
         return [
             'nominal' => round((float) (clone $setors)->sum('nominal'), 2),
@@ -330,11 +414,19 @@ if ($konfigurasi->tanggal_deadline && now()->endOfDay()->gt(Carbon::parse($konfi
 
     private function jumlahPeriodeTerlewati(string $frekuensi, Carbon $mulai, Carbon $sampai): int
     {
-        $hari = (int) max(0, $mulai->startOfDay()->diffInDays($sampai->startOfDay()));
+        $mulaiHari = $mulai->copy()->startOfDay();
+        $sampaiHari = $sampai->copy()->startOfDay();
+
+        // Rencana belum dimulai → belum ada periode jatuh tempo (jangan tampil tertunggak).
+        if ($sampaiHari->lt($mulaiHari)) {
+            return 0;
+        }
+
+        $hari = (int) max(0, $mulaiHari->diffInDays($sampaiHari));
 
         return match ($frekuensi) {
             'mingguan' => intdiv($hari, 7) + 1,
-            'bulanan' => max(1, $mulai->diffInMonths($sampai->startOfDay()) + 1),
+            'bulanan' => max(1, $mulaiHari->diffInMonths($sampaiHari) + 1),
             default => $hari + 1,
         };
     }

@@ -24,6 +24,7 @@ use App\Http\Controllers\Api\V1\RekeningBankController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\NotifikasiController;
 use App\Http\Controllers\Api\V1\Admin\GadaiController as AdminGadaiController;
+use App\Http\Controllers\Api\V1\Admin\ImportTabunganController;
 use App\Http\Controllers\Api\V1\GadaiController;
 use Illuminate\Support\Facades\Route;
 
@@ -235,7 +236,12 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         // Pencairan tabungan langsung oleh admin (emas, mandiri, hari raya, berjangka)
         Route::post('/tabungan/{user}/cairkan', [PencairanController::class, 'cairkan']);
 
-// Audit Logs
+// Import tabungan 7 sheet
+        Route::get('/import-tabungan/template', [ImportTabunganController::class, 'template']);
+        Route::post('/import-tabungan/preview', [ImportTabunganController::class, 'preview']);
+        Route::post('/import-tabungan', [ImportTabunganController::class, 'import']);
+
+        // Audit Logs
 Route::get('/audit-logs', [AuditLogController::class, 'index']);
     });
 });
