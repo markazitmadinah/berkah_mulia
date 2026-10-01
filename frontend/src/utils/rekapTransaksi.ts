@@ -43,6 +43,7 @@ export function filterTransaksi(list: Transaksi[], f: TransaksiFilters): Transak
         t.user_name,
         t.user_phone,
         t.user_nomor_anggota,
+        t.catatan_admin,
       ].filter(Boolean).join(' ').toLowerCase();
       if (!haystack.includes(search)) return false;
     }

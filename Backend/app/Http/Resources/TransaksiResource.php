@@ -12,24 +12,25 @@ class TransaksiResource extends JsonResource
         return [
             'id' => $this->id,
             'nomor_referensi' => $this->nomor_referensi,
+            'kategori' => $this->kategori ?? 'nasabah',
             'user_id' => $this->user_id,
-            'user' => $this->whenLoaded('user', fn () => [
+            'user' => $this->whenLoaded('user', fn () => $this->user ? [
                 'id' => $this->user->id,
                 'name' => $this->user->name,
                 'phone' => $this->user->phone,
                 'nomor_anggota' => $this->user->nomor_anggota,
-            ]),
-            'user_name' => $this->whenLoaded('user', fn () => $this->user->name),
-            'user_phone' => $this->whenLoaded('user', fn () => $this->user->phone),
-            'user_nomor_anggota' => $this->whenLoaded('user', fn () => $this->user->nomor_anggota),
-            'jenis_tabungan' => $this->whenLoaded('jenisTabungan', fn () => [
+            ] : null),
+            'user_name' => $this->whenLoaded('user', fn () => $this->user?->name),
+            'user_phone' => $this->whenLoaded('user', fn () => $this->user?->phone),
+            'user_nomor_anggota' => $this->whenLoaded('user', fn () => $this->user?->nomor_anggota),
+            'jenis_tabungan' => $this->whenLoaded('jenisTabungan', fn () => $this->jenisTabungan ? [
                 'id' => $this->jenisTabungan->id,
                 'kode' => $this->jenisTabungan->kode,
                 'nama' => $this->jenisTabungan->nama,
                 'tipe' => $this->jenisTabungan->tipe->value,
-            ]),
-            'jenis_tabungan_nama' => $this->whenLoaded('jenisTabungan', fn () => $this->jenisTabungan->nama),
-            'tipe_tabungan' => $this->whenLoaded('jenisTabungan', fn () => $this->jenisTabungan->tipe->value)
+            ] : null),
+            'jenis_tabungan_nama' => $this->whenLoaded('jenisTabungan', fn () => $this->jenisTabungan?->nama),
+            'tipe_tabungan' => $this->whenLoaded('jenisTabungan', fn () => $this->jenisTabungan?->tipe?->value)
                 ?? ($this->gadai_id ? 'gadai' : null),
             'sub_jenis' => $this->whenLoaded('jenisTabungan', fn () => $this->jenisTabungan->sub_jenis?->value),
             'nomor_gadai' => $this->whenLoaded('gadai', fn () => $this->gadai->nomor_gadai),

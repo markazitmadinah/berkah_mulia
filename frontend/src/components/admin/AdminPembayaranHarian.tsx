@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { formatRupiah } from '../../utils/format';
 import {
@@ -8,7 +8,6 @@ import {
   XCircle,
   CircleDashed,
   Banknote,
-  Search,
   RefreshCw,
   BadgeCheck,
   AlertTriangle,
@@ -64,7 +63,6 @@ export const AdminPembayaranHarian: React.FC<AdminPembayaranHarianProps> = ({ on
   } = useApp();
   const [mode, setMode] = useState<'jadwal' | 'tunggakan'>('jadwal');
   const [tanggal, setTanggal] = useState(() => new Date().toISOString().slice(0, 10));
-  const [search, setSearch] = useState('');
 
   useEffect(() => {
     if (mode === 'jadwal') {
@@ -78,23 +76,13 @@ export const AdminPembayaranHarian: React.FC<AdminPembayaranHarianProps> = ({ on
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, tanggal, refreshKey]);
 
-  const filtered = useMemo(() => {
-    if (!pembayaranHarian) return [];
-    const q = search.toLowerCase();
-    return pembayaranHarian.jadwal.filter(
-      (j) => !q || j.nama?.toLowerCase().includes(q) || (j.nomor_anggota || '').toLowerCase().includes(q)
-    );
-  }, [pembayaranHarian, search]);
-
-  const summary = useMemo(() => {
-    const jadwal = pembayaranHarian?.jadwal ?? [];
-    return {
-      total: jadwal.length,
-      lunas: jadwal.filter((j) => j.status_verifikasi === 'terverifikasi').length,
-      menunggu: jadwal.filter((j) => j.status_verifikasi === 'menunggu_verifikasi').length,
-      belum: jadwal.filter((j) => j.status_verifikasi === 'belum' || j.status_verifikasi === 'ditolak').length,
-    };
-  }, [pembayaranHarian]);
+  const jadwal = pembayaranHarian?.jadwal ?? [];
+  const summary = {
+    total: jadwal.length,
+    lunas: jadwal.filter((j) => j.status_verifikasi === 'terverifikasi').length,
+    menunggu: jadwal.filter((j) => j.status_verifikasi === 'menunggu_verifikasi').length,
+    belum: jadwal.filter((j) => j.status_verifikasi === 'belum' || j.status_verifikasi === 'ditolak').length,
+  };
 
   const renderStatus = (item: PembayaranHarianItem) => {
     const cfg = statusConfig[item.status_verifikasi];
@@ -271,48 +259,39 @@ export const AdminPembayaranHarian: React.FC<AdminPembayaranHarianProps> = ({ on
       )}
 
       {/* Summary */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="px-4 py-4 rounded-3xl bg-white dark:bg-slate-800/90 border border-slate-100 dark:border-slate-800 text-center">
-          <p className="text-[10px] font-bold text-slate-400 uppercase">Total Jadwal</p>
-          <p className="text-2xl font-extrabold text-slate-800 dark:text-white mt-1">{summary.total}</p>
+      {mode === 'jadwal' && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="px-4 py-4 rounded-3xl bg-white dark:bg-slate-800/90 border border-slate-100 dark:border-slate-800 text-center">
+            <p className="text-[10px] font-bold text-slate-400 uppercase">Total Jadwal</p>
+            <p className="text-2xl font-extrabold text-slate-800 dark:text-white mt-1">{summary.total}</p>
+          </div>
+          <div className="px-4 py-4 rounded-3xl bg-white dark:bg-slate-800/90 border border-slate-100 dark:border-slate-800 text-center">
+            <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-300 uppercase">Sudah Bayar</p>
+            <p className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-300 mt-1">{summary.lunas}</p>
+          </div>
+          <div className="px-4 py-4 rounded-3xl bg-white dark:bg-slate-800/90 border border-slate-100 dark:border-slate-800 text-center">
+            <p className="text-[10px] font-bold text-amber-600 dark:text-amber-300 uppercase">Menunggu Verifikasi</p>
+            <p className="text-2xl font-extrabold text-amber-600 dark:text-amber-300 mt-1">{summary.menunggu}</p>
+          </div>
+          <div className="px-4 py-4 rounded-3xl bg-white dark:bg-slate-800/90 border border-slate-100 dark:border-slate-800 text-center">
+            <p className="text-[10px] font-bold text-slate-400 uppercase">Belum Bayar</p>
+            <p className="text-2xl font-extrabold text-slate-700 dark:text-slate-300 mt-1">{summary.belum}</p>
+          </div>
         </div>
-        <div className="px-4 py-4 rounded-3xl bg-white dark:bg-slate-800/90 border border-slate-100 dark:border-slate-800 text-center">
-          <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-300 uppercase">Sudah Bayar</p>
-          <p className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-300 mt-1">{summary.lunas}</p>
-        </div>
-        <div className="px-4 py-4 rounded-3xl bg-white dark:bg-slate-800/90 border border-slate-100 dark:border-slate-800 text-center">
-          <p className="text-[10px] font-bold text-amber-600 dark:text-amber-300 uppercase">Menunggu Verifikasi</p>
-          <p className="text-2xl font-extrabold text-amber-600 dark:text-amber-300 mt-1">{summary.menunggu}</p>
-        </div>
-        <div className="px-4 py-4 rounded-3xl bg-white dark:bg-slate-800/90 border border-slate-100 dark:border-slate-800 text-center">
-          <p className="text-[10px] font-bold text-slate-400 uppercase">Belum Bayar</p>
-          <p className="text-2xl font-extrabold text-slate-700 dark:text-slate-300 mt-1">{summary.belum}</p>
-        </div>
-      </div>
-
-      {/* Search */}
-      <div className="relative">
-        <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Cari nama / nomor anggota…"
-          className="w-full sm:w-72 py-2.5 pl-9 pr-3 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/40"
-        />
-      </div>
+      )}
 
       {loading && !pembayaranHarian ? (
         <div className="rounded-3xl p-10 bg-white dark:bg-slate-800/90 border border-slate-100 dark:border-slate-800 text-center">
           <div className="w-8 h-8 mx-auto rounded-full border-2 border-amber-500 border-t-transparent animate-spin" />
           <p className="text-xs text-slate-400 mt-3">Memuat pembayaran harian…</p>
         </div>
-      ) : filtered.length === 0 ? (
+      ) : jadwal.length === 0 ? (
         <div className="rounded-3xl p-10 bg-white dark:bg-slate-800/90 border border-slate-100 dark:border-slate-800 text-center">
           <CalendarCheck className="w-10 h-10 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
         </div>
       ) : (
         <div className="flex flex-col gap-3.5">
-          {filtered.map((item) => {
+          {jadwal.map((item) => {
             const bayar = item.status_verifikasi === 'belum' || item.status_verifikasi === 'ditolak';
             const verifBerkala =
               item.status_verifikasi === 'menunggu_verifikasi' &&

@@ -116,6 +116,60 @@ class TransaksiTest extends ApiTestCase
         $this->assertDatabaseHas('transaksi', ['jenis_tabungan_id' => $jenis->id, 'status_verifikasi' => 'terverifikasi', 'diverifikasi_oleh' => $admin->id]);
     }
 
+    public function test_admin_cash_pengeluaran_tarik_tercatat(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+        $user = $this->createUser();
+        $jenis = JenisTabungan::where('kode', 'tabungan-pribadi')->first();
+
+        $this->postJson('/api/v1/admin/transaksi/cash', [
+            'user_id' => $user->id,
+            'jenis_tabungan_id' => $jenis->id,
+            'nominal' => 200000,
+        ])->assertStatus(201);
+
+        $this->postJson('/api/v1/admin/transaksi/cash', [
+            'user_id' => $user->id,
+            'jenis_tabungan_id' => $jenis->id,
+            'jenis_transaksi' => 'tarik',
+            'nominal' => 50000,
+            'catatan_admin' => 'Penarikan tunai teller',
+        ])->assertStatus(201)
+            ->assertJsonPath('data.status_verifikasi', 'terverifikasi')
+            ->assertJsonPath('data.jenis_transaksi', 'tarik');
+    }
+
+    public function test_admin_cash_pengeluaran_ditolak_bila_saldo_tidak_cukup(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+        $user = $this->createUser();
+        $jenis = JenisTabungan::where('kode', 'tabungan-pribadi')->first();
+
+        $this->postJson('/api/v1/admin/transaksi/cash', [
+            'user_id' => $user->id,
+            'jenis_tabungan_id' => $jenis->id,
+            'jenis_transaksi' => 'tarik',
+            'nominal' => 50000,
+        ])->assertStatus(422)->assertJsonPath('error_code', 'INSUFFICIENT_BALANCE');
+    }
+
+    public function test_admin_cash_pengeluaran_emas_ditolak(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+        $user = $this->createUser();
+        $jenis = JenisTabungan::where('tipe', 'emas')->firstOrFail();
+
+        $this->postJson('/api/v1/admin/transaksi/cash', [
+            'user_id' => $user->id,
+            'jenis_tabungan_id' => $jenis->id,
+            'jenis_transaksi' => 'tarik',
+            'nominal' => 50000,
+        ])->assertStatus(422)->assertJsonPath('error_code', 'TARIK_EMAS_TIDAK_DIDUKUNG');
+    }
+
     public function test_cash_transaksi_qurban_update_total(): void
     {
         $this->seedBase();
@@ -381,5 +435,74 @@ class TransaksiTest extends ApiTestCase
         $this->assertGreaterThan(1, $last);
 
         unlink($path);
+    }
+
+    public function test_admin_kas_operasional_keluar_tercatat_auto_terverifikasi(): void
+    {
+        $this->seedBase();
+        $admin = $this->actingAsAdmin();
+
+        $response = $this->postJson('/api/v1/admin/kas-operasional', [
+            'jenis_transaksi' => 'tarik',
+            'nominal' => 250000,
+            'deskripsi' => 'Beli alat tulis kantor',
+            'tanggal' => '2026-09-20',
+        ])->assertCreated();
+
+        $response->assertJsonPath('data.kategori', 'operasional')
+            ->assertJsonPath('data.jenis_transaksi', 'tarik')
+            ->assertJsonPath('data.nominal', '250000.00')
+            ->assertJsonPath('data.status_verifikasi', 'terverifikasi')
+            ->assertJsonPath('data.tanggal_transaksi', '2026-09-20')
+            ->assertJsonPath('data.user_id', null)
+            ->assertJsonPath('data.jenis_tabungan_id', null);
+
+        $this->assertDatabaseHas('transaksi', [
+            'kategori' => 'operasional',
+            'user_id' => null,
+            'jenis_tabungan_id' => null,
+            'nominal' => 250000,
+            'catatan_admin' => 'Beli alat tulis kantor',
+            'status_verifikasi' => 'terverifikasi',
+            'diverifikasi_oleh' => $admin->id,
+        ]);
+        $this->assertDatabaseHas('audit_logs', ['action' => 'create_operasional', 'model_id' => $response->json('data.id')]);
+    }
+
+    public function test_admin_kas_operasional_wajib_deskripsi_dan_minimal(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+
+        $this->postJson('/api/v1/admin/kas-operasional', [
+            'jenis_transaksi' => 'setor',
+            'nominal' => 999,
+            'deskripsi' => '',
+        ])->assertStatus(422);
+
+        $this->assertDatabaseCount('transaksi', 0);
+    }
+
+    public function test_kas_operasional_tidak_ubah_saldo_nasabah_dan_masuk_rekap(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+        $user = $this->createUser();
+        $jenis = JenisTabungan::where('kode', 'tabungan-pribadi')->first();
+
+        $setor = $this->createPendingTransaksi($user->id, $jenis->id, 500000);
+        $setor->update(['status_verifikasi' => StatusVerifikasi::Terverifikasi]);
+
+        $this->postJson('/api/v1/admin/kas-operasional', [
+            'jenis_transaksi' => 'tarik',
+            'nominal' => 200000,
+            'deskripsi' => 'Biaya operasional listrik',
+        ])->assertCreated();
+
+        $this->assertSame(500000.0, $this->app->make(\App\Services\ProgressCalculatorService::class)->getSaldo($user, $jenis));
+
+        $rekap = $this->getJson('/api/v1/admin/transaksi?per_page=100')->assertOk();
+        $ids = collect($rekap->json('data'))->pluck('id');
+        $this->assertContains(Transaksi::where('kategori', 'operasional')->first()->id, $ids->all());
     }
 }

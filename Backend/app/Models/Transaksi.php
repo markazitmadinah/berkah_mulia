@@ -19,6 +19,7 @@ class Transaksi extends Model
 
     protected $fillable = [
         'nomor_referensi',
+        'kategori',
         'user_id',
         'jenis_tabungan_id',
         'pendaftaran_qurban_id',
@@ -161,7 +162,8 @@ class Transaksi extends Model
             $search = str_replace(['%', '_'], ['\\%', '\\_'], trim((string) $filters['search']));
             $query->where(function (Builder $q) use ($search) {
                 $q->where('nomor_referensi', 'like', "%{$search}%")
-                    ->orWhereHas('user', function (Builder $userQuery) use ($search) {
+                ->orWhere('catatan_admin', 'like', "%{$search}%")
+                ->orWhereHas('user', function (Builder $userQuery) use ($search) {
                         $userQuery->where('name', 'like', "%{$search}%")
                             ->orWhere('nomor_anggota', 'like', "%{$search}%")
                             ->orWhere('phone', 'like', "%{$search}%");

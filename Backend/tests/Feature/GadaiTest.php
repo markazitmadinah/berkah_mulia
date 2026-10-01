@@ -51,6 +51,28 @@ class GadaiTest extends ApiTestCase
         $this->assertEquals('diajukan', $data['status']);
     }
 
+    public function test_berat_bersih_25_gram_kadar_999_tidak_boleh_bulat_dua_desimal(): void
+    {
+        $this->seedBase();
+        $this->actingAsAdmin();
+        $user = $this->createUser();
+
+        $data = $this->postJson('/api/v1/admin/gadai', array_merge(
+            ['user_id' => $user->id],
+            $this->setorGadaiData([
+                'berat_gram' => 25,
+                'kadar' => 999,
+                'harga_acuan' => 1450000,
+                'persen_gadai' => 90,
+            ])
+        ))->assertStatus(201)->json('data');
+
+        // 25 g × 999/1000 = 24,975 g bersih (bukan 24,98).
+        $this->assertEquals(24.975, $data['berat_bersih_gram']);
+        $this->assertEquals(36213750, $data['nilai_taksiran']);
+        $this->assertEquals(32592375, $data['besaran_gadai']);
+    }
+
     public function test_alur_penuh_approve_aktifkan_bayar_lunas(): void
     {
         $this->seedBase();

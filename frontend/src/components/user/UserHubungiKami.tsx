@@ -1,35 +1,11 @@
 import React from 'react';
-import {
-  Headphones,
-  MapPin,
-  Phone,
-  Mail,
-  Clock,
-  ExternalLink,
-  MessageCircle,
-  Instagram,
-  Facebook,
-  Twitter,
-  Youtube,
-  Navigation
-} from 'lucide-react';
+import { Headphones, MapPin, Phone, ExternalLink, MessageCircle, Navigation } from 'lucide-react';
 
 const CONTACTS = {
-  wa: '6281200000000',
-  email: 'cs@berkahmulia.co.id',
-  address: 'Jl. Koperasi Berkah Mulia No. 1, Kota Anda',
-  mapsQuery: 'Koperasi Berkah Mulia',
-  hours: [
-    { d: 'Senin – Jumat', h: '08.00 – 16.00 WIB' },
-    { d: 'Sabtu', h: '08.00 – 12.00 WIB' },
-    { d: 'Minggu / Libur Nasional', h: 'Tutup' },
-  ],
-  sosmed: [
-    { label: 'Instagram', href: 'https://instagram.com/berkahmulia.official', Icon: Instagram },
-    { label: 'Facebook', href: 'https://facebook.com/berkahmulia', Icon: Facebook },
-    { label: 'X / Twitter', href: 'https://x.com/berkahmulia', Icon: Twitter },
-    { label: 'YouTube', href: 'https://youtube.com/@berkahmulia', Icon: Youtube },
-  ],
+  wa: '6281222029977',
+  phone: '+62-821-2202-9977',
+  address: 'Jl. Belanak No.9 26, Unyur, Kec. Serang, Kota Serang, Banten 42111',
+  mapsQuery: '-6.0967554,106.1734272',
 };
 
 const waUrl = (msg: string) => `https://wa.me/${CONTACTS.wa}?text=${encodeURIComponent(msg)}`;
@@ -48,7 +24,7 @@ export const UserHubungiKami: React.FC = () => {
             Hubungi Kami
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Koperasi Berkah Mulia siap membantu Anda setiap hari kerja
+            Koperasi Berkah Mulia siap membantu Anda
           </p>
         </div>
       </div>
@@ -60,7 +36,7 @@ export const UserHubungiKami: React.FC = () => {
             Butuh bantuan atau informasi?
           </h2>
           <p className="text-xs sm:text-sm text-emerald-50/90 mt-1">
-            Tim kami siap merespon pertanyaan Anda secepatnya melalui WhatsApp, setiap hari kerja.
+            Tim kami siap merespon pertanyaan Anda secepatnya melalui WhatsApp.
           </p>
         </div>
         <a
@@ -75,7 +51,7 @@ export const UserHubungiKami: React.FC = () => {
       </div>
 
       {/* Contact cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
         <ContactCard
           Icon={MapPin}
           label="Alamat"
@@ -87,47 +63,11 @@ export const UserHubungiKami: React.FC = () => {
         <ContactCard
           Icon={Phone}
           label="WhatsApp"
-          title={CONTACTS.wa}
-          lines={['Gratis biaya percakapan', 'Jam layanan sesuai jadwal']}
+          title={CONTACTS.phone}
+          lines={['Gratis biaya percakapan']}
           actionLabel="Chat Sekarang"
           actionHref={waUrl('Halo Berkah Mulia!')}
         />
-        <ContactCard
-          Icon={Mail}
-          label="Email"
-          title={CONTACTS.email}
-          lines={['Balasan dalam 1x24 jam kerja']}
-          actionLabel="Kirim Email"
-          actionHref={`mailto:${CONTACTS.email}`}
-        />
-        <ContactCard
-          Icon={Clock}
-          label="Jam Operasional"
-          title="Layanan Nasabah"
-          lines={CONTACTS.hours.map((h) => `${h.d}: ${h.h}`)}
-        />
-      </div>
-
-      {/* Sosmed */}
-      <div className="rounded-3xl p-5 sm:p-6 bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/70 shadow-sm">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">
-          Media Sosial Resmi
-        </h3>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {CONTACTS.sosmed.map((s) => (
-            <a
-              key={s.label}
-              href={s.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2.5 px-3.5 py-3 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-700/60 text-xs font-bold text-slate-700 dark:text-slate-200 hover:border-emerald-500/50 hover:text-emerald-700 dark:hover:text-emerald-400 transition-all cursor-pointer"
-            >
-              <s.Icon className="w-4 h-4 flex-shrink-0 text-emerald-600 dark:text-emerald-400" />
-              <span className="flex-1 truncate">{s.label}</span>
-              <ExternalLink className="w-3 h-3 flex-shrink-0 text-slate-400" />
-            </a>
-          ))}
-        </div>
       </div>
 
       {/* Maps embedded */}
@@ -151,7 +91,7 @@ export const UserHubungiKami: React.FC = () => {
         <div className="rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-700/60">
           <iframe
             title="Lokasi Koperasi Berkah Mulia di Google Maps"
-            src={`https://www.google.com/maps?q=${encodeURIComponent(CONTACTS.mapsQuery)}&z=15&output=embed`}
+            src={`https://www.google.com/maps?q=${encodeURIComponent(CONTACTS.mapsQuery)}&z=17&output=embed`}
             className="w-full h-56 sm:h-64"
             loading="lazy"
             referrerPolicy="no-referrer-when-downgrade"

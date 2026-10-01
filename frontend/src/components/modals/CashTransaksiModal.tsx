@@ -49,6 +49,7 @@ export const CashTransaksiModal: React.FC<CashTransaksiModalProps> = ({
 
   const [selectedUserId, setSelectedUserId] = useState<number>(activeUsers[0]?.id || 2);
   const [selectedJenisId, setSelectedJenisId] = useState<number>(jenisTabungan[0]?.id || 1);
+  const [jenisKas, setJenisKas] = useState<'setor' | 'tarik'>('setor');
   const [nominal, setNominal] = useState<string>('');
   const [catatan, setCatatan] = useState<string>('Setoran tunai via teller kantor');
   const [selectedQurbanId, setSelectedQurbanId] = useState<number>(pendaftaranQurbanAktif[0]?.id || 1);
@@ -138,6 +139,7 @@ export const CashTransaksiModal: React.FC<CashTransaksiModalProps> = ({
     inputTransaksiCash({
       user_id: selectedUserId,
       jenis_tabungan_id: selectedJenisId,
+      jenis_transaksi: jenisKas,
       nominal: nominalValue,
       catatan_teller: catatan,
       pendaftaran_qurban_id: selectedJenis?.tipe === 'qurban' ? selectedQurbanId : undefined,
@@ -171,6 +173,36 @@ export const CashTransaksiModal: React.FC<CashTransaksiModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
+          {/* Jenis Aliran Kas */}
+          <div className="grid grid-cols-2 gap-2 p-1 rounded-2xl bg-slate-100 dark:bg-slate-900">
+            {([
+              { key: 'setor', label: 'Pemasukan' },
+              { key: 'tarik', label: 'Pengeluaran' }
+            ] as const).map((o) => (
+              <button
+                key={o.key}
+                type="button"
+                onClick={() => {
+                  if (o.key === 'tarik' && selectedJenis?.tipe === 'emas') {
+                    showToast('Pengeluaran tunai tidak didukung untuk tabungan emas.', 'error');
+                    return;
+                  }
+                  setJenisKas(o.key);
+                  setCatatan(o.key === 'setor' ? 'Setoran tunai via teller kantor' : 'Penarikan tunai via teller kantor');
+                }}
+                className={`py-2 rounded-xl text-[11px] font-bold transition-colors cursor-pointer ${
+                  jenisKas === o.key
+                    ? o.key === 'setor'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'bg-rose-600 text-white shadow-sm'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'
+                }`}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+
           {/* Pilih Nasabah */}
           <div>
             <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
@@ -198,15 +230,18 @@ export const CashTransaksiModal: React.FC<CashTransaksiModalProps> = ({
             <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
               Produk Tabungan
             </label>
-            <select
-              value={selectedJenisId}
-              onChange={(e) => {
-                setSelectedJenisId(Number(e.target.value));
-                setSelectedKonfigurasiId(undefined);
-                setRencanaOptions([]);
-              }}
-              className="w-full py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-200 cursor-pointer"
-            >
+<select
+                value={selectedJenisId}
+                onChange={(e) => {
+                  const id = Number(e.target.value);
+                  setSelectedJenisId(id);
+                  setSelectedKonfigurasiId(undefined);
+                  setRencanaOptions([]);
+                  const tipe = jenisTabungan.find((j) => j.id === id)?.tipe;
+                  if (tipe === 'emas' && jenisKas === 'tarik') setJenisKas('setor');
+                }}
+                className="w-full py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-200 cursor-pointer"
+              >
               {jenisTabungan.map((j) => (
                 <option key={j.id} value={j.id}>
                   {j.nama} ({j.tipe.toUpperCase()})
@@ -295,7 +330,7 @@ export const CashTransaksiModal: React.FC<CashTransaksiModalProps> = ({
           {/* Nominal Input */}
           <div>
             <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-              Nominal Diterima Kasir/Teller (Rp)
+              {jenisKas === 'setor' ? 'Nominal Diterima Kasir/Teller (Rp)' : 'Nominal Dibayarkan Kasir/Teller (Rp)'}
             </label>
             <div className="relative">
               <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-extrabold text-sm text-slate-400">

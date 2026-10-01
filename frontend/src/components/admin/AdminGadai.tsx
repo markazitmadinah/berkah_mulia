@@ -523,9 +523,9 @@ const GadaiCreateModal: React.FC<{ hargaAcuanDefault: number; onClose: () => voi
   const kadarN = parseFloat(kadar) || 0;
   const hargaN = parseRupiah(harga_acuan);
   const persenN = parseFloat(persen_gadai) || 0;
-  const beratBersih = berat * kadarN / 1000;
-  const taksiran = beratBersih * hargaN;
-  const besaran = taksiran * persenN / 100;
+  const beratBersih = Math.round(berat * kadarN / 1000 * 10000) / 10000;
+  const taksiran = Math.round(beratBersih * hargaN * 100) / 100;
+  const besaran = Math.round(taksiran * persenN / 100 * 100) / 100;
 
   const submit = () => {
     if (!user_id) return showToast('Pilih peserta terlebih dahulu.', 'error');
@@ -612,7 +612,7 @@ const GadaiCreateModal: React.FC<{ hargaAcuanDefault: number; onClose: () => voi
             <div className={`rounded-2xl border p-4 ${goldCardCls}`}>
               <div className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300 mb-2">Pratinjau Hitungan</div>
               <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs font-semibold text-amber-800/90 dark:text-amber-200/90">
-                <span>Berat bersih: <b>{beratBersih.toLocaleString('id-ID')} g</b></span>
+                <span>Berat bersih: <b>{beratBersih.toLocaleString('id-ID', { maximumFractionDigits: 4 })} g</b></span>
                 <span>Nilai taksiran: <b>{formatRupiah(taksiran)}</b></span>
                 <span>Besaran gadai ({persenN || 0}%): <b>{formatRupiah(besaran)}</b></span>
               </div>

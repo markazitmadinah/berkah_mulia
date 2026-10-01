@@ -194,6 +194,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::post('/transaksi/{transaksi}/verifikasi', [AdminTransaksiController::class, 'verifikasi']);
         Route::post('/transaksi/{transaksi}/tolak', [AdminTransaksiController::class, 'tolak']);
         Route::post('/transaksi/cash', [AdminTransaksiController::class, 'storeCash']);
+        Route::post('/kas-operasional', [AdminTransaksiController::class, 'storeOperasional']);
 
         // Rekening Bank — Admin
         Route::post('/rekening-bank', [AdminRekeningBankController::class, 'store']);

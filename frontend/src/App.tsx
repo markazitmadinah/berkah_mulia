@@ -43,6 +43,7 @@ import { DaftarQurbanModal } from './components/modals/DaftarQurbanModal';
 import { DetailTransaksiModal } from './components/modals/DetailTransaksiModal';
 import { RejectTransaksiModal } from './components/modals/RejectTransaksiModal';
 import { CashTransaksiModal } from './components/modals/CashTransaksiModal';
+import { KasOperasionalModal } from './components/modals/KasOperasionalModal';
 import { UserFormModal } from './components/modals/UserFormModal';
 import { UserDetailModal } from './components/modals/UserDetailModal';
 import { ImportTabunganModal } from './components/modals/ImportTabunganModal';
@@ -83,6 +84,7 @@ const MainLayout: React.FC = () => {
   const [isTarikOpen, setIsTarikOpen] = useState(false);
   const [isDaftarQurbanOpen, setIsDaftarQurbanOpen] = useState(false);
   const [isCashOpen, setIsCashOpen] = useState(false);
+  const [isKasOperasionalOpen, setIsKasOperasionalOpen] = useState(false);
   const [cashInitialUserId, setCashInitialUserId] = useState<number | undefined>();
   const [cashInitialJenisId, setCashInitialJenisId] = useState<number | undefined>();
   const [cashInitialBerjangkaId, setCashInitialBerjangkaId] = useState<number | undefined>();
@@ -108,6 +110,7 @@ const MainLayout: React.FC = () => {
     setIsCashOpen(true);
   };
 
+  const openKasOperasionalModal = () => setIsKasOperasionalOpen(true);
 
   // Detail & Action modals
   const [selectedTrx, setSelectedTrx] = useState<Transaksi | null>(null);
@@ -396,6 +399,7 @@ return (
                 {activeTab === 'transaksi' && (
                   <AdminTransaksi
                     onOpenCashModal={openCashModal}
+                    onOpenKasOperasionalModal={openKasOperasionalModal}
                     onOpenDetailTransaksi={handleOpenDetailTrx}
                     onOpenRejectModal={handleOpenRejectTrx}
                     onOpenExportModal={(filters, aliran, periode) => openExport('transaksi', filters, aliran, periode)}
@@ -463,6 +467,11 @@ return (
         initialBerjangkaId={cashInitialBerjangkaId}
         initialKonfigurasiId={cashInitialKonfigurasiId}
         initialNominal={cashInitialNominal}
+      />
+
+      <KasOperasionalModal
+        isOpen={isKasOperasionalOpen}
+        onClose={() => setIsKasOperasionalOpen(false)}
       />
 
       <UserFormModal

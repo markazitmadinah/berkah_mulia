@@ -353,6 +353,7 @@ class TransaksiController extends Controller
         $request->validate([
             'user_id' => 'required|exists:users,id',
             'jenis_tabungan_id' => 'required|exists:jenis_tabungan,id',
+            'jenis_transaksi' => 'nullable|string|in:setor,tarik',
             'nominal' => 'required|numeric|min:10000',
             'pendaftaran_qurban_id' => 'nullable|exists:pendaftaran_qurban,id',
             'tabungan_berjangka_id' => 'nullable|integer|exists:tabungan_berjangka,id',
@@ -361,6 +362,7 @@ class TransaksiController extends Controller
         ]);
 
         $jenis = JenisTabungan::findOrFail($request->jenis_tabungan_id);
+        $jenisTransaksi = $request->jenis_transaksi === 'tarik' ? JenisTransaksi::Tarik : JenisTransaksi::Setor;
 
         if ($request->filled('pendaftaran_qurban_id')) {
             $penda = PendaftaranQurban::findOrFail($request->pendaftaran_qurban_id);
@@ -413,13 +415,33 @@ class TransaksiController extends Controller
             }
         }
 
-        $transaksi = DB::transaction(function () use ($request, $jenis, $konfigurasiDipilih) {
+        // Pengeluaran tunai (penarikan): saldo wajib mencukupi, dan di luar produk emas
+        // (pencairan emas lewat alur resmi agar gram & saldo dana tercatat konsisten).
+        if ($jenisTransaksi === JenisTransaksi::Tarik) {
+            if ($jenis->tipe === TipeTabungan::Emas) {
+                return $this->errorResponse('Pengeluaran tunai tidak didukung untuk tabungan emas. Gunakan pencairan emas via alur resmi.', 422, 'TARIK_EMAS_TIDAK_DIDUKUNG');
+            }
+
+            $userTarik = User::findOrFail($request->user_id);
+            $saldo = $this->progressService->getSaldo($userTarik, $jenis);
+            $pendingTarikLain = Transaksi::milikUser($userTarik->id)
+                ->where('jenis_tabungan_id', $jenis->id)
+                ->where('jenis_transaksi', 'tarik')
+                ->menungguVerifikasi()
+                ->sum('nominal');
+
+            if ((float) $request->nominal > (float) ($saldo - $pendingTarikLain)) {
+                return $this->errorResponse('Saldo tidak mencukupi untuk penarikan tunai ini.', 422, 'INSUFFICIENT_BALANCE');
+            }
+        }
+
+        $transaksi = DB::transaction(function () use ($request, $jenis, $konfigurasiDipilih, $jenisTransaksi) {
             $data = [
                 'user_id' => $request->user_id,
                 'jenis_tabungan_id' => $request->jenis_tabungan_id,
                 'pendaftaran_qurban_id' => $request->pendaftaran_qurban_id,
                 'tabungan_berjangka_id' => $request->tabungan_berjangka_id,
-                'jenis_transaksi' => JenisTransaksi::Setor,
+                'jenis_transaksi' => $jenisTransaksi,
                 'nominal' => $request->nominal,
                 'metode_pembayaran' => MetodePembayaran::Cash,
                 'catatan_admin' => $request->catatan_admin,
@@ -428,7 +450,7 @@ class TransaksiController extends Controller
 
             // Setoran emas (termasuk door-to-door/cash) memakai konversi yang sama:
             // beli target gram penuh per periode bila mengikuti setoran rencana.
-            if ($jenis->tipe === TipeTabungan::Emas) {
+            if ($jenis->tipe === TipeTabungan::Emas && $jenisTransaksi === JenisTransaksi::Setor) {
                 $user = User::findOrFail($request->user_id);
                 $harga = HargaEmasHarian::hargaTerkini();
 
@@ -474,6 +496,44 @@ class TransaksiController extends Controller
         return $this->createdResponse(
             new TransaksiResource($transaksi->load(['user', 'jenisTabungan'])),
             'Transaksi cash berhasil dicatat dan otomatis terverifikasi.'
+        );
+    }
+
+    /**
+     * POST /admin/kas-operasional
+     * Kas operasional: pemasukan/pengeluaran kas koperasi (belanja/biaya/dst)
+     * yang tidak terikat rekening nasabah. Langsung terverifikasi.
+     */
+    public function storeOperasional(Request $request): JsonResponse
+    {
+        $request->validate([
+            'jenis_transaksi' => 'nullable|string|in:setor,tarik',
+            'nominal' => 'required|numeric|min:1000',
+            'deskripsi' => 'required|string|max:500',
+            'tanggal' => 'nullable|date',
+        ]);
+
+        $jenisTransaksi = $request->jenis_transaksi === 'tarik' ? JenisTransaksi::Tarik : JenisTransaksi::Setor;
+
+        $transaksi = DB::transaction(function () use ($request, $jenisTransaksi) {
+            $transaksi = $this->transaksiService->buatTransaksi([
+                'kategori' => 'operasional',
+                'jenis_transaksi' => $jenisTransaksi,
+                'nominal' => $request->nominal,
+                'metode_pembayaran' => MetodePembayaran::Cash,
+                'catatan_admin' => $request->deskripsi,
+                'tanggal_transaksi' => $request->tanggal,
+                'auto_verify' => true,
+            ]);
+
+            AuditLog::record('create_operasional', $transaksi);
+
+            return $transaksi;
+        });
+
+        return $this->createdResponse(
+            new TransaksiResource($transaksi->fresh()),
+            'Kas operasional berhasil dicatat dan otomatis terverifikasi.'
         );
     }
 }

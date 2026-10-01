@@ -161,7 +161,8 @@ export interface RekeningBank {
 export interface Transaksi {
   id: number;
   nomor_referensi: string;
-  user_id: number;
+  kategori?: 'nasabah' | 'operasional';
+  user_id: number | null;
   user_name?: string;
   user_phone?: string;
   user_nomor_anggota?: string;

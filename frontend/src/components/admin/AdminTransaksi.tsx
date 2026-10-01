@@ -12,6 +12,7 @@ import {
   XCircle,
   FileSpreadsheet,
   Plus,
+  ChevronDown,
   ArrowDownLeft,
   ArrowUpRight,
   Wallet,
@@ -24,6 +25,7 @@ import { RekapPeriod, Transaksi, TransaksiFilters, Aliran } from '../../types';
 
 interface AdminTransaksiProps {
   onOpenCashModal: () => void;
+  onOpenKasOperasionalModal: () => void;
   onOpenDetailTransaksi: (trx: Transaksi) => void;
   onOpenRejectModal: (trx: Transaksi) => void;
   onOpenExportModal: (filters?: TransaksiFilters, aliran?: Aliran, periode?: NonNullable<TransaksiFilters['periode']>) => void;
@@ -46,6 +48,7 @@ const STAT_LABEL: Record<string, string> = {
 
 export const AdminTransaksi: React.FC<AdminTransaksiProps> = ({
   onOpenCashModal,
+  onOpenKasOperasionalModal,
   onOpenDetailTransaksi,
   onOpenRejectModal,
   onOpenExportModal
@@ -60,6 +63,7 @@ export const AdminTransaksi: React.FC<AdminTransaksiProps> = ({
   const [aliran, setAliran] = useState<Aliran>('semua');
   const [periode, setPeriode] = useState<NonNullable<TransaksiFilters['periode']>>('semua');
   const [page, setPage] = useState(1);
+  const [kasMenuOpen, setKasMenuOpen] = useState(false);
 
   useEffect(() => {
     setPage(1);
@@ -209,13 +213,52 @@ export const AdminTransaksi: React.FC<AdminTransaksiProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={onOpenCashModal}
-            className="py-2.5 px-4 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-blue-600/20 transition-all cursor-pointer flex-shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Input Transaksi Cash</span>
-          </button>
+          {/* Kas input dropdown (menu) */}
+          {kasMenuOpen && (
+            <div className="fixed inset-0 z-40" onClick={() => setKasMenuOpen(false)} />
+          )}
+          <div className="relative z-50">
+            <button
+              onClick={() => setKasMenuOpen((v) => !v)}
+              className={`py-2.5 px-4 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-blue-600/20 transition-all cursor-pointer flex-shrink-0 ${kasMenuOpen ? 'from-blue-700 to-blue-800' : ''}`}
+            >
+              <Plus className="w-4 h-4" />
+              <span>Input Kas</span>
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${kasMenuOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {kasMenuOpen && (
+              <div className="absolute right-0 top-full mt-2 w-64 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl p-1.5 animate-in zoom-in-95 duration-150">
+                <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                  Input Kas (Kantor)
+                </div>
+                <button
+                  onClick={() => { setKasMenuOpen(false); onOpenCashModal(); }}
+                  className="w-full text-left flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-colors cursor-pointer"
+                >
+                  <span className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400">
+                    <Plus className="w-3.5 h-3.5" />
+                  </span>
+                  <span>
+                    <span className="block font-bold text-xs text-slate-800 dark:text-slate-200">Transaksi Cash</span>
+                    <span className="block text-[10px] text-slate-400">Setoran / penarikan nasabah</span>
+                  </span>
+                </button>
+                <button
+                  onClick={() => { setKasMenuOpen(false); onOpenKasOperasionalModal(); }}
+                  className="w-full text-left flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-colors cursor-pointer"
+                >
+                  <span className="p-1.5 rounded-lg bg-amber-100 dark:bg-amber-950 text-amber-600 dark:text-amber-400">
+                    <Wallet className="w-3.5 h-3.5" />
+                  </span>
+                  <span>
+                    <span className="block font-bold text-xs text-slate-800 dark:text-slate-200">Kas Operasional</span>
+                    <span className="block text-[10px] text-slate-400">Belanja & biaya kantor</span>
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
 
           <button
             onClick={() => onOpenExportModal(filters, aliran, periode)}
@@ -425,17 +468,25 @@ export const AdminTransaksi: React.FC<AdminTransaksiProps> = ({
                   </td>
                 </tr>
               ) : (
-                pageRows.map((trx) => (
+                pageRows.map((trx) => {
+                  const isOperasional = trx.kategori === 'operasional';
+                  return (
                   <tr key={trx.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                     <td className="py-3 px-3 font-mono font-bold text-slate-900 dark:text-white">
                       {trx.nomor_referensi}
                     </td>
                     <td className="py-3 px-3">
-                      <div className="font-bold text-slate-900 dark:text-white">{trx.user_name}</div>
-                      <span className="text-[10px] text-slate-400">User ID: #{trx.user_id}</span>
+                      <div className="font-bold text-slate-900 dark:text-white">
+                        {isOperasional ? 'Biaya Operasional' : trx.user_name}
+                      </div>
+                      <span className="text-[10px] text-slate-400">
+                        {isOperasional ? 'Kas Koperasi · tanpa nasabah' : `User ID: #${trx.user_id}`}
+                      </span>
                     </td>
                     <td className="py-3 px-3">
-                      <div className="font-semibold text-slate-800 dark:text-slate-200">{trx.jenis_tabungan_nama}</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200">
+                        {isOperasional ? (trx.catatan_admin || 'Kas Operasional') : trx.jenis_tabungan_nama}
+                      </div>
                       <span className="text-[10px] text-slate-400 capitalize">{trx.jenis_transaksi}</span>
                     </td>
                     <td className="py-3 px-3">
@@ -474,6 +525,7 @@ export const AdminTransaksi: React.FC<AdminTransaksiProps> = ({
                     </td>
                     <td className="py-3 px-3 text-right">
                       <div className="flex items-center justify-end gap-1.5">
+                        {isOperasional ? '-' : (<>
                         <button
                           onClick={() => onOpenDetailTransaksi(trx)}
                           className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
@@ -499,10 +551,12 @@ export const AdminTransaksi: React.FC<AdminTransaksiProps> = ({
                             </button>
                           </>
                         )}
+                        </>)}
                       </div>
                     </td>
                   </tr>
-                ))
+                  );
+                  })
               )}
             </tbody>
             {rekapRows.length > 0 && (

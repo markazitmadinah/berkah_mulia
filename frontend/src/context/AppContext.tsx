@@ -88,6 +88,7 @@ interface DaftarQurbanPayload {
 interface CashTransaksiPayload {
   user_id: number;
   jenis_tabungan_id: number;
+  jenis_transaksi?: 'setor' | 'tarik';
   nominal: number;
   pendaftaran_qurban_id?: number;
   tabungan_berjangka_id?: number;
@@ -248,6 +249,7 @@ interface AppContextType {
   hariRayaStatus: HariRayaStatus | null;
   cairkanHariRaya: () => void;
   inputTransaksiCash: (data: CashTransaksiPayload) => void;
+  inputKasOperasional: (data: { jenis_transaksi: 'setor' | 'tarik'; nominal: number; deskripsi: string; tanggal?: string }) => void;
   verifikasiTransaksi: (id: number) => void;
   tolakTransaksi: (id: number, catatan: string) => void;
   uploadBuktiTransaksi: (id: number, file: File) => void;
@@ -328,12 +330,15 @@ const normTransaksi = (t: unknown): Transaksi => {
   return {
     id: x.id,
     nomor_referensi: x.nomor_referensi || `TRX-${x.id}`,
-    user_id: x.user_id,
+    kategori: x.kategori || 'nasabah',
+    user_id: x.user_id ?? null,
     user_name: x.user?.name || x.user_name,
     user_phone: x.user?.phone || x.user_phone,
     user_nomor_anggota: x.user?.nomor_anggota || x.user_nomor_anggota,
     jenis_tabungan_id: jt.id ?? x.jenis_tabungan_id ?? undefined,
-    jenis_tabungan_nama: jt.nama || (isGadai ? `Angsuran Gadai${nomorGadai ? ` (${nomorGadai})` : ''}` : (x.jenis_tabungan_nama || 'Transaksi')),
+    jenis_tabungan_nama: x.kategori === 'operasional'
+      ? 'Kas Operasional'
+      : (jt.nama || (isGadai ? `Angsuran Gadai${nomorGadai ? ` (${nomorGadai})` : ''}` : (x.jenis_tabungan_nama || 'Transaksi'))),
     tipe_tabungan: jt.tipe || (isGadai ? 'gadai' : x.tipe_tabungan),
     sub_jenis: jt.sub_jenis ?? x.sub_jenis ?? undefined,
     pendaftaran_qurban_id: x.pendaftaran_qurban_id ?? undefined,
@@ -1368,6 +1373,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       () => api.post('/admin/transaksi/cash', {
         user_id: data.user_id,
         jenis_tabungan_id: data.jenis_tabungan_id,
+        jenis_transaksi: data.jenis_transaksi,
         nominal: data.nominal,
         pendaftaran_qurban_id: data.pendaftaran_qurban_id,
         tabungan_berjangka_id: data.tabungan_berjangka_id,
@@ -1375,6 +1381,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         catatan_admin: data.catatan_teller
       }),
       'Transaksi cash berhasil dibukukan dan otomatis terverifikasi.'
+    );
+
+  const inputKasOperasional = (data: { jenis_transaksi: 'setor' | 'tarik'; nominal: number; deskripsi: string; tanggal?: string }) =>
+    withRefresh(
+      () => api.post('/admin/kas-operasional', {
+        jenis_transaksi: data.jenis_transaksi,
+        nominal: data.nominal,
+        deskripsi: data.deskripsi,
+        tanggal: data.tanggal
+      }),
+      'Kas operasional berhasil dicatat dan otomatis terverifikasi.'
     );
 
   const verifikasiTransaksi = (id: number) =>
@@ -1641,6 +1658,7 @@ daftarQurbanAdmin,
     tukarEmas,
     batalkanSetoranBerkala,
     inputTransaksiCash,
+    inputKasOperasional,
     verifikasiTransaksi,
     tolakTransaksi,
     uploadBuktiTransaksi,
